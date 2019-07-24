@@ -1,0 +1,12 @@
+max_width = 100
+comment_width = 100
+tab_spaces = 4
+reorder_imports = true
+reorder_modules = true
+normalize_comments = true
+reorder_impl_items = true
+struct_field_align_threshold = 20
+use_field_init_shorthand = true
+use_try_shorthand = true
+wrap_comments = true
+overflow_delimited_expr = true
