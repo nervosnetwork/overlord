@@ -76,9 +76,10 @@ pub struct Vote {
 ## Commit
 
 ```rust
-pub struct Commit<P> {
+pub struct Commit<P, T> {
     pub height: u64,
     pub proposal: P,
+    pub txs_body: T,
     pub proof: Proof,
 }
 ```
@@ -126,10 +127,10 @@ pub Status {
 ## VerifyResp
 
 ```rust
-pub(crate) struct VerifyResp<P> {
-    pub(crate) proposal: P,
+pub(crate) struct VerifyResp<T> {
+    pub(crate) proposal_hash: Hash,
     pub(crate) is_pass: bool,
-    pub(crate) txs_body: Vec<u8>,
+    pub(crate) txs_body: T,
 }
 ```
 
