@@ -33,15 +33,15 @@ pub enum OutputMsg {
 ## Proposal
 
 ```rust
-pub struct SignedProposal<P> {
+pub struct SignedProposal<T> {
     pub signature: Vec<u8>,
-    pub proposal: Proposal<P>,
+    pub proposal: Proposal<T>,
 }
 
-pub struct Proposal<P> {
+pub struct Proposal<T> {
     pub height: u64,
     pub round: u64,
-    pub content: P,
+    pub content: T,
     pub lock_round: Option<u64>,
     pub lock_votes: Vec<AggregatedVote<P>>,
     pub proposer: Address,
@@ -76,10 +76,9 @@ pub struct Vote {
 ## Commit
 
 ```rust
-pub struct Commit<P, T> {
+pub struct Commit<T> {
     pub height: u64,
-    pub proposal: P,
-    pub txs_body: T,
+    pub proposal: T,
     pub proof: Proof,
 }
 ```
@@ -127,19 +126,18 @@ pub Status {
 ## VerifyResp
 
 ```rust
-pub(crate) struct VerifyResp<T> {
+pub(crate) struct VerifyResp {
     pub(crate) proposal_hash: Hash,
     pub(crate) is_pass: bool,
-    pub(crate) txs_body: T,
 }
 ```
 
 ## Feed
 
 ```rust
-pub(crate) struct Feed<P> {
+pub(crate) struct Feed<T> {
     pub(crate) height: u64,
-    pub(crate) proposal: P,
+    pub(crate) proposal: T,
     pub(crate) hash: Hash,
 }
 ```
