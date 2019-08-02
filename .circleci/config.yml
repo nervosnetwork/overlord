@@ -142,19 +142,19 @@ jobs:
       - restore_cache: *restore-sweep-cache
       - run:
           name: install
-          command: ./devtools/ci/install.sh
+          command: ./.circleci/ci/install.sh
           no_output_timeout: 20m
       - run:
           name: build
-          command: ./devtools/ci/script.sh
+          command: ./.circleci/ci/script.sh
           no_output_timeout: 20m
       - save_cache: *save-dependencies-cache
       - save_cache: *save-sweep-cache
       - run: *before-save-build-cache
-      # already do 'cargo sweep' inside devtools/ci/script.sh
+      # already do 'cargo sweep' inside .circleci/ci/script.sh
       # - run: *clean-build-cache-if-too-large
       - save_cache: *save-build-cache
-      # already check inside devtools/ci/script.sh
+      # already check inside .circleci/ci/script.sh
       # - run: *shout-out-if-cargo-lock-diff
 
   test:
@@ -171,7 +171,7 @@ jobs:
       - restore_cache: *restore-sweep-cache
       - run:
           name: test
-          command: ./devtools/ci/script.sh
+          command: ./.circleci/ci/script.sh
           no_output_timeout: 20m
 
 workflows:
