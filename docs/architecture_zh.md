@@ -32,7 +32,7 @@ pub trait Consensus<T: Serialize + Deserialize + Clone + Debug> {
     /// Check the correctness of an epoch.
     fn check_epoch(&self, hash: &[u8]) -> Future<Output = Result<(), Self::Error>>;
     /// Commit an epoch.
-    fn commit(&self, epoch_id: u64, commit: Commit<T>) -> Future<Output = Result<(), Self::Error>>;
+    fn commit(&self, epoch_id: u64, commit: Commit<T>) -> Future<Output = Result<Status, Self::Error>>;
     /// Transmit a message to the leader.
     fn transmit_to_leader(&self, addr: Address, msg: OutputMsg) -> Future<Output = Result<(), Self::Error>>;
     /// Broadcast a message to other replicas.
