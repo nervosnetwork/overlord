@@ -1,5 +1,5 @@
 [package]
-name = "muta-consensus"
+name = "overlord"
 version = "0.0.0"
 authors = ["Eason Gao <kaoimin@qq.com>"]
 edition = "2018"
@@ -8,10 +8,18 @@ include = ["Cargo.toml", "src/*", "README.md", "LICENSE", "rust-toolchain"]
 readme = "README.md"
 keywords = ["consensus", "bft", "distributed-systems"]
 categories = ["algorithms"]
-repository = "https://github.com/cryptape/muta-consensus"
+repository = "https://github.com/cryptape/overlord"
 description = """
-Muta consensus procotol.
+Overlord consensus procotol.
 """
 
 [dependencies]
-log= "0.4"
+bit-vec = "0.6"
+futures-preview = "0.3.0-alpha.17"
+futures-timer = "0.3"
+log = "0.4"
+parking_lot = "0.9"
+rand_core = "0.5"
+rand_pcg = "0.2"
+rlp = "0.4"
+rocksdb = "0.12"
