@@ -6,12 +6,6 @@ alias:
     <<: *restore-source-codes-cache
     paths: ~/overlord
 
-  - &save-dependencies-cache
-    <<: *restore-dependencies-cache
-    paths:
-      - /opt/.cargo/git
-      - /opt/.cargo/registry
-
   - &restore-clippy-cache
     key: clippy-{{ .Environment.CIRCLE_BRANCH }}-{{ checksum "~/build-cache.key" }}
     keys:
@@ -135,7 +129,6 @@ jobs:
       - checkout
       - save_cache: *save-source-codes-cache
       # dependencies and build
-      - restore_cache: *restore-dependencies-cache
       - run: *before-restore-build-cache
       - restore_cache: *restore-build-cache
       - run: *before-restore-sweep-cache
@@ -148,7 +141,6 @@ jobs:
           name: build
           command: ./.circleci/ci/script.sh
           no_output_timeout: 20m
-      - save_cache: *save-dependencies-cache
       - save_cache: *save-sweep-cache
       - run: *before-save-build-cache
       # already do 'cargo sweep' inside .circleci/ci/script.sh
@@ -164,7 +156,6 @@ jobs:
       USE_SYS_ROCKSDB: true
     steps:
       - restore_cache: *restore-source-codes-cache
-      - restore_cache: *restore-dependencies-cache
       - run: *before-restore-build-cache
       - restore_cache: *restore-build-cache
       - run: *before-restore-sweep-cache
