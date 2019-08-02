@@ -1,2 +1,3 @@
-# muta-consensus
-Muta consensus protocol.
+# Overlord
+
+Overlord consensus protocol.
