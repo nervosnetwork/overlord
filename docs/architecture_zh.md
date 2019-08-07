@@ -1,60 +1,275 @@
-# Muta Consensus 架构设计
+# Overlord 架构设计
 
-## 组件
+- [目标](#目标)
+- [设计背景](#设计背景)
+- [Overlord 协议](#Overlord协议)
+  - [总体设计](#总体设计)
+  - [协议描述](#协议描述)
+- [Overlord 架构](#Overlord架构)
+  - [共识状态机](#共识状态机)
+  - [状态存储](#状态存储)
+  - [定时器](#定时器)
+  - [Wal](#Wal)
+- [Overlord 接口](#Overlord接口)
+  - [共识接口](#共识接口)
+  - [密码学接口](#密码学接口)
 
-* 共识状态机
-* wal
-* DB
-* utils
+## 目标
+
+Overlord 的目标是成为能够支持上百个共识节点，满足数千笔每秒的交易处理能力，且交易延迟不超过数秒的 BFT 共识算法。简单来讲，就是能够满足大部分现实业务需求的高性能共识算法。
+
+## 设计背景
+
+在区块链中，一次共识至少包含两层语义：
+
+1. 完成交易定序
+2. 对最新状态达成共识
+
+对于 UTXO 模型的区块链来说，新状态隐含在交易输出中，因此 1 和 2 是一体不可分割的。而对于 Account 模型的区块链来说，交易中并没有包含状态，只有执行完交易才能生成最新状态，状态用单独的一颗 MPT 树保存。
+
+在 Account 模型中，为了实现第二层语义，常用的办法是，共识节点在打包新区块之前执行完区块中的所有交易，以计算出最新状态保存到块头中。包含了最新状态的区块达成共识后，区块中的交易完成了定序，同时最新状态亦完成了共识，任何节点可以重放区块中的交易验证状态的正确性。然而，这种处理方法制约了 BFT 类共识算法的交易处理能力。如下图所示，当高度为 h 的区块 B(h) 达成共识后，高度为 h+1 的新 leader 打包并执行 B(h+1) 后才能广播 B(h+1)，其他共识节点收到 B(h+1) 后必须再执行 B(h+1) 以验证其正确性。在共识过程中，这两次串行的区块执行过程拖慢了共识效率。
+
+![block process](assets/block_process.png)
+
+一种改进的办法是，Leader 在打包新区块时并不立即执行该块，待区块达成共识后，共识节点才执行该块生成新的状态，下一个高度的 Leader 将新状态与下一个区块一起参与共识。这种办法省掉了一次区块执行过程。
+
+当从更微观的角度来审察这种改进方案时，我们发现其仍然存在很大的改进空间。这是因为，任何一个共识节点的共识模块和执行模块在整个共识过程中始终是串行的，如下图所示，当共识模块在对区块共识时，执行模块始终是空闲的，反之亦然。如果能够将执行模块和共识模块并行，那么共识的交易处理能力理论上能够达到执行模块的最大处理极限。
+
+## Overlord 协议
+
+### 总体设计
+
+Overlord 的核心思想是解耦交易定序与状态共识。
+
+我们用 B(h, S, T) 表示高度为 h 的区块，其包含的状态是 S，定序的交易集合是 T。在共识的第二层语义中，人们对 S 的解读往往是执行完 T 后的状态，正是这种思维定势使得执行模块和共识模块无法并行。如果将 S 理解为是共识模块在开始对 B(h, S, T) 共识时，执行模块执行达到的最新状态，那么共识模块将无需等待执行模块执行新的区块，而执行模块只需要沿着已定序的交易向前执行。这样，共识模块可以连续向前推进，不断将新交易定序，同时完成执行模块的最新状态共识; 执行模块也可以连续执行已定序的交易集合，直到将所有已定序的交易执行完毕。
+
+### 协议描述
+
+在 Overlord 中，一次共识过程称为一个 *epoch*，我们将达成共识的区块称为 *epoch*。*epoch* 包含 Header 和 Body 两部分（如下图所示）。*epoch* 的核心结构如下图所示，`epoch_id` 是单调递增的数值，相当于高度；prev_hash 是上一个 *epoch* 的哈希；`order_root` 是包含在 Body 中的所有待定序的交易的 merkle root；state_root 表示最新的世界状态的 MPT Root；confirmRoots 表示从上一个 *epoch* 的 `state_root` 到当前 *epoch* 的 `state_root` 之间执行模块向前推进的 `order_root` 集合；`receipt_roots` 记录被执行的每一个 `order_root` 所对应的 `receipt_root`；proof 是对上一个 *epoch* 的证明。
+
+![epoch](assets/epoch.png)
+
+在具体的方案中，共识模块批量打包交易进行共识, 达成共识后, 将已定序的交易集合添加到待执行的队列中, 执行模块以交易集合为单位依次执行, 每执行完一个交易集合, 就将被执行的交易集合的 order_root, 以及执行后的 stateRoot 发给共识模块。在 Leader 打包交易拼装 *epoch* 时, 取最新收到的 state_root 作为最新状态参与共识.
+
+Overlord 是在具体共识算法之上的解释层, 通过重新诠释共识的语义, 使得交易定序与状态共识解耦, 从而在实际运行中获得更高的交易处理能力。理论上, Overlord 能够基于几乎任何 BFT 类共识算法, 具体在我们的项目中则是基于改进的 Tendermint。
+
+我们对 Tendermint 主要做了三点改进：
+
+1. 将聚合签名应用到 Tendermint 中, 使共识的消息复杂度从 <img src="https://latex.codecogs.com/svg.latex?\inline&space;O(n^{2})" title="O(n^{2})" /> 降到 <img src="https://latex.codecogs.com/svg.latex?\inline&space;O(n)" title="O(n)" />, 从而能够支持更多的共识节点
+2. 在 *proposal* 中增加了 propose 交易区, 使新交易的同步与共识过程可并行
+3. 共识节点收到 *proposal* 后, 无需等 *epoch* 校验通过即可投 *prevote* 票, 而在投 *precommit* 票之前必须得到 *epoch* 校验结果, 从而使得区块校验与 *prevote* 投票过程并行
+
+#### 聚合签名
+
+在 Tendermint 共识协议中，节点在收到 *proposal* 之后对其投出 *prevote*，*prevote* 投票是全网广播给其他节点的。这时的通信复杂度是 <img src="https://latex.codecogs.com/svg.latex?\inline&space;O(n^{2})" title="O(n^{2})" />。使用聚合签名优化是所有的节点将 *prevote* 投票发给一个指定的 *Relayer* 节点，Relayer 节点可以是任何一个共识节点。Relayer 节点将收到的签名通过算法计算聚合签名，再用一个位图 (bit-vec) 表示是哪些节点的投票。将聚合签名和位图发送给其他节点，对于 *precommit* 投票同理。这样就将通信复杂度降到了 <img src="https://latex.codecogs.com/svg.latex?\inline&space;O(n)" title="O(n)" />。
+
+如果 *Relayer* 出现故障，没有发送聚合签名给共识节点，或者 *Relayer* 作恶，只给小部分共识节点发送聚合签名，那么共识将会失活。我们采用投票重发机制 解决这个问题。具体来说，节点在第一次投票时只发送给 *Relayer*，并设置一个重发的定时器。当定时器超时后，如果该节点的轮次仍未改变，则将投票和上一阶段的聚合签名广播给所有的共识节点，同时重置定时器。例如，如果 *prevote* 投票超时，则广播上一轮的 *precommit* 聚合签名和本轮 *prevote* 投票。如果 *precommit* 投票超时，则广播本轮的 *prevote* 聚合签名和本轮的 *precommit* 投票。需要注意的是，并非只有 *Relayer* 才能聚合签名，当一个共识节点收到的多张投票满足 +2/3 权重时，可以自行完成签名的聚合。
+
+#### 同步并行
+
+Overlord 采用压缩区块（compact block）的方式广播 *CompactEpoch*，即其 Body 中仅包含交易哈希，而非完整交易。共识节点收到 *CompactEpoch* 后，需要同步获得其 Body 中包含的全部完整交易后才能构造出完整的 *epoch*。
+
+我们在 proposal 里除了包含 *CompactEpoch* 外，还额外增加了一个 *propose* *交易区，propose* 交易区中包含待同步的新交易的哈希。需要注意的是，这些交易与 *CompactEpoch* 里包含的待定序的交易哈希并不重叠，当 *CompactEpoch* 不足以包含交易池中所有的新交易时，剩余的新交易可以包含到 *propose* 交易区中提前同步。这在系统交易量很大的时候，可以提高交易同步与共识的并发程度，进一步提高交易处理能力.
+
+#### 校验并行
+
+共识节点收到 *proposal* 后，将 *CompactEpoch* 的校验(获得完整交易，校验交易的正确性) 与 *prevote* 投票并行，只有当收到 *prevote* 聚合签名和 *CompactEpoch* 的检验结果后，才会投 *precommit* 票。
+
+## Overlord 架构
+
+Overlord 共识由以下几个组件组成的：
+
+* 状态机(SMR)：根据输入消息的进行状态转换
+
+* 状态存储(State)：用于存储提议，投票等状态
+
+* 定时器(Timer)：设定超时时间触发状态机操作
+
+* Wal：用于读写 Wal 日志
+
+在 Overlord 共识架构中，当收到消息时，状态存储模块先对消息做基本检查。通过后，根据接收到的消息更新状态，并将消息传输给状态机。此外，为了保持活性还需要一个定时器，当超时时定时器调用接口触发状态机。状态机在做状态变更之后会抛出一个当前状态的事件，状态存储模块和定时器模块监听状态机抛出的事件，根据监听到的事件做相应的处理，例如写 Wal，发送投票，设置定时器等。在重启时状态存储模块先从 Wal 中读取数据，再发送给状态机。整体的架构如下图所示：
+
+![overlord architecture](assets/arch_overlord.png)
 
 ### 共识状态机
 
-使用一个 BLS 优化的 Tendermint 状态机对 proposal 进行共识。 当 leader 掉线时，退化到传统的 Tendermint 状态机。
+状态机模块是整个共识的逻辑核心，它不会去调用其他模块。当收到消息触发时，根据收到的消息做状态变更，并将变更后的状态作为事件抛出。在我们的实现中，Overlord 使用一个应用 BLS 聚合签名优化的 Tendermint 状态机进行共识，整体的工作过程如下：
 
-### Wal
+#### 提议阶段
 
-异步写二进制文件。
+节点使用确定性随机算法确定本轮的 *Leader*。
 
-### DB
+**Leader**: 广播一个 *proposal*
 
-Epoch 共识成功后，写入 rocksDB 数据库。
+**Others**: 设置一个定时器 T1，当收到 *proposal* 之后向 *Relayer* 发送 *prevote* 投票
 
-## 接口
+#### 预投票阶段
 
-### Consensus API
+**Relayer**: 设置一个定时器 T2，对收到的 *prevote* 投票进行聚合并生成位图，将聚合后的投票和位图广播给其他节点
+
+**Others**: 设置一个定时器 T2，检查聚合的 *prevote* 投票的合法性，生成 **PoLC** 发送 *precommit* 投票
+
+#### 校验等待阶段
+
+所有节点设置一个定时器 T3，当收到对 *proposal* 的校验结果之后，进入预提交阶段
+
+#### 预提交阶段
+
+**Relayer**: 设置一个定时器 T4，对收到的 *precommit* 投票进行聚合并生成位图，将聚合后的投票和位图广播给其他节点
+
+**Others**: 设置一个定时器 T4，检查聚合的 *precommit* 投票的合法性
+
+#### 提交阶段
+
+所有节点将 *proposal* 提交
+
+共识状态机的状态转换图如下图所示：
+
+![state transition diagram](assets/state_transition.png)
+
+#### 活性保证
+
+#### 输入输出
+
+状态机的输入消息如下：
 
 ```rust
-pub trait Consensus<T: Serialize + Deserialize + Clone + Debug> {
-    /// Consensus error
-    type Error: Debug;
-    /// Get an epoch of an epoch_id and return the epoch with its hash.
-    fn get_epoch(&self, epoch_id: u64) -> Future<Output = Result<(T, Hash)), Self::Error>>;
-    /// Check the correctness of an epoch.
-    fn check_epoch(&self, hash: &[u8]) -> Future<Output = Result<(), Self::Error>>;
-    /// Commit an epoch.
-    fn commit(&self, epoch_id: u64, commit: Commit<T>) -> Future<Output = Result<Status, Self::Error>>;
-    /// Transmit a message to the leader.
-    fn transmit_to_leader(&self, addr: Address, msg: OutputMsg) -> Future<Output = Result<(), Self::Error>>;
-    /// Broadcast a message to other replicas.
-    fn broadcast_to_other(&self, msg: OutputMsg) -> Future<Output = Result<(), Self::Error>>;
+pub enum SMRInput {
+    /// Timeout message from timer module.
+    Timeout(TimeoutInfo),
+    /// SMR proposal from State module.
+    Proposal(SMRProposal),
+    /// Quorum certificate from state module.
+    QuorumCertificate(QC),
+    /// Verify response from state module.
+    VerifyResp(VerifyResp),
 }
 ```
 
-### Crypto API
+状态机的输出消息如下：
+
+```rust
+pub enum SMROutput {
+    /// Timeout event for timer to set a timer.
+    Timeout(TimeoutInfo),
+    /// Get proposal event for state to get the height's proposal.
+    GetProposal(u64),
+    /// Propose event for state to broadcast a proposal.
+    Propose(SMRProposal),
+    /// Vote event for state to transmit a vote.
+    Vote(SMRVote),
+    /// Commit event for state to do commit.
+    Commit(SMRCommit),
+}
+```
+
+#### 状态机接口
+
+```rust
+/// Create a new SMR service.
+pub fn new() -> Self
+/// Send a message to SMR.
+pub fn send(&self, msg: SMRInput) -> Result<(), Error>
+/// Get current SMR height.
+pub fn get_height(&self) -> u64
+```
+
+### 状态存储
+
+状态存储模块是整个共识的功能核心，主要的功能为存储状态，消息分发和密码学相关操作。在工作过程中，对于网络层传输来的消息，首先进行验签，校验消息的合法性。对通过的消息判断是否需要写入 Wal。之后将消息发送给状态机。状态存储模块时刻监听状态机抛出的事件，并根据事件作出相应的处理。
+
+#### 存储状态
+
+状态存储模块需要存储的状态有：
+
+* 提议(*proposal*)
+
+* 投票(*vote*)
+
+* 聚合的投票(*aggregate vote*)
+
+* 共识列表(*authority list*)
+
+* 身份(*Leader*/*Relayer*/*Other*)
+  
+* PoLC 状态
+
+#### 消息分发
+
+发送消息时，根据消息及参数选择发送消息的方式（广播给其他节点或发送给 *Relayer*）。
+
+#### 密码学操作
+
+密码学操作包括如下方法：
+
+* 收到消息时，对消息进行验签
+
+* 收到聚合投票时，验签并校验权重是否超过阈值
+
+* 发出提议或投票时，对消息进行签名
+
+* 自己是 *Relayer* 时，对收到的投票进行聚合
+
+#### 状态存储接口
+
+### 定时器
+
+当状态机运行到某些状态的时候，需要设定定时器以便超时重发等操作。定时器模块会监听状态机抛出的事件，根据事件设置定时器。当达到超时时间，调用状态机模块的接口触发超时。
+
+### Wal
+
+在共识过程中，需要将一些消息写入到 Wal 中。当重启时，状态存储模块首先从 Wal 中读取消息，回复重启前的状态。Wal 模块只与状态存储模块交互。
+
+#### Wal 接口
+
+```rust
+/// Create a new Wal struct.
+pub fn new(path: &str) -> Self
+/// Set a new height of Wal, while go to new height.
+pub fn set_height(&self, height: u64) -> Result<(), Error>
+/// Save message to Wal.
+pub async fn save(&self, msg_type: WalMsgType, msg: Vec<u8>) -> Result<(), Error>;
+/// Load message from Wal.
+pub fn load(&self) -> Vec<(WalMsgType, Vec<u8>)>
+```
+
+## Overlord 接口
+
+### 共识接口
+
+```rust
+#[async_trait]
+pub trait Consensus<T: Serialize + Deserialize + Clone + Debug> {
+    /// Consensus error
+    type Error: ::std::error::Error;
+    /// Get an epoch of an epoch_id and return the epoch with its hash.
+    async fn get_epoch(&self, epoch_id: u64) -> Result<(T, Hash)), Self::Error>;
+    /// Check the correctness of an epoch.
+    async fn check_epoch(&self, hash: &[u8]) -> Result<(), Self::Error>;
+    /// Commit an epoch.
+    async fn commit(&self, epoch_id: u64, commit: Commit<T>) -> Result<Status, Self::Error>;
+    /// Transmit a message to the Relayer.
+    async fn transmit_to_relayer(&self, addr: Address, msg: OutputMsg) -> Result<(), Self::Error>;
+    /// Broadcast a message to other replicas.
+    async fn broadcast_to_other(&self, msg: OutputMsg) -> Result<(), Self::Error>;
+}
+```
+
+### 密码学接口
 
 ```rust
 pub trait Crypto {
     /// Crypto error.
-    type Error: Debug;
-    /// Crypt hash.
+    type Error: ::std::error::Error;
+    /// Hash a message.
     fn hash(&self, msg: &[u8) -> Hash;
-    /// Sign to a hash with private key.
+    /// Sign to the given hash by private key.
     fn sign(&self, hash: &[u8]) -> Result<Signature, Self::Error>;
-    /// Crypt aggregate signature from signatures.
-    fn aggregate_sign(&self, signatures: Vec<Signatures>) -> Result<Signature, Self::Error>;
+    /// Aggregate signatures into an aggregated signature.
+    fn aggregate_signatures(&self, signatures: Vec<Signatures>) -> Result<Signature, Self::Error>;
     /// Verify a signature.
     fn verify_signature(&self, signature: &[u8], hash: &[u8]) -> Result<Address, Self::Error>;
-    /// Verify an aggregate signature.
-    fn verify_aggregate_signature(&self, aggregate_signature: Signature) -> Result<(), Self::Error>;
+    /// Verify an aggregated signature.
+    fn verify_aggregated_signature(&self, aggregate_signature: Signature) -> Result<(), Self::Error>;
 }
 ```
