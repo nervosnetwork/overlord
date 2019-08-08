@@ -127,8 +127,6 @@ Overlord 共识由以下几个组件组成的：
 
 <div align=center><img src="./assets/state_transition.png"></div>
 
-#### 活性保证
-
 #### 输入输出
 
 状态机的输入消息如下：
