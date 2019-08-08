@@ -29,7 +29,7 @@ Overlord 的目标是成为能够支持上百个共识节点，满足数千笔�
 
 在 Account 模型中，为了实现第二层语义，常用的办法是，共识节点在打包新区块之前执行完区块中的所有交易，以计算出最新状态保存到块头中。包含了最新状态的区块达成共识后，区块中的交易完成了定序，同时最新状态亦完成了共识，任何节点可以重放区块中的交易验证状态的正确性。然而，这种处理方法制约了 BFT 类共识算法的交易处理能力。如下图所示，当高度为 h 的区块 B(h) 达成共识后，高度为 h+1 的新 leader 打包并执行 B(h+1) 后才能广播 B(h+1)，其他共识节点收到 B(h+1) 后必须再执行 B(h+1) 以验证其正确性。在共识过程中，这两次串行的区块执行过程拖慢了共识效率。
 
-![block process](./assets/block_process.png)
+<div align=center><img src="./assets/block_process.png"></div>
 
 一种改进的办法是，Leader 在打包新区块时并不立即执行该块，待区块达成共识后，共识节点才执行该块生成新的状态，下一个高度的 Leader 将新状态与下一个区块一起参与共识。这种办法省掉了一次区块执行过程。
 
@@ -47,7 +47,7 @@ Overlord 的核心思想是解耦交易定序与状态共识。
 
 在 Overlord 中，一次共识过程称为一个 *epoch*，我们将达成共识的区块称为 *epoch*。*epoch* 包含 Header 和 Body 两部分（如下图所示）。*epoch* 的核心结构如下图所示，`epoch_id` 是单调递增的数值，相当于高度；prev_hash 是上一个 *epoch* 的哈希；`order_root` 是包含在 Body 中的所有待定序的交易的 merkle root；state_root 表示最新的世界状态的 MPT Root；confirmRoots 表示从上一个 *epoch* 的 `state_root` 到当前 *epoch* 的 `state_root` 之间执行模块向前推进的 `order_root` 集合；`receipt_roots` 记录被执行的每一个 `order_root` 所对应的 `receipt_root`；proof 是对上一个 *epoch* 的证明。
 
-![epoch](./assets/epoch.png)
+<div align=center><img src="./assets/epoch.png"></div>
 
 在具体的方案中，共识模块批量打包交易进行共识, 达成共识后, 将已定序的交易集合添加到待执行的队列中, 执行模块以交易集合为单位依次执行, 每执行完一个交易集合, 就将被执行的交易集合的 order_root, 以及执行后的 stateRoot 发给共识模块。在 Leader 打包交易拼装 *epoch* 时, 取最新收到的 state_root 作为最新状态参与共识.
 
@@ -89,7 +89,7 @@ Overlord 共识由以下几个组件组成的：
 
 在 Overlord 共识架构中，当收到消息时，状态存储模块先对消息做基本检查。通过后，根据接收到的消息更新状态，并将消息传输给状态机。此外，为了保持活性还需要一个定时器，当超时时定时器调用接口触发状态机。状态机在做状态变更之后会抛出一个当前状态的事件，状态存储模块和定时器模块监听状态机抛出的事件，根据监听到的事件做相应的处理，例如写 Wal，发送投票，设置定时器等。在重启时状态存储模块先从 Wal 中读取数据，再发送给状态机。整体的架构如下图所示：
 
-![overlord architecture](./assets/arch_overlord.png)
+<div align=center><img src="./assets/arch_overlord.png"></div>
 
 ### 共识状态机
 
@@ -125,7 +125,7 @@ Overlord 共识由以下几个组件组成的：
 
 共识状态机的状态转换图如下图所示：
 
-![state transition diagram](./assets/state_transition.png)
+<div align=center><img src="./assets/state_transition.png"></div>
 
 #### 活性保证
 
