@@ -33,7 +33,7 @@ Overlord 的目标是成为能够支持上百个共识节点，满足数千笔�
 
 一种改进的办法是，Leader 在打包新区块时并不立即执行该块，待区块达成共识后，共识节点才执行该块生成新的状态，下一个高度的 Leader 将新状态与下一个区块一起参与共识。这种办法省掉了一次区块执行过程。
 
-当从更微观的角度来审察这种改进方案时，我们发现其仍然存在很大的改进空间。这是因为，任何一个共识节点的共识模块和执行模块在整个共识过程中始终是串行的，如下图所示，当共识模块在对区块共识时，执行模块始终是空闲的，反之亦然。如果能够将执行模块和共识模块并行，那么共识的交易处理能力理论上能够达到执行模块的最大处理极限。
+当从更微观的角度来审察这种改进方案时，我们发现其仍然存在很大的改进空间。这是因为，任何一个共识节点的共识模块和执行模块在整个共识过程中始终是串行的，如上图所示，当共识模块在对区块共识时，执行模块始终是空闲的，反之亦然。如果能够将执行模块和共识模块并行，那么共识的交易处理能力理论上能够达到执行模块的最大处理极限。
 
 ## Overlord 协议
 
@@ -45,7 +45,7 @@ Overlord 的核心思想是解耦交易定序与状态共识。
 
 ### 协议描述
 
-在 Overlord 中，一次共识过程称为一个 *epoch*，我们将达成共识的区块称为 *epoch*。*epoch* 包含 Header 和 Body 两部分（如下图所示）。*epoch* 的核心结构如下图所示，`epoch_id` 是单调递增的数值，相当于高度；prev_hash 是上一个 *epoch* 的哈希；`order_root` 是包含在 Body 中的所有待定序的交易的 merkle root；state_root 表示最新的世界状态的 MPT Root；confirmRoots 表示从上一个 *epoch* 的 `state_root` 到当前 *epoch* 的 `state_root` 之间执行模块向前推进的 `order_root` 集合；`receipt_roots` 记录被执行的每一个 `order_root` 所对应的 `receipt_root`；proof 是对上一个 *epoch* 的证明。
+在 Overlord 中，一次共识过程称为一个 *epoch*，我们将达成共识的区块称为 *epoch*。*epoch* 包含 Header 和 Body 两部分（如下图所示）。*epoch* 的核心结构如下图所示，`epoch_id` 是单调递增的数值，相当于高度；prev_hash 是上一个 *epoch* 的哈希；`order_root` 是包含在 Body 中的所有待定序的交易的 merkle root；`state_root` 表示最新的世界状态的 MPT Root；confirmRoots 表示从上一个 *epoch* 的 `state_root` 到当前 *epoch* 的 `state_root` 之间执行模块向前推进的 `order_root` 集合；`receipt_roots` 记录被执行的每一个 `order_root` 所对应的 `receipt_root`；`proof` 是对上一个 *epoch* 的证明。
 
 <div align=center><img src="./assets/epoch.png"></div>
 
