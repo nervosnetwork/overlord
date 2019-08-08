@@ -63,7 +63,7 @@ Overlord 是在具体共识算法之上的解释层, 通过重新诠释共识的
 
 在 Tendermint 共识协议中，节点在收到 *proposal* 之后对其投出 *prevote*，*prevote* 投票是全网广播给其他节点的。这时的通信复杂度是 <img src="https://latex.codecogs.com/svg.latex?\inline&space;O(n^{2})" title="O(n^{2})" />。使用聚合签名优化是所有的节点将 *prevote* 投票发给一个指定的 *Relayer* 节点，Relayer 节点可以是任何一个共识节点。Relayer 节点将收到的签名通过算法计算聚合签名，再用一个位图 (bit-vec) 表示是哪些节点的投票。将聚合签名和位图发送给其他节点，对于 *precommit* 投票同理。这样就将通信复杂度降到了 <img src="https://latex.codecogs.com/svg.latex?\inline&space;O(n)" title="O(n)" />。
 
-如果 *Relayer* 出现故障，没有发送聚合签名给共识节点，或者 *Relayer* 作恶，只给小部分共识节点发送聚合签名，那么共识将会失活。我们采用投票重发机制 解决这个问题。具体来说，节点在第一次投票时只发送给 *Relayer*，并设置一个重发的定时器。当定时器超时后，如果该节点的轮次仍未改变，则将投票和上一阶段的聚合签名广播给所有的共识节点，同时重置定时器。例如，如果 *prevote* 投票超时，则广播上一轮的 *precommit* 聚合签名和本轮 *prevote* 投票。如果 *precommit* 投票超时，则广播本轮的 *prevote* 聚合签名和本轮的 *precommit* 投票。需要注意的是，并非只有 *Relayer* 才能聚合签名，当一个共识节点收到的多张投票满足 +2/3 权重时，可以自行完成签名的聚合。
+如果 *Relayer* 出现故障，没有发送聚合签名给共识节点，或者 *Relayer* 作恶，只给小部分共识节点发送聚合签名，那么共识将会失活。我们采用超时投空票的方式解决这个问题。当节点在投出 *prevote* 投票之后，立即设置一个定时器，如果的超时时间内没有收到 *prevoteQC* 直接进入预提交状态，投出 *nil precommit* 投票。之后进入到下一个 round。如果预投票阶段正常，投出 *precommit* 之后同样设置一个定时器，如果超时没有收到 *precommitQC* 则直接进入下一个 round。
 
 #### 同步并行
 
@@ -150,7 +150,7 @@ pub enum SMRInput {
 pub enum SMROutput {
     /// Timeout event for timer to set a timer.
     Timeout(TimeoutInfo),
-    /// Get proposal event for state to get the height's proposal.
+    /// Get proposal event for state to get the epoch's proposal.
     GetProposal(u64),
     /// Propose event for state to broadcast a proposal.
     Propose(SMRProposal),
@@ -168,7 +168,7 @@ pub enum SMROutput {
 pub fn new() -> Self
 /// Send a message to SMR.
 pub fn send(&self, msg: SMRInput) -> Result<(), Error>
-/// Get current SMR height.
+/// Get current SMR epoch.
 pub fn get_height(&self) -> u64
 ```
 
@@ -223,8 +223,8 @@ pub fn get_height(&self) -> u64
 ```rust
 /// Create a new Wal struct.
 pub fn new(path: &str) -> Self
-/// Set a new height of Wal, while go to new height.
-pub fn set_height(&self, height: u64) -> Result<(), Error>
+/// Set a new epoch of Wal, while go to new epoch.
+pub fn set_height(&self, epoch: u64) -> Result<(), Error>
 /// Save message to Wal.
 pub async fn save(&self, msg_type: WalMsgType, msg: Vec<u8>) -> Result<(), Error>;
 /// Load message from Wal.
