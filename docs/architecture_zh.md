@@ -45,7 +45,7 @@ Overlord 的核心思想是解耦交易定序与状态共识。
 
 ### 协议描述
 
-在 Overlord 中，一次共识过程称为一个 *epoch*，我们将达成共识的区块称为 *epoch*。*epoch* 包含 Header 和 Body 两部分（如下图所示）。*epoch* 的核心结构如下图所示，`epoch_id` 是单调递增的数值，相当于高度；prev_hash 是上一个 *epoch* 的哈希；`order_root` 是包含在 Body 中的所有待定序的交易的 merkle root；`state_root` 表示最新的世界状态的 MPT Root；confirmRoots 表示从上一个 *epoch* 的 `state_root` 到当前 *epoch* 的 `state_root` 之间执行模块向前推进的 `order_root` 集合；`receipt_roots` 记录被执行的每一个 `order_root` 所对应的 `receipt_root`；`proof` 是对上一个 *epoch* 的证明。
+在 Overlord 中，一次共识过程称为一个 *epoch*，我们将达成共识的区块称为 *epoch*。*epoch* 包含 Header 和 Body 两部分（如下图所示）。*epoch* 的核心结构如下图所示，`epoch_id` 是单调递增的数值，相当于高度；`prev_hash` 是上一个 *epoch* 的哈希；`order_root` 是包含在 Body 中的所有待定序的交易的 merkle root；`state_root` 表示最新的世界状态的 MPT Root；`confirm_roots` 表示从上一个 *epoch* 的 `state_root` 到当前 *epoch* 的 `state_root` 之间执行模块向前推进的 `order_root` 集合；`receipt_roots` 记录被执行的每一个 `order_root` 所对应的 `receipt_root`；`proof` 是对上一个 *epoch* 的证明。
 
 <div align=center><img src="./assets/epoch.png"></div>
 
