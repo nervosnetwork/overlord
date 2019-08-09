@@ -127,6 +127,24 @@ Overlord 共识由以下几个组件组成的：
 
 <div align=center><img src="./assets/state_transition.png"></div>
 
+#### 状态机状态
+
+状态机模块需要存储的状态有：
+
+* *epoch*: 当前共识的 epoch
+
+* *round*: 当前共识的轮次
+
+* *proposal_hash*: 可选，当前正在共识的哈希
+
+* *lock*: 可选，当前是否已经达成 **PoLC**
+
+* *propose_weights*: 所有共识节点的出块权重
+
+* *address*: 节点的地址
+
+* *timeout*: 超时时间
+
 #### 输入输出
 
 状态机的输入消息如下：
@@ -158,6 +176,8 @@ pub enum SMROutput {
     Vote(SMRVote),
     /// Commit event for state to do commit.
     Commit(SMRCommit),
+    /// New round event for state to update.
+    NewRound(u64),
 }
 ```
 
@@ -180,17 +200,25 @@ pub fn get_height(&self) -> u64
 
 状态存储模块需要存储的状态有：
 
-* 提议(*proposal*)
+* *epoch*: 当前共识的 epoch
 
-* 投票(*vote*)
+* *round*: 当前共识的轮次
 
-* 聚合的投票(*aggregate vote*)
+* *proposals*: 缓存当前 epoch 所有的提议
 
-* 共识列表(*authority list*)
+* *votes*: 缓存当前 epoch 所有的投票
 
-* 身份(*Leader*/*Relayer*/*Other*)
+* *QCs*: 缓存当前 epoch 所有的 *QC*
+
+* *authority_manage*: 共识列表管理
+
+* *is_leader*: 节点是不是 *leader*
   
-* PoLC 状态
+* *proof*: 可选，上一个 epoch 的证明
+
+* *last_commit_round*: 可选，上一次提交的轮次
+
+* *last_commit_proposal*: 可选，上一次提交的提议
 
 #### 消息分发
 
@@ -247,9 +275,9 @@ pub trait Consensus<T: Serialize + Deserialize + Clone + Debug> {
     /// Commit an epoch.
     async fn commit(&self, epoch_id: u64, commit: Commit<T>) -> Result<Status, Self::Error>;
     /// Transmit a message to the Relayer.
-    async fn transmit_to_relayer(&self, addr: Address, msg: OutputMsg) -> Result<(), Self::Error>;
+    async fn transmit_to_relayer(&self, addr: Address, ctx: Context, msg: OutputMsg) -> Result<(), Self::Error>;
     /// Broadcast a message to other replicas.
-    async fn broadcast_to_other(&self, msg: OutputMsg) -> Result<(), Self::Error>;
+    async fn broadcast_to_other(&self, ctx: Context, msg: OutputMsg) -> Result<(), Self::Error>;
 }
 ```
 
