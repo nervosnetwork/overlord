@@ -127,6 +127,8 @@ Overlord 共识由以下几个组件组成的：
 
 <div align=center><img src="./assets/state_transition.png"></div>
 
+在工程中，我们将预投票阶段和校验等待阶段合并为一个阶段，共用一个超时时间。当状态机收到聚合后的投票和校验结果之后，进入到预提交阶段。
+
 #### 状态机状态
 
 状态机模块需要存储的状态有：
@@ -134,6 +136,8 @@ Overlord 共识由以下几个组件组成的：
 * *epoch*: 当前共识的 epoch
 
 * *round*: 当前共识的轮次
+
+* *step*: 当前所在的阶段
 
 * *proposal_hash*: 可选，当前正在共识的哈希
 
