@@ -133,7 +133,7 @@ Overlord 共识由以下几个组件组成的：
 
 状态机模块需要存储的状态有：
 
-* *epoch*: 当前共识的 epoch
+* *epoch_id*: 当前共识的 epoch
 
 * *round*: 当前共识的轮次
 
@@ -204,7 +204,7 @@ pub fn get_height(&self) -> u64
 
 状态存储模块需要存储的状态有：
 
-* *epoch*: 当前共识的 epoch
+* *epoch_id*: 当前共识的 epoch
 
 * *round*: 当前共识的轮次
 
@@ -275,11 +275,11 @@ pub trait Consensus<T: Serialize + Deserialize + Clone + Debug> {
     /// Get an epoch of an epoch_id and return the epoch with its hash.
     async fn get_epoch(&self, epoch_id: u64) -> Result<(T, Hash)), Self::Error>;
     /// Check the correctness of an epoch.
-    async fn check_epoch(&self, hash: &[u8]) -> Result<(), Self::Error>;
+    async fn check_epoch(&self, hash: Hash) -> Result<(), Self::Error>;
     /// Commit an epoch.
     async fn commit(&self, epoch_id: u64, commit: Commit<T>) -> Result<Status, Self::Error>;
     /// Transmit a message to the Relayer.
-    async fn transmit_to_relayer(&self, addr: Address, ctx: Context, msg: OutputMsg) -> Result<(), Self::Error>;
+    async fn transmit_to_relayer(&self, ctx: Context, msg: OutputMsg, addr: Address) -> Result<(), Self::Error>;
     /// Broadcast a message to other replicas.
     async fn broadcast_to_other(&self, ctx: Context, msg: OutputMsg) -> Result<(), Self::Error>;
 }
@@ -292,13 +292,13 @@ pub trait Crypto {
     /// Crypto error.
     type Error: ::std::error::Error;
     /// Hash a message.
-    fn hash(&self, msg: &[u8) -> Hash;
+    fn hash(&self, msg: &[u8]) -> Hash;
     /// Sign to the given hash by private key.
-    fn sign(&self, hash: &[u8]) -> Result<Signature, Self::Error>;
+    fn sign(&self, hash: Hash) -> Result<Signature, Self::Error>;
     /// Aggregate signatures into an aggregated signature.
     fn aggregate_signatures(&self, signatures: Vec<Signatures>) -> Result<Signature, Self::Error>;
     /// Verify a signature.
-    fn verify_signature(&self, signature: &[u8], hash: &[u8]) -> Result<Address, Self::Error>;
+    fn verify_signature(&self, signature: Signature, hash: Hash) -> Result<Address, Self::Error>;
     /// Verify an aggregated signature.
     fn verify_aggregated_signature(&self, aggregate_signature: Signature) -> Result<(), Self::Error>;
 }
