@@ -1,4 +1,4 @@
-# Muta consensus 数据结构
+# Overlord 数据结构
 
 ## 类型
 
@@ -39,7 +39,7 @@ pub struct SignedProposal<T> {
 }
 
 pub struct Proposal<T> {
-    pub height: u64,
+    pub epoch_id: u64,
     pub round: u64,
     pub content: T,
     pub lock_round: Option<u64>,
@@ -59,15 +59,15 @@ pub struct SignedVote {
 pub struct AggregatedVote {
     pub signature: AggregatedSignature,
     pub type: VoteType,
-    pub height: u64,
+    pub epoch_id: u64,
     pub round: u64,
     pub proposal: Hash,
 }
 
 pub struct Vote {
-    pub type: VoteType,
-    pub height: u64,
+    pub epoch_id: u64,
     pub round: u64,
+    pub type: VoteType,
     pub proposal: Hash,
     pub voter: Address,
 }
@@ -77,7 +77,7 @@ pub struct Vote {
 
 ```rust
 pub struct Commit<T> {
-    pub height: u64,
+    pub epoch_id: u64,
     pub proposal: T,
     pub proof: Proof,
 }
@@ -96,7 +96,7 @@ pub struct AggregatedSignature {
 
 ```rust
 pub struct Proof {
-    pub height: u64,
+    pub epoch_id: u64,
     pub round: u64,
     pub proposal_hash: Hash,
     pub signature: AggregatedSignature,
@@ -117,7 +117,7 @@ pub struct Node {
 
 ```rust
 pub Status {
-    pub height: u64,
+    pub epoch_id: u64,
     pub interval: u64,
     pub authority_list: Vec<Node>,
 }
@@ -136,7 +136,7 @@ pub(crate) struct VerifyResp {
 
 ```rust
 pub(crate) struct Feed<T> {
-    pub(crate) height: u64,
+    pub(crate) epoch_id: u64,
     pub(crate) proposal: T,
     pub(crate) hash: Hash,
 }
