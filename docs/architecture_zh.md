@@ -273,11 +273,11 @@ pub trait Consensus<T: Serialize + Deserialize + Clone + Debug> {
     /// Consensus error
     type Error: ::std::error::Error;
     /// Get an epoch of an epoch_id and return the epoch with its hash.
-    async fn get_epoch(&self, epoch_id: u64) -> Result<(T, Hash)), Self::Error>;
+    async fn get_epoch(&self, ctx: Context, epoch_id: u64) -> Result<(T, Hash)), Self::Error>;
     /// Check the correctness of an epoch.
-    async fn check_epoch(&self, hash: Hash) -> Result<(), Self::Error>;
+    async fn check_epoch(&self, ctx: Context, hash: Hash) -> Result<(), Self::Error>;
     /// Commit an epoch.
-    async fn commit(&self, epoch_id: u64, commit: Commit<T>) -> Result<Status, Self::Error>;
+    async fn commit(&self, ctx: Context, epoch_id: u64, commit: Commit<T>) -> Result<Status, Self::Error>;
     /// Transmit a message to the Relayer.
     async fn transmit_to_relayer(&self, ctx: Context, msg: OutputMsg, addr: Address) -> Result<(), Self::Error>;
     /// Broadcast a message to other replicas.
