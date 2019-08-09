@@ -91,9 +91,9 @@ Overlord 共识由以下几个组件组成的：
 
 <div align=center><img src="./assets/arch_overlord.png"></div>
 
-### 共识状态机
+### 共识状态机(SMR)
 
-状态机模块是整个共识的逻辑核心，它不会去调用其他模块。当收到消息触发时，根据收到的消息做状态变更，并将变更后的状态作为事件抛出。在我们的实现中，Overlord 使用一个应用 BLS 聚合签名优化的 Tendermint 状态机进行共识，整体的工作过程如下：
+状态机模块是整个共识的逻辑核心，它主要的功能是状态变更和 **lock** 的控制。当收到消息触发时，根据收到的消息做状态变更，并将变更后的状态作为事件抛出。在我们的实现中，Overlord 使用一个应用 BLS 聚合签名优化的 Tendermint 状态机进行共识，整体的工作过程如下.
 
 #### 提议阶段
 
@@ -143,45 +143,42 @@ Overlord 共识由以下几个组件组成的：
 
 * *lock*: 可选，当前是否已经达成 **PoLC**
 
-* *propose_weights*: 所有共识节点的出块权重
+#### 数据结构
 
-* *address*: 节点的地址
-
-* *timeout*: 超时时间
-
-#### 输入输出
-
-状态机的输入消息如下：
+状态机的触发结构如下：
 
 ```rust
-pub enum SMRInput {
-    /// Timeout message from timer module.
-    Timeout(TimeoutInfo),
-    /// SMR proposal from State module.
-    Proposal(SMRProposal),
-    /// Quorum certificate from state module.
-    QuorumCertificate(QC),
-    /// Verify response from state module.
-    VerifyResp(VerifyResp),
+pub struct SMRTrigger {
+    pub hash: Hash,
+    pub round: Option<u64>,
+    pub trigger_type: TriggerType,
 }
 ```
 
-状态机的输出消息如下：
+状态机的输出结构如下：
 
 ```rust
-pub enum SMROutput {
-    /// Timeout event for timer to set a timer.
-    Timeout(TimeoutInfo),
-    /// Get proposal event for state to get the epoch's proposal.
-    GetProposal(u64),
-    /// Propose event for state to broadcast a proposal.
-    Propose(SMRProposal),
-    /// Vote event for state to transmit a vote.
-    Vote(SMRVote),
-    /// Commit event for state to do commit.
-    Commit(SMRCommit),
-    /// New round event for state to update.
-    NewRound(u64),
+pub enum SMREvent {
+    /// New round event
+    /// for state: update round,
+    /// for timer: set a propose step timer.
+    NewRoundInfo {
+        round: u64,
+        lock_round: Option<u64>,
+        lock_proposal: Option<Hash>,
+    },
+    /// Prevote event,
+    /// for state: transmit a prevote vote,
+    /// for timer: set a prevote step timer.
+    PrevoteVote(Hash),
+    /// Precommit event,
+    /// for state: transmit a precommit vote,
+    /// for timer: set a precommit step timer.
+    PrecommitVote(Hash),
+    /// Commit event
+    /// for state: do commit,
+    /// for timer: do nothing.
+    Commit(Hash),
 }
 ```
 
@@ -190,15 +187,15 @@ pub enum SMROutput {
 ```rust
 /// Create a new SMR service.
 pub fn new() -> Self
-/// Send a message to SMR.
-pub fn send(&self, msg: SMRInput) -> Result<(), Error>
-/// Get current SMR epoch.
-pub fn get_height(&self) -> u64
+/// Trigger a SMR action.
+pub fn trigger(&self, gate: SMRTrigger) -> Result<(), Error>
+/// Goto a new consensus epoch.
+pub fn new_epoch(&self, epoch_id: u64) -> Result<(), Error>
 ```
 
-### 状态存储
+### 状态存储(State)
 
-状态存储模块是整个共识的功能核心，主要的功能为存储状态，消息分发和密码学相关操作。在工作过程中，对于网络层传输来的消息，首先进行验签，校验消息的合法性。对通过的消息判断是否需要写入 Wal。之后将消息发送给状态机。状态存储模块时刻监听状态机抛出的事件，并根据事件作出相应的处理。
+状态存储模块是整个共识的功能核心，主要的功能为存储状态，消息分发，出块和密码学相关操作。在工作过程中，对于网络层传输来的消息，首先进行验签，校验消息的合法性。对通过的消息判断是否需要写入 Wal。之后将消息发送给状态机。状态存储模块时刻监听状态机抛出的事件，并根据事件作出相应的处理。
 
 #### 存储状态
 
@@ -228,6 +225,12 @@ pub fn get_height(&self) -> u64
 
 发送消息时，根据消息及参数选择发送消息的方式（广播给其他节点或发送给 *Relayer*）。
 
+#### 出块
+
+当状态存储模块监听到状态机抛出的 `NewRound` 事件时，通过一个确定性随机数算法判断自己是不是出块节点。如果是出块节点则提出一个 proposal。
+
+*确定性随机数算法*：因为 Overlord 共识协议允许设置不同的出块权重和投票权重，在判断出块时，节点将出块权重进行归一化，并投射到整个 `u64` 的范围中，使用当前 `epoch_id` 与 `round` 之和作为随机数种子，判断生成的随机数落入到`u64` 范围中的哪一个区间中，该权重对应的节点即为出块节点。
+
 #### 密码学操作
 
 密码学操作包括如下方法：
@@ -244,7 +247,7 @@ pub fn get_height(&self) -> u64
 
 ### 定时器
 
-当状态机运行到某些状态的时候，需要设定定时器以便超时重发等操作。定时器模块会监听状态机抛出的事件，根据事件设置定时器。当达到超时时间，调用状态机模块的接口触发超时。
+当状态机运行到某些状态的时候，需要设定定时器以便超时重发等操作。定时器模块会监听状态机抛出的事件，根据事件设置定时器。当达到超时时间，调用状态机模块的接口触发超时。定时器与状态存储复用 `SMREvent` 和接口。
 
 ### Wal
 
@@ -256,7 +259,7 @@ pub fn get_height(&self) -> u64
 /// Create a new Wal struct.
 pub fn new(path: &str) -> Self
 /// Set a new epoch of Wal, while go to new epoch.
-pub fn set_height(&self, epoch: u64) -> Result<(), Error>
+pub fn set_epoch(&self, epoch_id: u64) -> Result<(), Error>
 /// Save message to Wal.
 pub async fn save(&self, msg_type: WalMsgType, msg: Vec<u8>) -> Result<(), Error>;
 /// Load message from Wal.
@@ -273,15 +276,36 @@ pub trait Consensus<T: Serialize + Deserialize + Clone + Debug> {
     /// Consensus error
     type Error: ::std::error::Error;
     /// Get an epoch of an epoch_id and return the epoch with its hash.
-    async fn get_epoch(&self, ctx: Context, epoch_id: u64) -> Result<(T, Hash)), Self::Error>;
+    async fn get_epoch(
+        &self,
+        ctx: Context,
+        epoch_id: u64
+    ) -> Result<(T, Hash)), Self::Error>;
     /// Check the correctness of an epoch.
-    async fn check_epoch(&self, ctx: Context, hash: Hash) -> Result<(), Self::Error>;
+    async fn check_epoch(
+        &self,
+        ctx: Context,
+        hash: Hash
+    ) -> Result<(), Self::Error>;
     /// Commit an epoch.
-    async fn commit(&self, ctx: Context, epoch_id: u64, commit: Commit<T>) -> Result<Status, Self::Error>;
+    async fn commit(
+        &self, ctx: Context,
+        epoch_id: u64,
+        commit: Commit<T>
+    ) -> Result<Status, Self::Error>;
     /// Transmit a message to the Relayer.
-    async fn transmit_to_relayer(&self, ctx: Context, msg: OutputMsg, addr: Address) -> Result<(), Self::Error>;
+    async fn transmit_to_relayer(
+        &self,
+        ctx: Context,
+        msg: OutputMsg,
+        addr: Address
+    ) -> Result<(), Self::Error>;
     /// Broadcast a message to other replicas.
-    async fn broadcast_to_other(&self, ctx: Context, msg: OutputMsg) -> Result<(), Self::Error>;
+    async fn broadcast_to_other(
+        &self,
+        ctx: Context,
+        msg: OutputMsg
+    ) -> Result<(), Self::Error>;
 }
 ```
 
