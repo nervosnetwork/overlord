@@ -1,6 +1,9 @@
 //! Overlord Consensus Protocol
 
 #![deny(missing_docs)]
+// Remove this clippy bug with async await is resolved.
+// ISSUE: https://github.com/rust-lang/rust-clippy/issues/3988
+#![allow(clippy::needless_lifetimes)]
 
 use std::fmt::Debug;
 
@@ -9,17 +12,17 @@ use async_trait::async_trait;
 use crate::types::{Address, AggregatedSignature, Commit, Hash, OutputMsg, Signature, Status};
 
 ///
-pub(crate) mod smr;
+mod smr;
 ///
 pub mod state;
 ///
-pub(crate) mod timer;
+mod timer;
 ///
 pub mod types;
 ///
-pub(crate) mod utils;
+mod utils;
 ///
-pub(crate) mod wal;
+mod wal;
 
 ///
 #[async_trait]

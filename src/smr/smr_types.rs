@@ -3,7 +3,7 @@ use crate::types::Hash;
 
 /// SMR event that state and timer monitor this.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum SMREvent {
+pub enum SMREvent {
     /// New round event
     /// for state: update round,
     /// for timer: set a propose step timer.
@@ -28,7 +28,7 @@ pub(crate) enum SMREvent {
 
 /// SMR trigger types.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum TriggerType {
+pub enum TriggerType {
     /// Proposal trigger.
     Proposal = 0,
     /// Prevote quorum certificate trigger.
@@ -51,11 +51,11 @@ pub(crate) enum TriggerType {
 ///     * `hash`: The verified failed proposal hash,
 ///     * `round`: This must be `None`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SMRTrigger {
+pub struct SMRTrigger {
     /// SMR trigger type.
-    pub(crate) trigger_type: TriggerType,
+    pub trigger_type: TriggerType,
     /// SMR trigger hash, the meaning shown above.
-    pub(crate) hash: Hash,
+    pub hash: Hash,
     /// SMR trigger round, the meaning shown above.
-    pub(crate) round: Option<u64>,
+    pub round: Option<u64>,
 }

@@ -1,2 +1,2 @@
 ///
-pub(crate) mod rand_proposer;
+mod rand_proposer;
