@@ -280,7 +280,7 @@ pub trait Consensus<T: Serialize + Deserialize + Clone + Debug> {
         &self,
         ctx: Context,
         epoch_id: u64
-    ) -> Result<(T, Hash)), Self::Error>;
+    ) -> Result<(T, Hash), Self::Error>;
     /// Check the correctness of an epoch.
     async fn check_epoch(
         &self,
@@ -320,10 +320,10 @@ pub trait Crypto {
     /// Sign to the given hash by private key.
     fn sign(&self, hash: Hash) -> Result<Signature, Self::Error>;
     /// Aggregate signatures into an aggregated signature.
-    fn aggregate_signatures(&self, signatures: Vec<Signatures>) -> Result<Signature, Self::Error>;
+    fn aggregate_signatures(&self, signatures: Vec<Signature>) -> Result<Signature, Self::Error>;
     /// Verify a signature.
     fn verify_signature(&self, signature: Signature, hash: Hash) -> Result<Address, Self::Error>;
     /// Verify an aggregated signature.
-    fn verify_aggregated_signature(&self, aggregate_signature: Signature) -> Result<(), Self::Error>;
+    fn verify_aggregated_signature(&self, aggregate_signature: AggregatedSignature) -> Result<(), Self::Error>;
 }
 ```

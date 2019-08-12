@@ -41,9 +41,10 @@ pub struct SignedProposal<T> {
 pub struct Proposal<T> {
     pub epoch_id: u64,
     pub round: u64,
+    pub hash: Hash,
     pub content: T,
     pub lock_round: Option<u64>,
-    pub lock_votes: Vec<AggregatedVote<P>>,
+    pub lock_votes: Vec<AggregatedVote<T>>,
     pub proposer: Address,
 }
 ```
@@ -116,7 +117,7 @@ pub struct Node {
 ## Status
 
 ```rust
-pub Status {
+pub struct Status {
     pub epoch_id: u64,
     pub interval: u64,
     pub authority_list: Vec<Node>,
