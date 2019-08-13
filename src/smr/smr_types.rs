@@ -42,13 +42,13 @@ pub enum TriggerType {
 /// A SMR trigger to touch off SMR process. For different trigger type,
 /// the field `hash` and `round` have different restrictions and meaning.
 /// While trigger type is `Proposal`:
-///     * `hash`: Proposal hash,
+///     * `hash`: Proposal epoch hash,
 ///     * `round`: Optional lock round.
 /// While trigger type is `PrevoteQC` or `PrecommitQC`:
-///     * `hash`: QC hash,
+///     * `hash`: QC epoch hash,
 ///     * `round`: QC round, this must be `Some`.
 /// While trigger type is `VerifyResp':
-///     * `hash`: The verified failed proposal hash,
+///     * `hash`: The verified failed epoch hash,
 ///     * `round`: This must be `None`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SMRTrigger {
