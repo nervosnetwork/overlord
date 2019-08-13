@@ -65,7 +65,7 @@ pub trait Consensus<T: Codec>: Send + Sync {
 
 ///
 #[async_trait]
-pub trait Codec: Clone + Debug + Send + Sync {
+pub trait Codec: Clone + Send {
     /// Asynchronous serialize function.
     async fn serialize(&self) -> Result<Vec<u8>, Box<dyn Error + Send>>;
     /// Asynchronous deserialize function.

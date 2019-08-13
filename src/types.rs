@@ -1,11 +1,13 @@
+use bytes::Bytes;
+
 use crate::Codec;
 
 /// Address type.
-pub type Address = Vec<u8>;
+pub type Address = Bytes;
 /// Hash type.
-pub type Hash = Vec<u8>;
+pub type Hash = Bytes;
 /// Signature type.
-pub type Signature = Vec<u8>;
+pub type Signature = Bytes;
 
 /// Node roles.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -40,7 +42,7 @@ pub enum OutputMsg<T: Codec> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SignedProposal<T: Codec> {
     /// Signature of the proposal.
-    pub signature: Vec<u8>,
+    pub signature: Bytes,
     /// A proposal.
     pub proposal: Proposal<T>,
 }
@@ -66,7 +68,7 @@ pub struct Proposal<T: Codec> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SignedVote {
     /// Signature of the vote.
-    pub signature: Vec<u8>,
+    pub signature: Bytes,
     /// A vote.
     pub vote: Vote,
 }
@@ -75,9 +77,9 @@ pub struct SignedVote {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AggregatedSignature {
     /// Aggregated signature.
-    pub signature: Vec<u8>,
+    pub signature: Bytes,
     /// Voter address bit map.
-    pub address_bitmap: Vec<u8>,
+    pub address_bitmap: Bytes,
 }
 
 /// An aggregrated vote.

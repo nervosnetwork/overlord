@@ -6,7 +6,7 @@ use crate::types::Hash;
 pub enum SMREvent {
     /// New round event,
     /// for state: update round,
-    /// for timer: set a propose step timer.
+    /// for timer: set a propose step timer. If `round == 0`, set an extra total epoch timer.
     NewRoundInfo {
         round:         u64,
         lock_round:    Option<u64>,
@@ -47,9 +47,6 @@ pub enum TriggerType {
 /// While trigger type is `PrevoteQC` or `PrecommitQC`:
 ///     * `hash`: QC epoch hash,
 ///     * `round`: QC round, this must be `Some`.
-/// While trigger type is `VerifyResp':
-///     * `hash`: The verified failed epoch hash,
-///     * `round`: This must be `None`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SMRTrigger {
     /// SMR trigger type.
