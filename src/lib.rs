@@ -75,7 +75,7 @@ pub trait Codec: Clone + Send {
 ///
 pub trait Crypto {
     /// Hash a message.
-    fn hash(&self, msg: &[u8]) -> Hash;
+    fn hash(&self, msg: Bytes) -> Hash;
     /// Sign to the given hash by private key.
     fn sign(&self, hash: Hash) -> Result<Signature, Box<dyn Error + Send>>;
     /// Aggregate signatures into an aggregated signature.
