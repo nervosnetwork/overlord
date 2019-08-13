@@ -272,40 +272,40 @@ pub fn load(&self) -> Vec<(WalMsgType, Vec<u8>)>
 
 ```rust
 #[async_trait]
-pub trait Consensus<T: Serialize + Deserialize + Clone + Debug> {
-    /// Consensus error
-    type Error: ::std::error::Error;
+pub trait Consensus<T: Codec>: Send + Sync {
     /// Get an epoch of an epoch_id and return the epoch with its hash.
     async fn get_epoch(
         &self,
-        ctx: Context,
-        epoch_id: u64
-    ) -> Result<(T, Hash), Self::Error>;
+        _ctx: Vec<u8>,
+        epoch_id: u64,
+    ) -> Result<(T, Hash), Box<dyn Error + Send>>;
     /// Check the correctness of an epoch.
     async fn check_epoch(
         &self,
-        ctx: Context,
-        hash: Hash
-    ) -> Result<(), Self::Error>;
-    /// Commit an epoch.
-    async fn commit(
-        &self, ctx: Context,
+        _ctx: Vec<u8>,
         epoch_id: u64,
-        commit: Commit<T>
-    ) -> Result<Status, Self::Error>;
-    /// Transmit a message to the Relayer.
-    async fn transmit_to_relayer(
+        hash: Hash,
+    ) -> Result<(), Box<dyn Error + Send>>;
+    /// TODO argc and return value
+    async fn commit(
         &self,
-        ctx: Context,
-        msg: OutputMsg,
-        addr: Address
-    ) -> Result<(), Self::Error>;
+        _ctx: Vec<u8>,
+        epoch_id: u64,
+        commit: Commit<T>,
+    ) -> Result<Status, Box<dyn Error + Send>>;
     /// Broadcast a message to other replicas.
     async fn broadcast_to_other(
         &self,
-        ctx: Context,
-        msg: OutputMsg
-    ) -> Result<(), Self::Error>;
+        _ctx: Vec<u8>,
+        msg: OutputMsg<T>,
+    ) -> Result<(), Box<dyn Error + Send>>;
+    /// Transmit a message to the Relayer.
+    async fn transmit_to_relayer(
+        &self,
+        _ctx: Vec<u8>,
+        addr: Address,
+        msg: OutputMsg<T>,
+    ) -> Result<(), Box<dyn Error + Send>>;
 }
 ```
 
@@ -313,17 +313,25 @@ pub trait Consensus<T: Serialize + Deserialize + Clone + Debug> {
 
 ```rust
 pub trait Crypto {
-    /// Crypto error.
-    type Error: ::std::error::Error;
     /// Hash a message.
     fn hash(&self, msg: &[u8]) -> Hash;
     /// Sign to the given hash by private key.
-    fn sign(&self, hash: Hash) -> Result<Signature, Self::Error>;
+    fn sign(&self, hash: Hash) -> Result<Signature, Box<dyn Error + Send>>;
     /// Aggregate signatures into an aggregated signature.
-    fn aggregate_signatures(&self, signatures: Vec<Signature>) -> Result<Signature, Self::Error>;
+    fn aggregate_signatures(
+        &self,
+        signatures: Vec<Signature>,
+    ) -> Result<Signature, Box<dyn Error + Send>>;
     /// Verify a signature.
-    fn verify_signature(&self, signature: Signature, hash: Hash) -> Result<Address, Self::Error>;
+    fn verify_signature(
+        &self,
+        signature: Signature,
+        hash: Hash,
+    ) -> Result<Address, Box<dyn Error + Send>>;
     /// Verify an aggregated signature.
-    fn verify_aggregated_signature(&self, aggregate_signature: AggregatedSignature) -> Result<(), Self::Error>;
+    fn verify_aggregated_signature(
+        &self,
+        aggregate_signature: AggregatedSignature,
+    ) -> Result<(), Box<dyn Error + Send>>;
 }
 ```
