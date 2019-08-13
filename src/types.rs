@@ -53,7 +53,9 @@ pub struct Proposal<T: Codec> {
     /// Round of the proposal.
     pub round: u64,
     /// Proposal content.
-    pub content: T,
+    pub epoch: T,
+    /// Proposal epoch hash.
+    pub epoch_hash: Hash,
     /// Optional field. If the proposal has a PoLC, this contains
     /// the lock round and lock votes.
     pub lock: Option<(u64, AggregatedVote)>,
@@ -91,7 +93,7 @@ pub struct AggregatedVote {
     /// Round of the vote.
     pub round: u64,
     /// Proposal hash of the vote.
-    pub proposal: Hash,
+    pub epoch_hash: Hash,
 }
 
 /// A vote.
@@ -104,7 +106,7 @@ pub struct Vote {
     /// Type of the vote.
     pub vote_type: VoteType,
     /// Proposal Hash of the vote.
-    pub proposal: Hash,
+    pub epoch_hash: Hash,
     /// Voter address.
     pub voter: Address,
 }
@@ -115,7 +117,7 @@ pub struct Commit<T: Codec> {
     ///
     pub epoch_id: u64,
     ///
-    pub proposal: T,
+    pub epoch: T,
     ///
     pub proof: Proof,
 }
@@ -128,7 +130,7 @@ pub struct Proof {
     /// Round of the proof.
     pub round: u64,
     /// Proposal hash of the proof.
-    pub proposal_hash: Hash,
+    pub epoch_hash: Hash,
     /// Aggregated signature of the proof.
     pub signature: AggregatedSignature,
 }
@@ -159,7 +161,7 @@ pub struct Status {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct VerifyResp {
     /// Verified proposal hash.
-    pub(crate) proposal_hash: Hash,
+    pub(crate) epoch_hash: Hash,
     /// The verify result.
     pub(crate) is_pass: bool,
 }
@@ -170,7 +172,7 @@ pub(crate) struct Feed<T: Codec> {
     /// Epoch ID of the proposal.
     pub(crate) epoch_id: u64,
     /// A feed proposal.
-    pub(crate) proposal: T,
+    pub(crate) epoch: T,
     /// Proposal hash.
-    pub(crate) hash: Hash,
+    pub(crate) epoch_hash: Hash,
 }
