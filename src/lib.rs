@@ -8,6 +8,7 @@
 use std::error::Error;
 
 use async_trait::async_trait;
+use bytes::Bytes;
 
 use crate::types::{Address, AggregatedSignature, Commit, Hash, OutputMsg, Signature, Status};
 
@@ -66,9 +67,9 @@ pub trait Consensus<T: Codec>: Send + Sync {
 #[async_trait]
 pub trait Codec: Clone + Send {
     /// Asynchronous serialize function.
-    async fn serialize(&self) -> Result<Vec<u8>, Box<dyn Error + Send>>;
+    async fn serialize(&self) -> Result<Bytes, Box<dyn Error + Send>>;
     /// Asynchronous deserialize function.
-    async fn deserialize(data: Vec<u8>) -> Result<Self, Box<dyn Error + Send>>;
+    async fn deserialize(data: Bytes) -> Result<Self, Box<dyn Error + Send>>;
 }
 
 ///
