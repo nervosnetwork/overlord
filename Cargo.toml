@@ -17,7 +17,7 @@ Overlord consensus procotol.
 async-trait = "0.1"
 bit-vec = "0.6"
 derive_more = "0.15"
-futures-preview = "0.3.0-alpha.17"
+futures-preview = "0.3.0-alpha.18"
 futures-timer = "0.3"
 log = "0.4"
 parking_lot = "0.9"
