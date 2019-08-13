@@ -53,11 +53,10 @@ pub struct Proposal<T: Codec> {
     /// Round of the proposal.
     pub round: u64,
     /// Proposal content.
-    pub epoch: T,
+    pub content: T,
     /// Proposal epoch hash.
     pub epoch_hash: Hash,
-    /// Optional field. If the proposal has a PoLC, this contains
-    /// the lock round and lock votes.
+    /// Optional field. If the proposal has a PoLC, this contains the lock round and lock votes.
     pub lock: Option<(u64, AggregatedVote)>,
     /// Proposer address.
     pub proposer: Address,
@@ -105,20 +104,20 @@ pub struct Vote {
     pub round: u64,
     /// Type of the vote.
     pub vote_type: VoteType,
-    /// Proposal Hash of the vote.
+    /// Epoch hash of the vote.
     pub epoch_hash: Hash,
     /// Voter address.
     pub voter: Address,
 }
 
-///
+/// A commit.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Commit<T: Codec> {
-    ///
+    /// Epoch ID of the commit.
     pub epoch_id: u64,
-    ///
-    pub epoch: T,
-    ///
+    /// Commit content.
+    pub content: T,
+    /// The consensus proof.
     pub proof: Proof,
 }
 
@@ -129,7 +128,7 @@ pub struct Proof {
     pub epoch_id: u64,
     /// Round of the proof.
     pub round: u64,
-    /// Proposal hash of the proof.
+    /// Epoch hash of the proof.
     pub epoch_hash: Hash,
     /// Aggregated signature of the proof.
     pub signature: AggregatedSignature,
@@ -140,9 +139,9 @@ pub struct Proof {
 pub struct Node {
     /// Node address.
     pub address: Address,
-    /// Proposal weight of the node.
+    /// The propose weight of the node.
     pub proposal_weight: usize,
-    /// Vote weight of the node.
+    /// The vote weight of the node.
     pub vote_weight: usize,
 }
 
@@ -171,8 +170,8 @@ pub(crate) struct VerifyResp {
 pub(crate) struct Feed<T: Codec> {
     /// Epoch ID of the proposal.
     pub(crate) epoch_id: u64,
-    /// A feed proposal.
-    pub(crate) epoch: T,
-    /// Proposal hash.
+    /// Feed content.
+    pub(crate) content: T,
+    /// The epoch hash.
     pub(crate) epoch_hash: Hash,
 }

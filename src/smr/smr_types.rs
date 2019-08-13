@@ -4,7 +4,7 @@ use crate::types::Hash;
 /// SMR event that state and timer monitor this.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SMREvent {
-    /// New round event
+    /// New round event,
     /// for state: update round,
     /// for timer: set a propose step timer.
     NewRoundInfo {
@@ -20,7 +20,7 @@ pub enum SMREvent {
     /// for state: transmit a precommit vote,
     /// for timer: set a precommit step timer.
     PrecommitVote(Hash),
-    /// Commit event
+    /// Commit event,
     /// for state: do commit,
     /// for timer: do nothing.
     Commit(Hash),
