@@ -12,9 +12,10 @@ use bytes::Bytes;
 
 use crate::types::{Address, AggregatedSignature, Commit, Hash, OutputMsg, Signature, Status};
 
-/// Impl rlp encodab and decodable trait for types that need to save wal.
+/// A module that impl rlp encodable and decodable trait
+/// for types that need to save wal.
 mod codec;
-///
+/// Consensus error module.
 mod error;
 ///
 mod smr;
