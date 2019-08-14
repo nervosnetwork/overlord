@@ -70,7 +70,7 @@ pub trait Consensus<T: Codec>: Send + Sync {
 ///
 pub trait Codec: Clone + Send {
     /// Serialize self into bytes.
-    fn encode(&self) -> Result<Bytes, ()>;
+    fn encode(&self) -> Result<Bytes, Box<dyn Error + Send>>;
     /// Deserialize date into self.
     fn decode(data: Bytes) -> Result<Self, Box<dyn Error + Send>>;
 }
