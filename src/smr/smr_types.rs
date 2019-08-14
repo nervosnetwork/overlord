@@ -36,8 +36,6 @@ pub enum TriggerType {
     PrevoteQC = 1,
     /// Precommit quorum certificate trigger.
     PrecommitQC = 2,
-    /// Verify response trigger.
-    VerifyResp = 3,
 }
 
 /// A SMR trigger to touch off SMR process. For different trigger type,
