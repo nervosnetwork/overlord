@@ -12,6 +12,10 @@ use bytes::Bytes;
 
 use crate::types::{Address, AggregatedSignature, Commit, Hash, OutputMsg, Signature, Status};
 
+/// Impl rlp encodab and decodable trait for types that need to save wal.
+mod codec;
+///
+mod error;
 ///
 mod smr;
 ///
@@ -64,12 +68,11 @@ pub trait Consensus<T: Codec>: Send + Sync {
 }
 
 ///
-#[async_trait]
 pub trait Codec: Clone + Send {
-    /// Asynchronous serialize function.
-    async fn serialize(&self) -> Result<Bytes, Box<dyn Error + Send>>;
-    /// Asynchronous deserialize function.
-    async fn deserialize(data: Bytes) -> Result<Self, Box<dyn Error + Send>>;
+    /// Serialize self into bytes.
+    fn encode(&self) -> Result<Bytes, ()>;
+    /// Deserialize date into self.
+    fn decode(data: Bytes) -> Result<Self, Box<dyn Error + Send>>;
 }
 
 ///
