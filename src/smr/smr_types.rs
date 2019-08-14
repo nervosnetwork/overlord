@@ -1,4 +1,5 @@
-#![allow(dead_code)]
+use derive_more::From;
+
 use crate::types::Hash;
 
 /// SMR event that state and timer monitor this.
@@ -27,7 +28,7 @@ pub enum SMREvent {
 }
 
 /// SMR trigger types.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, From)]
 pub enum TriggerType {
     /// Proposal trigger.
     Proposal = 0,
@@ -35,8 +36,6 @@ pub enum TriggerType {
     PrevoteQC = 1,
     /// Precommit quorum certificate trigger.
     PrecommitQC = 2,
-    /// Verify response trigger.
-    VerifyResp = 3,
 }
 
 /// A SMR trigger to touch off SMR process. For different trigger type,
