@@ -432,8 +432,7 @@ mod test {
         }
 
         fn decode(data: Bytes) -> Result<Self, Box<dyn Error + Send>> {
-            let decode: Pill =
-                deserialize(&data.as_ref()).expect("Deserialize Pill error.");
+            let decode: Pill = deserialize(&data.as_ref()).expect("Deserialize Pill error.");
             Ok(decode)
         }
     }
