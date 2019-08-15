@@ -321,7 +321,7 @@ impl Encodable for Node {
     fn rlp_append(&self, s: &mut RlpStream) {
         s.begin_list(3)
             .append(&self.address.to_vec())
-            .append(&self.proposal_weight)
+            .append(&self.propose_weight)
             .append(&self.vote_weight);
     }
 }
@@ -332,11 +332,11 @@ impl Decodable for Node {
             Prototype::List(3) => {
                 let tmp: Vec<u8> = r.val_at(0)?;
                 let address = Address::from(tmp);
-                let proposal_weight: usize = r.val_at(1)?;
-                let vote_weight: usize = r.val_at(2)?;
+                let propose_weight: u8 = r.val_at(1)?;
+                let vote_weight: u8 = r.val_at(2)?;
                 Ok(Node {
                     address,
-                    proposal_weight,
+                    propose_weight,
                     vote_weight,
                 })
             }
@@ -541,17 +541,7 @@ mod test {
             Status {
                 epoch_id:       random::<u64>(),
                 interval:       random::<u64>(),
-                authority_list: vec![Node::new()],
-            }
-        }
-    }
-
-    impl Node {
-        fn new() -> Self {
-            Node {
-                address:         gen_address(),
-                proposal_weight: random::<usize>(),
-                vote_weight:     random::<usize>(),
+                authority_list: vec![Node::new(gen_address())],
             }
         }
     }

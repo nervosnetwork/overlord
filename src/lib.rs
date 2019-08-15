@@ -10,6 +10,7 @@ use std::error::Error;
 use async_trait::async_trait;
 use bytes::Bytes;
 
+use crate::error::ConsensusError;
 use crate::types::{Address, AggregatedSignature, Commit, Hash, OutputMsg, Signature, Status};
 
 /// A module that impl rlp encodable and decodable trait
@@ -29,6 +30,9 @@ pub mod types;
 mod utils;
 ///
 mod wal;
+
+///
+pub type ConsensusResult<T> = ::std::result::Result<T, ConsensusError>;
 
 ///
 #[async_trait]

@@ -36,6 +36,8 @@ pub enum TriggerType {
     PrevoteQC = 1,
     /// Precommit quorum certificate trigger.
     PrecommitQC = 2,
+    /// New Epoch trigger.
+    NewEpoch = 3,
 }
 
 /// A SMR trigger to touch off SMR process. For different trigger type,
@@ -46,6 +48,9 @@ pub enum TriggerType {
 /// While trigger type is `PrevoteQC` or `PrecommitQC`:
 ///     * `hash`: QC epoch hash,
 ///     * `round`: QC round, this must be `Some`.
+/// While trigger type is `NewEpoch`:
+///     * `hash`: A empty hash,
+///     * `round`: This must be `None`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SMRTrigger {
     /// SMR trigger type.

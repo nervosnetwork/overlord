@@ -205,9 +205,30 @@ pub struct Node {
     /// Node address.
     pub address: Address,
     /// The propose weight of the node.
-    pub proposal_weight: usize,
+    pub propose_weight: u8,
     /// The vote weight of the node.
-    pub vote_weight: usize,
+    pub vote_weight: u8,
+}
+
+impl Node {
+    /// Create a new node with defaule propose weight `1` and vote weight `1`.
+    pub fn new(addr: Address) -> Self {
+        Node {
+            address:        addr,
+            propose_weight: 1u8,
+            vote_weight:    1u8,
+        }
+    }
+
+    /// Set a new propose weight of the node.
+    pub fn set_propose_weight(&mut self, proposal_weight: u8) {
+        self.propose_weight = proposal_weight;
+    }
+
+    /// Set a new vote weight of the node.
+    pub fn set_vote_weight(&mut self, vote_weight: u8) {
+        self.vote_weight = vote_weight;
+    }
 }
 
 /// A feed.
