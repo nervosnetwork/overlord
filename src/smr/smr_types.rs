@@ -1,5 +1,3 @@
-use derive_more::From;
-
 use crate::types::Hash;
 
 /// SMR event that state and timer monitor this.
@@ -28,16 +26,41 @@ pub enum SMREvent {
 }
 
 /// SMR trigger types.
-#[derive(Clone, Debug, PartialEq, Eq, From)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TriggerType {
     /// Proposal trigger.
-    Proposal = 0,
+    Proposal,
     /// Prevote quorum certificate trigger.
-    PrevoteQC = 1,
+    PrevoteQC,
     /// Precommit quorum certificate trigger.
-    PrecommitQC = 2,
+    PrecommitQC,
     /// New Epoch trigger.
-    NewEpoch = 3,
+    NewEpoch(u64),
+}
+
+impl Into<u8> for TriggerType {
+    /// It should not occur that call `TriggerType::NewEpoch(*).into()`.
+    fn into(self) -> u8 {
+        match self {
+            TriggerType::Proposal => 0u8,
+            TriggerType::PrevoteQC => 1u8,
+            TriggerType::PrecommitQC => 2u8,
+            TriggerType::NewEpoch(_) => 3u8,
+        }
+    }
+}
+
+impl From<u8> for TriggerType {
+    /// It should not occur that call `from(3u8)`.
+    fn from(s: u8) -> Self {
+        match s {
+            0 => TriggerType::Proposal,
+            1 => TriggerType::PrevoteQC,
+            2 => TriggerType::PrecommitQC,
+            3 => TriggerType::NewEpoch(u64::max_value()),
+            _ => panic!("Invalid trigger type!"),
+        }
+    }
 }
 
 /// A SMR trigger to touch off SMR process. For different trigger type,

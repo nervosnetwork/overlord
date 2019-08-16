@@ -28,13 +28,14 @@ impl AuthorityManage {
     }
 
     /// Update a nwe epoch of authority list, and the old authority will be reserved.
-    pub fn update(&mut self, authority_list: Vec<Node>, new_epoch: u64) {
+    pub fn update(&mut self, authority_list: &mut Vec<Node>, new_epoch: u64) {
         if !self.current.is_empty() {
             self.old = Some(self.current.clone());
             self.old_epoch = Some(self.current_epoch);
         }
+        authority_list.sort();
         self.current_epoch = new_epoch;
-        self.current.update(authority_list);
+        self.current.update(authority_list.clone());
     }
 
     /// Get a vote weight that correspond to the given address and epoch.
@@ -201,13 +202,13 @@ mod test {
 
     #[test]
     fn test_update() {
-        let authority_list = gen_auth_list(random::<u8>() as usize);
-        let authority_list_new = gen_auth_list(random::<u8>() as usize);
-        let authority_list_newer = gen_auth_list(random::<u8>() as usize);
+        let mut authority_list = gen_auth_list(random::<u8>() as usize);
+        let mut authority_list_new = gen_auth_list(random::<u8>() as usize);
+        let mut authority_list_newer = gen_auth_list(random::<u8>() as usize);
         let mut auth_manage = AuthorityManage::new();
         let mut e_auth_manage = EpochAuthorityManage::new();
 
-        auth_manage.update(authority_list.clone(), 1);
+        auth_manage.update(&mut authority_list, 1);
         e_auth_manage.update(authority_list);
         assert_eq!(auth_manage, AuthorityManage {
             current:       e_auth_manage.clone(),
@@ -217,7 +218,7 @@ mod test {
         });
 
         let mut e_auth_manage_old = e_auth_manage.clone();
-        auth_manage.update(authority_list_new.clone(), 2);
+        auth_manage.update(&mut authority_list_new, 2);
         e_auth_manage.update(authority_list_new);
         assert_eq!(auth_manage, AuthorityManage {
             current:       e_auth_manage.clone(),
@@ -227,7 +228,7 @@ mod test {
         });
 
         e_auth_manage_old = e_auth_manage.clone();
-        auth_manage.update(authority_list_newer.clone(), 3);
+        auth_manage.update(&mut authority_list_newer, 3);
         e_auth_manage.update(authority_list_newer);
         assert_eq!(auth_manage, AuthorityManage {
             current:       e_auth_manage,

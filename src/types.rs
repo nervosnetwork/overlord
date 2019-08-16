@@ -1,3 +1,5 @@
+use std::cmp::{Ord, Ordering, PartialOrd};
+
 use bytes::Bytes;
 
 use crate::Codec;
@@ -208,6 +210,18 @@ pub struct Node {
     pub propose_weight: u8,
     /// The vote weight of the node.
     pub vote_weight: u8,
+}
+
+impl PartialOrd for Node {
+    fn partial_cmp(&self, other: &Node) -> Option<Ordering> {
+        Some(self.address.cmp(&other.address))
+    }
+}
+
+impl Ord for Node {
+    fn cmp(&self, other: &Node) -> Ordering {
+        self.address.cmp(&other.address)
+    }
 }
 
 impl Node {
