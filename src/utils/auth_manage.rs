@@ -10,59 +10,59 @@ use crate::ConsensusResult;
 /// message.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AuthorityManage {
-    current:       EpochAuthorityManage,
-    current_epoch: u64,
-    old:           Option<EpochAuthorityManage>,
-    old_epoch:     Option<u64>,
+    current: EpochAuthorityManage,
+    old:     Option<EpochAuthorityManage>,
 }
 
 impl AuthorityManage {
     /// Create a new authority management.
     pub fn new() -> Self {
         AuthorityManage {
-            current:       EpochAuthorityManage::new(),
-            current_epoch: 0u64,
-            old:           None,
-            old_epoch:     None,
+            current: EpochAuthorityManage::new(),
+            old:     None,
         }
     }
 
-    /// Update a nwe epoch of authority list, and the old authority will be reserved.
-    pub fn update(&mut self, authority_list: &mut Vec<Node>, new_epoch: u64) {
-        if !self.current.is_empty() {
-            self.old = Some(self.current.clone());
-            self.old_epoch = Some(self.current_epoch);
-        }
-        authority_list.sort();
-        self.current_epoch = new_epoch;
-        self.current.update(authority_list.clone());
-    }
-
-    /// Get a vote weight that correspond to the given address and epoch.
-    pub fn get_vote_weight(&self, addr: &Address, epoch: u64) -> ConsensusResult<u8> {
-        if epoch == self.current_epoch {
-            self.current.get_vote_weight(addr)
-        } else if Some(epoch) == self.old_epoch {
-            self.old.clone().unwrap().get_vote_weight(addr)
+    /// Update a new epoch of authority list, and the old authority will be reserved.
+    pub fn update(&mut self, authority_list: &mut Vec<Node>, reserve_old: bool) {
+        self.old = if reserve_old {
+            Some(self.current.clone())
         } else {
-            Err(ConsensusError::Other(format!(
-                "There is no authority list cache of epoch {:?}",
-                epoch
-            )))
+            None
+        };
+        self.current.update(authority_list);
+    }
+
+    /// Set an old authority list when the node leap to a higher epoch.
+    pub fn set_old_list(&mut self, authority_list: &mut Vec<Node>) {
+        let mut auth_manage = EpochAuthorityManage::new();
+        auth_manage.update(authority_list);
+        self.old = Some(auth_manage);
+    }
+
+    /// Get a vote weight that correspond to the given address.
+    pub fn get_vote_weight(&self, addr: &Address, is_current: bool) -> ConsensusResult<u8> {
+        if is_current {
+            self.current.get_vote_weight(addr)
+        } else if let Some(auth_list) = self.old.clone() {
+            auth_list.get_vote_weight(addr)
+        } else {
+            Err(ConsensusError::Other(
+                "There is no authority list cache of last epoch".to_string(),
+            ))
         }
     }
 
     /// Get a proposer address of the epoch by a given seed.
-    pub fn get_proposer(&self, seed: u64, epoch: u64) -> ConsensusResult<Address> {
-        if epoch == self.current_epoch {
+    pub fn get_proposer(&self, seed: u64, is_current: bool) -> ConsensusResult<Address> {
+        if is_current {
             self.current.get_proposer(seed)
-        } else if Some(epoch) == self.old_epoch {
-            self.old.clone().unwrap().get_proposer(seed)
+        } else if let Some(auth_list) = self.old.clone() {
+            auth_list.get_proposer(seed)
         } else {
-            Err(ConsensusError::Other(format!(
-                "There is no authority list cache of epoch {:?}",
-                epoch
-            )))
+            Err(ConsensusError::Other(
+                "There is no authority list cache of last epoch".to_string(),
+            ))
         }
     }
 }
@@ -93,9 +93,11 @@ impl EpochAuthorityManage {
     }
 
     /// Update the epoch authority manage by a new authority list.
-    fn update(&mut self, authority_list: Vec<Node>) {
+    fn update(&mut self, authority_list: &mut Vec<Node>) {
         self.flush();
-        for node in authority_list.into_iter() {
+        authority_list.sort();
+
+        for node in authority_list.iter_mut() {
             let propose_weight = u64::from(node.propose_weight);
             let vote_weight = node.vote_weight;
 
@@ -135,11 +137,6 @@ impl EpochAuthorityManage {
         self.propose_weight_sum = 0;
         self.vote_weight_sum = 0;
     }
-
-    /// If epoch authority manage contains no elements.
-    fn is_empty(&self) -> bool {
-        self.address.is_empty()
-    }
 }
 
 #[cfg(test)]
@@ -175,9 +172,9 @@ mod test {
 
     #[test]
     fn test_vote_weight() {
-        let authority_list = gen_auth_list(0);
+        let mut authority_list = gen_auth_list(0);
         let mut authority_manage = EpochAuthorityManage::new();
-        authority_manage.update(authority_list.clone());
+        authority_manage.update(&mut authority_list);
 
         for node in authority_list.iter() {
             assert_eq!(
@@ -190,7 +187,7 @@ mod test {
         while auth_len == 0 {
             auth_len = random::<u8>();
         }
-        authority_manage.update(gen_auth_list(auth_len as usize));
+        authority_manage.update(&mut gen_auth_list(auth_len as usize));
 
         for node in authority_list.iter() {
             assert_eq!(
@@ -208,33 +205,34 @@ mod test {
         let mut auth_manage = AuthorityManage::new();
         let mut e_auth_manage = EpochAuthorityManage::new();
 
-        auth_manage.update(&mut authority_list, 1);
-        e_auth_manage.update(authority_list);
+        auth_manage.update(&mut authority_list, false);
+        e_auth_manage.update(&mut authority_list);
         assert_eq!(auth_manage, AuthorityManage {
-            current:       e_auth_manage.clone(),
-            current_epoch: 1u64,
-            old:           None,
-            old_epoch:     None,
+            current: e_auth_manage.clone(),
+            old:     None,
         });
 
         let mut e_auth_manage_old = e_auth_manage.clone();
-        auth_manage.update(&mut authority_list_new, 2);
-        e_auth_manage.update(authority_list_new);
+        auth_manage.update(&mut authority_list_new, true);
+        e_auth_manage.update(&mut authority_list_new);
         assert_eq!(auth_manage, AuthorityManage {
-            current:       e_auth_manage.clone(),
-            current_epoch: 2u64,
-            old:           Some(e_auth_manage_old),
-            old_epoch:     Some(1u64),
+            current: e_auth_manage.clone(),
+            old:     Some(e_auth_manage_old),
         });
 
         e_auth_manage_old = e_auth_manage.clone();
-        auth_manage.update(&mut authority_list_newer, 3);
-        e_auth_manage.update(authority_list_newer);
+        auth_manage.update(&mut authority_list_newer, true);
+        e_auth_manage.update(&mut authority_list_newer);
         assert_eq!(auth_manage, AuthorityManage {
-            current:       e_auth_manage,
-            current_epoch: 3u64,
-            old:           Some(e_auth_manage_old),
-            old_epoch:     Some(2u64),
+            current: e_auth_manage.clone(),
+            old:     Some(e_auth_manage_old),
+        });
+
+        auth_manage.update(&mut authority_list_new, false);
+        e_auth_manage.update(&mut authority_list_new);
+        assert_eq!(auth_manage, AuthorityManage {
+            current: e_auth_manage,
+            old:     None,
         });
     }
 }

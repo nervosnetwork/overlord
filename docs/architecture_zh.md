@@ -286,13 +286,19 @@ pub trait Consensus<T: Codec>: Send + Sync {
         epoch_id: u64,
         hash: Hash,
     ) -> Result<(), Box<dyn Error + Send>>;
-    /// TODO argc and return value
+    /// Commit an epoch.
     async fn commit(
         &self,
         _ctx: Vec<u8>,
         epoch_id: u64,
         commit: Commit<T>,
     ) -> Result<Status, Box<dyn Error + Send>>;
+    /// Get an authority list of the given epoch.
+    async fn get_authority_list(
+        &self, 
+        _ctx: Vec<u8>, 
+        epoch_id: u64
+    ) -> Result<Vec<Node>, Box<dyn Error + Send>>;
     /// Broadcast a message to other replicas.
     async fn broadcast_to_other(
         &self,
