@@ -129,7 +129,7 @@ impl EpochAuthorityManage {
             return Ok(addr.to_owned());
         }
         Err(ConsensusError::Other(
-            "The address list mismatch proposal weight list".to_string(),
+            "The address list mismatch propose weight list".to_string(),
         ))
     }
 

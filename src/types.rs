@@ -235,8 +235,8 @@ impl Node {
     }
 
     /// Set a new propose weight of the node.
-    pub fn set_propose_weight(&mut self, proposal_weight: u8) {
-        self.propose_weight = proposal_weight;
+    pub fn set_propose_weight(&mut self, propose_weight: u8) {
+        self.propose_weight = propose_weight;
     }
 
     /// Set a new vote weight of the node.

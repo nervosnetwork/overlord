@@ -109,7 +109,7 @@ pub struct Proof {
 ```rust
 pub struct Node {
     pub address: Address,
-    pub proposal_weight: u8,
+    pub propose_weight: u8,
     pub vote_weight: u8,
 }
 ```

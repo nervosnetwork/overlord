@@ -45,7 +45,7 @@ impl Into<u8> for TriggerType {
             TriggerType::Proposal => 0u8,
             TriggerType::PrevoteQC => 1u8,
             TriggerType::PrecommitQC => 2u8,
-            TriggerType::NewEpoch(_) => 3u8,
+            TriggerType::NewEpoch(_) => unreachable!(),
         }
     }
 }
@@ -57,7 +57,7 @@ impl From<u8> for TriggerType {
             0 => TriggerType::Proposal,
             1 => TriggerType::PrevoteQC,
             2 => TriggerType::PrecommitQC,
-            3 => TriggerType::NewEpoch(u64::max_value()),
+            3 => unreachable!(),
             _ => panic!("Invalid trigger type!"),
         }
     }
