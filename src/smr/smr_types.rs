@@ -1,5 +1,52 @@
 use crate::types::Hash;
 
+/// TODO: **else -> otherwise**
+
+/// SMR steps. The default step is commit step because SMR needs rich status to start a new epoch.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Step {
+    /// Prepose step, in this step:
+    /// Firstly, each node calculate the new proposer, then:
+    /// Leader:
+    ///     proposer an epoch,
+    /// Replica:
+    ///     wait for a proposal and check it.
+    /// Then goto prevote step.
+    Propose = 0,
+    /// Prevote step, in this step:
+    /// Leader:
+    ///     1. wait for others signed prevote votes,
+    ///     2. aggregrate them to an aggregrated vote,
+    ///     3. broadcast the aggregrated vote to others.
+    /// Replica:
+    ///     1. transmit prevote vote,
+    ///     2. wait for aggregrated vote,
+    ///     3. check the aggregrated vote.
+    /// Then goto precommit step.
+    Prevote = 1,
+    /// Precommit step, in this step:
+    /// Leader:
+    ///     1. wait for others signed precommit votes,
+    ///     2. aggregrate them to an aggregrated vote,
+    ///     3. broadcast the aggregrated vote to others.
+    /// Replica:
+    ///     1. transmit precommit vote,
+    ///     2. wait for aggregrated vote,
+    ///     3. check the aggregrated vote.
+    /// If there is no consensus in the precommit step, goto propose step and start a new round
+    /// cycle. Otherwise, goto commit step.
+    Precommit = 2,
+    /// Commit step, in this step each node commit the epoch and wait for the rich status. After
+    /// receiving the it, all nodes will goto propose step and start a new epoch consensus.
+    Commit = 3,
+}
+
+impl Default for Step {
+    fn default() -> Self {
+        Step::Commit
+    }
+}
+
 /// SMR event that state and timer monitor this.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SMREvent {

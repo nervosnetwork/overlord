@@ -5,6 +5,10 @@
 pub enum ConsensusError {
     ///
     InvalidAddress,
+    ///
+    TriggerSMRErr(u8),
+    ///
+    MonitorEventErr(String),
     /// Other error.
     Other(String),
 }
