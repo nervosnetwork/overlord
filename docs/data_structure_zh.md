@@ -3,11 +3,11 @@
 ## 类型
 
 ```rust
-type Address = Vec<u8>;
+type Address = Bytes;
 
-type Signature = Vec<u8>;
+type Signature = Bytes;
 
-type Hash = Vec<u8>;
+type Hash = Bytes;
 ```
 
 ## 枚举
@@ -34,7 +34,7 @@ pub enum OutputMsg {
 
 ```rust
 pub struct SignedProposal<T> {
-    pub signature: Vec<u8>,
+    pub signature: Signature,
     pub proposal: Proposal<T>,
 }
 
@@ -53,7 +53,7 @@ pub struct Proposal<T> {
 
 ```rust
 pub struct SignedVote {
-    pub signature: Vec<u8>,
+    pub signature: Signature,
     pub vote: Vote,
 }
 
@@ -88,8 +88,8 @@ pub struct Commit<T> {
 
 ```rust
 pub struct AggregatedSignature {
-    pub signature: Vec<u8>,
-    pub address_bitmap: Vec<u8>,
+    pub signature: Signature,
+    pub address_bitmap: Bytes,
 }
 ```
 
@@ -109,8 +109,8 @@ pub struct Proof {
 ```rust
 pub struct Node {
     pub address: Address,
-    pub proposal_weight: usize,
-    pub vote_weight: usize,
+    pub propose_weight: u8,
+    pub vote_weight: u8,
 }
 ```
 

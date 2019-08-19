@@ -5,13 +5,6 @@
 // ISSUE: https://github.com/rust-lang/rust-clippy/issues/3988
 #![allow(clippy::needless_lifetimes)]
 
-use std::error::Error;
-
-use async_trait::async_trait;
-use bytes::Bytes;
-
-use crate::types::{Address, AggregatedSignature, Commit, Hash, OutputMsg, Signature, Status};
-
 /// A module that impl rlp encodable and decodable trait
 /// for types that need to save wal.
 mod codec;
@@ -30,7 +23,20 @@ mod utils;
 ///
 mod wal;
 
+use std::error::Error;
+
+use async_trait::async_trait;
+use bytes::Bytes;
+
+use crate::error::ConsensusError;
+use crate::types::{
+    Address, AggregatedSignature, Commit, Hash, Node, OutputMsg, Signature, Status,
+};
+
 ///
+pub type ConsensusResult<T> = ::std::result::Result<T, ConsensusError>;
+
+/// **TODO: context libiary**
 #[async_trait]
 pub trait Consensus<T: Codec>: Send + Sync {
     /// Get an epoch of an epoch_id and return the epoch with its hash.
@@ -46,13 +52,19 @@ pub trait Consensus<T: Codec>: Send + Sync {
         epoch_id: u64,
         hash: Hash,
     ) -> Result<(), Box<dyn Error + Send>>;
-    /// TODO argc and return value
+    /// Commit an epoch to execute and return the rich status.
     async fn commit(
         &self,
         _ctx: Vec<u8>,
         epoch_id: u64,
         commit: Commit<T>,
     ) -> Result<Status, Box<dyn Error + Send>>;
+    /// Get an authority list of the given epoch.
+    async fn get_authority_list(
+        &self,
+        _ctx: Vec<u8>,
+        epoch_id: u64,
+    ) -> Result<Vec<Node>, Box<dyn Error + Send>>;
     /// Broadcast a message to other replicas.
     async fn broadcast_to_other(
         &self,
