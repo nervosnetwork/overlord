@@ -34,7 +34,7 @@ use crate::types::{
     Address, AggregatedSignature, Commit, Hash, Node, OutputMsg, Signature, Status,
 };
 
-///
+/// Overlord consensus result.
 pub type ConsensusResult<T> = ::std::result::Result<T, ConsensusError>;
 
 pub(crate) const INIT_EPOCH_ID: u64 = 0;

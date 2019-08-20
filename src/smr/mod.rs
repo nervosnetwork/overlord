@@ -1,15 +1,22 @@
 #![allow(dead_code)]
 
 ///
-mod smr_types;
+pub mod smr_types;
 ///
 mod state_machine;
 
-use bytes::Bytes;
 use tokio::sync::{mpsc::UnboundedSender, watch::Receiver};
 
-use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerType};
+use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
+use crate::smr::state_machine::StateMachine;
+use crate::types::Hash;
 use crate::{error::ConsensusError, ConsensusResult};
+
+///
+pub struct SMRProvider {
+    smr:           Option<SMR>,
+    state_machine: StateMachine,
+}
 
 ///
 #[derive(Clone)]
@@ -18,7 +25,7 @@ pub struct SMR(UnboundedSender<SMRTrigger>);
 impl SMR {
     /// A function to touch off SMR trigger gate.
     pub fn trigger(&mut self, gate: SMRTrigger) -> ConsensusResult<()> {
-        let trigger_type: u8 = gate.trigger_type.clone().into();
+        let trigger_type = gate.trigger_type.clone().to_string();
         self.0
             .try_send(gate)
             .map_err(|_| ConsensusError::TriggerSMRErr(trigger_type))?;
@@ -27,13 +34,15 @@ impl SMR {
 
     /// Trigger SMR to goto a new epoch.
     pub fn new_epoch(&mut self, epoch_id: u64) -> ConsensusResult<()> {
+        let trigger = TriggerType::NewEpoch(epoch_id);
         self.0
             .try_send(SMRTrigger {
-                trigger_type: TriggerType::NewEpoch(epoch_id),
-                hash:         Bytes::new(),
+                trigger_type: trigger.clone(),
+                source:       TriggerSource::State,
+                hash:         Hash::new(),
                 round:        None,
             })
-            .map_err(|_| ConsensusError::TriggerSMRErr(3u8))?;
+            .map_err(|_| ConsensusError::TriggerSMRErr(trigger.to_string()))?;
         Ok(())
     }
 }

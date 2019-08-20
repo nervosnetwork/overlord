@@ -1,6 +1,6 @@
-use crate::types::Hash;
+use derive_more::Display;
 
-/// TODO: **else -> otherwise**
+use crate::types::Hash;
 
 /// SMR steps. The default step is commit step because SMR needs rich status to start a new epoch.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -48,11 +48,12 @@ impl Default for Step {
 }
 
 /// SMR event that state and timer monitor this.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Display, PartialEq, Eq)]
 pub enum SMREvent {
     /// New round event,
     /// for state: update round,
     /// for timer: set a propose step timer. If `round == 0`, set an extra total epoch timer.
+    #[display(fmt = "New round {} event", round)]
     NewRoundInfo {
         round:         u64,
         lock_round:    Option<u64>,
@@ -61,28 +62,44 @@ pub enum SMREvent {
     /// Prevote event,
     /// for state: transmit a prevote vote,
     /// for timer: set a prevote step timer.
+    #[display(fmt = "Prevote event")]
     PrevoteVote(Hash),
     /// Precommit event,
     /// for state: transmit a precommit vote,
     /// for timer: set a precommit step timer.
+    #[display(fmt = "Precommit event")]
     PrecommitVote(Hash),
     /// Commit event,
     /// for state: do commit,
     /// for timer: do nothing.
+    #[display(fmt = "Commit event")]
     Commit(Hash),
 }
 
 /// SMR trigger types.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Display, PartialEq, Eq)]
 pub enum TriggerType {
     /// Proposal trigger.
+    #[display(fmt = "Proposal")]
     Proposal,
     /// Prevote quorum certificate trigger.
+    #[display(fmt = "PrevoteQC")]
     PrevoteQC,
     /// Precommit quorum certificate trigger.
+    #[display(fmt = "PrecommitQC")]
     PrecommitQC,
     /// New Epoch trigger.
+    #[display(fmt = "New epoch {}", _0)]
     NewEpoch(u64),
+}
+
+/// SMR trigger sources.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TriggerSource {
+    /// SMR triggered by state.
+    State = 0,
+    /// SMR triggered by timer.
+    Timer = 1,
 }
 
 impl Into<u8> for TriggerType {
@@ -125,8 +142,19 @@ impl From<u8> for TriggerType {
 pub struct SMRTrigger {
     /// SMR trigger type.
     pub trigger_type: TriggerType,
+    /// SMR trigger source.
+    pub source: TriggerSource,
     /// SMR trigger hash, the meaning shown above.
     pub hash: Hash,
     /// SMR trigger round, the meaning shown above.
     pub round: Option<u64>,
+}
+
+///
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Lock {
+    ///
+    pub round: u64,
+    ///
+    pub hash: Hash,
 }
