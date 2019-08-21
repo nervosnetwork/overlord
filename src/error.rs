@@ -33,6 +33,9 @@ pub enum ConsensusError {
     ///
     #[display(fmt = "Self check not pass {}", _0)]
     SelfCheckErr(String),
+    ///
+    #[display(fmt = "Correctness error {}", _0)]
+    CorrectnessErr(String),
     /// Other error.
     #[display(fmt = "Other error {}", _0)]
     Other(String),
@@ -51,7 +54,7 @@ impl PartialEq for ConsensusError {
             | (PrecommitErr(_), PrecommitErr(_))
             | (SelfCheckErr(_), SelfCheckErr(_)) => true,
             (RoundDiff { local: m, vote: n }, RoundDiff { local: p, vote: q }) => m == p && n == q,
-            (Other(x), Other(y)) => x == y,
+            (Other(x), Other(y)) | (CorrectnessErr(x), CorrectnessErr(y)) => x == y,
             _ => false,
         }
     }
