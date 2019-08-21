@@ -13,13 +13,14 @@ use crate::types::Hash;
 use crate::{error::ConsensusError, ConsensusResult};
 
 ///
+#[derive(Debug)]
 pub struct SMRProvider {
     smr:           Option<SMR>,
     state_machine: StateMachine,
 }
 
 ///
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SMR(UnboundedSender<SMRTrigger>);
 
 impl SMR {
