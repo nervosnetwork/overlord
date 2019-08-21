@@ -3,7 +3,7 @@ use crate::smr::tests::{gen_hash, trigger_test, InnerState, StateMachineTestCase
 use crate::{error::ConsensusError, types::Hash};
 
 /// Test state machine handle prevote!C trigger.
-/// There are a total of *2 × 4 = 8* test cases.
+/// There are a total of *2 × 4 + 2 = 10* test cases.
 #[test]
 fn test_prevote_trigger() {
     let mut index = 1;
@@ -126,8 +126,32 @@ fn test_prevote_trigger() {
         Some((1, hash)),
     ));
 
+    // Test case 09:
+    //      The prevote round is not equal to self round.
+    // This is an incorrect situation, the process will return round diff err.
+    let hash = gen_hash();
+    test_cases.push(StateMachineTestCase::new(
+        InnerState::new(1, Step::Prevote, Hash::new(), None),
+        SMRTrigger::new(hash, TriggerType::PrevoteQC, Some(0)),
+        SMREvent::PrecommitVote(Hash::new()),
+        Some(ConsensusError::RoundDiff { local: 1, vote: 0 }),
+        None,
+    ));
+
+    // Test case 10:
+    //      The prevote round is not equal to self round.
+    // This is an incorrect situation, the process will return round diff err.
+    let hash = gen_hash();
+    test_cases.push(StateMachineTestCase::new(
+        InnerState::new(1, Step::Prevote, Hash::new(), None),
+        SMRTrigger::new(hash, TriggerType::PrevoteQC, Some(2)),
+        SMREvent::PrecommitVote(Hash::new()),
+        Some(ConsensusError::RoundDiff { local: 1, vote: 2 }),
+        None,
+    ));
+
     for case in test_cases.into_iter() {
-        println!("Prevote test {}/8", index);
+        println!("Prevote test {}/10", index);
         index += 1;
         trigger_test(
             case.base,
