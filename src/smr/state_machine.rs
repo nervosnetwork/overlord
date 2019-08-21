@@ -6,6 +6,7 @@ use crate::types::Hash;
 use crate::{ConsensusResult, INIT_EPOCH_ID, INIT_ROUND};
 
 /// A smallest implementation of an atomic overlord state machine. It
+#[derive(Debug)]
 pub struct StateMachine {
     epoch_id:      u64,
     round:         u64,
@@ -33,12 +34,12 @@ impl StateMachine {
         }
     }
 
-    async fn process_events(&mut self) -> ConsensusResult<()> {
-        while let Some(trigger) = self.trigger.recv().await {
+    pub async fn process_events(&mut self) -> ConsensusResult<()> {
+        if let Some(trigger) = self.trigger.recv().await {
             let trigger_type = trigger.trigger_type.clone();
             match trigger_type {
                 TriggerType::NewEpoch(epoch_id) => {
-                    self.goto_new_epoch(epoch_id);
+                    self.handle_new_epoch(epoch_id, trigger.source)?;
                 }
                 TriggerType::Proposal => {
                     self.handle_proposal(trigger.hash, trigger.round, trigger.source)?;
@@ -99,8 +100,10 @@ impl StateMachine {
                     self.update_polc(proposal_hash.clone(), lround);
                 }
             } else {
-                self.update_polc(proposal_hash, lround);
+                self.update_polc(proposal_hash.clone(), lround);
             }
+        } else if self.lock.is_none() {
+            self.proposal_hash = proposal_hash;
         }
 
         // throw prevote vote event
@@ -194,6 +197,7 @@ impl StateMachine {
         Ok(())
     }
 
+    /// Goto a new epoch and clear everything.
     #[inline]
     fn goto_new_epoch(&mut self, epoch_id: u64) {
         self.epoch_id = epoch_id;
@@ -203,6 +207,7 @@ impl StateMachine {
         self.lock = None;
     }
 
+    /// Keep the lock, if any, when go to the next round.
     #[inline]
     fn goto_next_round(&mut self) {
         self.round += 1;
@@ -213,6 +218,7 @@ impl StateMachine {
         }
     }
 
+    /// Goto the given step.
     #[inline]
     fn goto_step(&mut self, step: Step) {
         self.step = step;
@@ -253,10 +259,70 @@ impl StateMachine {
 #[cfg(test)]
 mod test {
     use rand::random;
+    use tokio::runtime::Runtime;
+    use tokio::sync::{mpsc::unbounded_channel, watch::channel};
 
-    use crate::types::Hash;
-    use crate::smr::smr_types::{Step, Lock};
+    use crate::smr::smr_types::{Lock, SMREvent, SMRTrigger, Step, TriggerSource, TriggerType};
     use crate::smr::state_machine::StateMachine;
+    use crate::{error::ConsensusError, types::Hash};
+
+    struct StateMachineTestCase {
+        base:   InnerState,
+        input:  SMRTrigger,
+        output: SMREvent,
+        err:    Option<ConsensusError>,
+    }
+
+    impl StateMachineTestCase {
+        fn new(
+            base: InnerState,
+            input: SMRTrigger,
+            output: SMREvent,
+            err: Option<ConsensusError>,
+        ) -> Self {
+            StateMachineTestCase {
+                base,
+                input,
+                output,
+                err,
+            }
+        }
+    }
+
+    struct InnerState {
+        round:         u64,
+        step:          Step,
+        proposal_hash: Hash,
+        lock:          Option<Lock>,
+    }
+
+    impl InnerState {
+        fn new(round: u64, step: Step, proposal_hash: Hash, lock: Option<Lock>) -> Self {
+            InnerState {
+                round,
+                step,
+                proposal_hash,
+                lock,
+            }
+        }
+    }
+
+    impl SMRTrigger {
+        fn new(proposal_hash: Hash, t_type: TriggerType, lock_round: Option<u64>) -> Self {
+            SMRTrigger {
+                trigger_type: t_type,
+                source:       TriggerSource::State,
+                hash:         proposal_hash,
+                round:        lock_round,
+            }
+        }
+    }
+
+    impl Lock {
+        fn new(round: u64, hash: Hash) -> Self {
+            Lock { round, hash }
+        }
+    }
 
     impl StateMachine {
         fn set_status(&mut self, step: Step, proposal_hash: Hash, lock: Option<Lock>) {
@@ -268,5 +334,67 @@ mod test {
 
     fn gen_hash() -> Hash {
         Hash::from((0..16).map(|_| random::<u8>()).collect::<Vec<_>>())
+    }
+
+    fn trigger_test(
+        base: InnerState,
+        input: SMRTrigger,
+        output: SMREvent,
+        err: Option<ConsensusError>,
+    ) {
+        let (mut trigger_tx, trigger_rx) = unbounded_channel::<SMRTrigger>();
+        let (event_tx, mut event_rx) = channel::<SMREvent>(SMREvent::Commit(Hash::new()));
+
+        let mut state_machine = StateMachine::new(event_tx, trigger_rx);
+        state_machine.set_status(base.step, base.proposal_hash, base.lock);
+        trigger_tx.try_send(input).unwrap();
+
+        let rt = Runtime::new().unwrap();
+        rt.block_on(async {
+            let res = state_machine.process_events().await;
+            if res.is_err() {
+                assert_eq!(Err(err.unwrap()), res);
+                return;
+            }
+
+            loop {
+                match event_rx.recv().await {
+                    Some(event) => {
+                        assert_eq!(output, event);
+                        return;
+                    }
+                    None => continue,
+                }
+            }
+        })
+    }
+
+    #[test]
+    fn test_proposal_trigger() {
+        let mut test_cases: Vec<StateMachineTestCase> = Vec::new();
+
+        // The case tests: self is not lock, proposal is not nil and no lock.
+        // The output should be prevote vote to the proposal hash.
+        let hash = gen_hash();
+        test_cases.push(StateMachineTestCase::new(
+            InnerState::new(0, Step::Propose, Hash::new(), None),
+            SMRTrigger::new(hash.clone(), TriggerType::Proposal, None),
+            SMREvent::PrevoteVote(hash),
+            None,
+        ));
+
+        // The case tests: self is not lock, proposal is not nil and lock.
+        // The output should be prevote vote to the proposal hash.
+        let hash = gen_hash();
+        test_cases.push(StateMachineTestCase::new(
+            InnerState::new(1, Step::Propose, hash.clone(), None),
+            SMRTrigger::new(hash.clone(), TriggerType::Proposal, Some(0)),
+            SMREvent::PrevoteVote(hash),
+            None,
+        ));
+
+        for case in test_cases.into_iter() {
+            trigger_test(case.base, case.input, case.output, case.err);
+        }
     }
 }

@@ -150,11 +150,11 @@ pub struct SMRTrigger {
     pub round: Option<u64>,
 }
 
-///
+/// An inner lock struct.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Lock {
-    ///
+    /// Lock round.
     pub round: u64,
-    ///
+    /// Lock hash.
     pub hash: Hash,
 }
