@@ -4,6 +4,9 @@
 pub mod smr_types;
 ///
 mod state_machine;
+///
+#[cfg(test)]
+mod tests;
 
 use tokio::sync::{mpsc::UnboundedSender, watch::Receiver};
 

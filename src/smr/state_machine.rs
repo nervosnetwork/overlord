@@ -275,7 +275,7 @@ impl StateMachine {
     /// 2. If the step is propose, proposal hash must be empty unless lock is some.
     #[inline]
     fn check(&mut self) -> ConsensusResult<()> {
-        // It is
+        // Whenever self proposal is empty but self lock is some, is not correct.
         if self.proposal_hash.is_empty() && self.lock.is_some() {
             return Err(ConsensusError::SelfCheckErr(format!(
                 "Invalid lock, epoch ID {}, round {}",
@@ -283,6 +283,7 @@ impl StateMachine {
             )));
         }
 
+        // While in propose step, if self lock is none, self proposal must be empty.
         if self.step == Step::Propose && !self.proposal_hash.is_empty() && self.lock.is_none() {
             return Err(ConsensusError::SelfCheckErr(format!(
                 "Invalid proposal hash, epoch ID {}, round {}",
@@ -365,7 +366,8 @@ mod test {
     }
 
     impl StateMachine {
-        fn set_status(&mut self, step: Step, proposal_hash: Hash, lock: Option<Lock>) {
+        fn set_status(&mut self, round: u64, step: Step, proposal_hash: Hash, lock: Option<Lock>) {
+            self.round = round;
             self.goto_step(step);
             self.set_proposal(proposal_hash);
             self.lock = lock;
@@ -391,7 +393,7 @@ mod test {
         let (event_tx, mut event_rx) = channel::<SMREvent>(SMREvent::Commit(Hash::new()));
 
         let mut state_machine = StateMachine::new(event_tx, trigger_rx);
-        state_machine.set_status(base.step, base.proposal_hash, base.lock);
+        state_machine.set_status(base.round, base.step, base.proposal_hash, base.lock);
         trigger_tx.try_send(input).unwrap();
 
         let rt = Runtime::new().unwrap();
@@ -756,7 +758,8 @@ mod test {
         let mut index = 1;
         let mut test_cases: Vec<StateMachineTestCase> = Vec::new();
 
-        // Test case 01: self proposal is not nil and not lock, prevote is equal to self proposal.
+        // Test case 01:
+        //      self proposal is not empty and not lock, prevote is not nil.
         // The output should be precommit vote to the prevote hash.
         let hash = gen_hash();
         test_cases.push(StateMachineTestCase::new(
@@ -767,8 +770,113 @@ mod test {
             Some((0, hash)),
         ));
 
+        // Test case 01:
+        //      self proposal is not empty and not lock, prevote is nil.
+        // The output should be precommit vote to the prevote hash.
+        let hash = Hash::new();
+        test_cases.push(StateMachineTestCase::new(
+            InnerState::new(0, Step::Prevote, Hash::new(), None),
+            SMRTrigger::new(hash.clone(), TriggerType::PrevoteQC, Some(0)),
+            SMREvent::PrecommitVote(hash),
+            None,
+            None,
+        ));
+
+        // Test case 03:
+        //      self proposal is not empty but with a lock, prevote is nil.
+        // This is an incorrect situation, the process can not pass self check.
+        let hash = Hash::new();
+        let lock_hash = gen_hash();
+        let lock = Lock {
+            round: 0,
+            hash:  lock_hash.clone(),
+        };
+        test_cases.push(StateMachineTestCase::new(
+            InnerState::new(1, Step::Prevote, hash.clone(), Some(lock)),
+            SMRTrigger::new(hash, TriggerType::PrevoteQC, Some(1)),
+            SMREvent::PrecommitVote(lock_hash.clone()),
+            Some(ConsensusError::SelfCheckErr("".to_string())),
+            Some((0, lock_hash)),
+        ));
+
+        // Test case 04:
+        //      self proposal is not empty but with a lock, prevote is not nil.
+        // This is an incorrect situation, the process can not pass self check.
+        let hash = gen_hash();
+        let lock_hash = gen_hash();
+        let lock = Lock {
+            round: 0,
+            hash:  lock_hash.clone(),
+        };
+        test_cases.push(StateMachineTestCase::new(
+            InnerState::new(1, Step::Prevote, Hash::new(), Some(lock)),
+            SMRTrigger::new(hash, TriggerType::PrevoteQC, Some(1)),
+            SMREvent::PrecommitVote(lock_hash.clone()),
+            Some(ConsensusError::SelfCheckErr("".to_string())),
+            Some((0, lock_hash)),
+        ));
+
+        // Test case 05:
+        //      self proposal is not empty and no lock, prevote is nil.
+        // The output should be precommit vote to the prevote hash which is nil.
+        let hash = gen_hash();
+        test_cases.push(StateMachineTestCase::new(
+            InnerState::new(1, Step::Prevote, hash.clone(), None),
+            SMRTrigger::new(Hash::new(), TriggerType::PrevoteQC, Some(1)),
+            SMREvent::PrecommitVote(Hash::new()),
+            None,
+            None,
+        ));
+
+        // Test case 06:
+        //      self proposal is not empty and no lock, prevote is not nil.
+        // The output should be precommit vote to the prevote hash and lock on it.
+        let hash = gen_hash();
+        let vote_hash = gen_hash();
+        test_cases.push(StateMachineTestCase::new(
+            InnerState::new(1, Step::Prevote, hash.clone(), None),
+            SMRTrigger::new(vote_hash.clone(), TriggerType::PrevoteQC, Some(1)),
+            SMREvent::PrecommitVote(vote_hash.clone()),
+            None,
+            Some((1, vote_hash)),
+        ));
+
+        // Test case 07:
+        //      self proposal is not empty but with a lock, prevote is nil.
+        // The output should be prevote vote to the nil hash.
+        let hash = Hash::new();
+        let lock_hash = gen_hash();
+        let lock = Lock {
+            round: 0,
+            hash:  lock_hash.clone(),
+        };
+        test_cases.push(StateMachineTestCase::new(
+            InnerState::new(1, Step::Prevote, lock_hash.clone(), Some(lock)),
+            SMRTrigger::new(hash.clone(), TriggerType::PrevoteQC, Some(1)),
+            SMREvent::PrecommitVote(hash.clone()),
+            None,
+            None,
+        ));
+
+        // Test case 08:
+        //      self proposal is not empty but with a lock, prevote is not nil.
+        // The output should be prevote vote to the prevote hash and lock it.
+        let hash = gen_hash();
+        let lock_hash = gen_hash();
+        let lock = Lock {
+            round: 0,
+            hash:  lock_hash.clone(),
+        };
+        test_cases.push(StateMachineTestCase::new(
+            InnerState::new(1, Step::Prevote, lock_hash.clone(), Some(lock)),
+            SMRTrigger::new(hash.clone(), TriggerType::PrevoteQC, Some(1)),
+            SMREvent::PrecommitVote(hash.clone()),
+            None,
+            Some((1, hash)),
+        ));
+
         for case in test_cases.into_iter() {
-            println!("Prevote test {}/24", index);
+            println!("Prevote test {}/8", index);
             index += 1;
             trigger_test(
                 case.base,
