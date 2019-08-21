@@ -283,7 +283,7 @@ impl StateMachine {
             )));
         }
 
-        if self.step == Step::Propose && self.proposal_hash.len() > 0 && self.lock.is_none() {
+        if self.step == Step::Propose && !self.proposal_hash.is_empty() && self.lock.is_none() {
             return Err(ConsensusError::SelfCheckErr(format!(
                 "Invalid proposal hash, epoch ID {}, round {}",
                 self.epoch_id, self.round
