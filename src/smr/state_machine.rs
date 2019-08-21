@@ -188,14 +188,18 @@ impl StateMachine {
                 lock_proposal: lproposal,
             })?;
             self.goto_next_round();
-        } else if let Some(lock) = self.lock.clone() {
-            if lock.hash == precommit_hash {
-                self.throw_event(SMREvent::Commit(precommit_hash))?;
-                self.goto_step(Step::Commit);
-            }
         } else {
-            return Err(ConsensusError::PrecommitErr("No lock".to_string()));
+            if let Some(lock) = self.lock.clone() {
+                if lock.hash != precommit_hash {
+                    return Err(ConsensusError::PrecommitErr(
+                        "QC different from lock".to_string(),
+                    ));
+                }
+            }
+            self.throw_event(SMREvent::Commit(precommit_hash))?;
+            self.goto_step(Step::Commit);
         }
+
         Ok(())
     }
 

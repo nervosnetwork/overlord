@@ -1,3 +1,5 @@
+///
+mod precommit_test;
 /// Test prevoteQC trigger process.
 mod prevote_test;
 /// Test proposal trigger process.
