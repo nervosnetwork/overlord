@@ -295,7 +295,7 @@ impl StateMachine {
             }
         }
 
-        // While self step lt precommit and round is 0, self lock must be none. 
+        // While self step lt precommit and round is 0, self lock must be none.
         if self.step < Step::Precommit && self.round == 0 && self.lock.is_some() {
             return Err(ConsensusError::SelfCheckErr(format!(
                 "Invalid lock, epoch ID {}, round {}",
