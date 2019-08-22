@@ -275,11 +275,28 @@ impl StateMachine {
 
     /// Do below self checks before each message is processed:
     /// 1. Whenever the lock is some and the proposal hash is empty, is impossible.
-    /// 2. If the step is propose, proposal hash must be empty unless lock is some.
+    /// 2. As long as there is a lock, the lock and proposal hash must be consistent.
+    /// 3. Before precommit step, and round is 0, there can be no lock.
+    /// 4. If the step is propose, proposal hash must be empty unless lock is some.
     #[inline]
     fn check(&mut self) -> ConsensusResult<()> {
         // Whenever self proposal is empty but self lock is some, is not correct.
         if self.proposal_hash.is_empty() && self.lock.is_some() {
+            return Err(ConsensusError::SelfCheckErr(format!(
+                "Invalid lock, epoch ID {}, round {}",
+                self.epoch_id, self.round
+            )));
+        }
+
+        // Lock hash must be same as proposal hash, if has.
+        if self.lock.is_some() {
+            if self.lock.clone().unwrap().hash != self.proposal_hash {
+                return Err(ConsensusError::SelfCheckErr("Lock".to_string()));
+            }
+        }
+
+        // While self step lt precommit and round is 0, self lock must be none. 
+        if self.step < Step::Precommit && self.round == 0 && self.lock.is_some() {
             return Err(ConsensusError::SelfCheckErr(format!(
                 "Invalid lock, epoch ID {}, round {}",
                 self.epoch_id, self.round
