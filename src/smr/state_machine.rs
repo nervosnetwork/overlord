@@ -289,10 +289,8 @@ impl StateMachine {
         }
 
         // Lock hash must be same as proposal hash, if has.
-        if self.lock.is_some() {
-            if self.lock.clone().unwrap().hash != self.proposal_hash {
-                return Err(ConsensusError::SelfCheckErr("Lock".to_string()));
-            }
+        if self.lock.is_some() && self.lock.clone().unwrap().hash != self.proposal_hash {
+            return Err(ConsensusError::SelfCheckErr("Lock".to_string()));
         }
 
         // While self step lt precommit and round is 0, self lock must be none.
