@@ -2,7 +2,7 @@ use crate::smr::smr_types::{Lock, SMREvent, SMRTrigger, Step, TriggerType};
 use crate::smr::tests::{gen_hash, trigger_test, InnerState, StateMachineTestCase};
 use crate::{error::ConsensusError, types::Hash};
 
-/// Test state machine handle prevote!C trigger.
+/// Test state machine handle prevoteQC trigger.
 /// There are a total of *2 × 4 + 2 = 10* test cases.
 #[test]
 fn test_prevote_trigger() {

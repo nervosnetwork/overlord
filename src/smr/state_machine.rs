@@ -191,9 +191,7 @@ impl StateMachine {
         } else {
             if let Some(lock) = self.lock.clone() {
                 if lock.hash != precommit_hash {
-                    return Err(ConsensusError::PrecommitErr(
-                        "QC different from lock".to_string(),
-                    ));
+                    return Err(ConsensusError::CorrectnessErr("Fork".to_string()));
                 }
             }
             self.update_polc(precommit_hash.clone(), self.round);

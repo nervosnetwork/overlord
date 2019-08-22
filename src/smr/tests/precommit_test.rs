@@ -2,6 +2,8 @@ use crate::smr::smr_types::{Lock, SMREvent, SMRTrigger, Step, TriggerType};
 use crate::smr::tests::{gen_hash, trigger_test, InnerState, StateMachineTestCase};
 use crate::{error::ConsensusError, types::Hash};
 
+/// Test state machine handle precommitQC trigger.
+/// There are a total of *2 × 4 + 3 = 11* test cases.
 #[test]
 fn test_precommit_trigger() {
     let mut index = 1;
@@ -36,8 +38,8 @@ fn test_precommit_trigger() {
     ));
 
     // Test case 03:
-    //      self proposal is not empty and with a lock, prevote is not nil.
-    // The output should be precommit vote to the prevote hash.
+    //      self proposal is not empty and with a lock, precommit is not nil.
+    // The output should be precommit vote to the precommit hash.
     let hash = gen_hash();
     let lock = Lock {
         round: 0u64,
@@ -105,19 +107,19 @@ fn test_precommit_trigger() {
     ));
 
     // Test case 07:
-    //      self proposal is not empty and without lock, prevote is not nil.
+    //      self proposal is not empty and without lock, precommit is not nil.
     // This is an incorrect situation, the process can not pass self check.
     let hash = gen_hash();
     test_cases.push(StateMachineTestCase::new(
-        InnerState::new(0, Step::Prevote, hash.clone(), None),
-        SMRTrigger::new(hash.clone(), TriggerType::PrevoteQC, Some(0)),
+        InnerState::new(0, Step::Precommit, hash.clone(), None),
+        SMRTrigger::new(hash.clone(), TriggerType::PrecommitQC, Some(0)),
         SMREvent::PrecommitVote(hash.clone()),
         Some(ConsensusError::SelfCheckErr("".to_string())),
         Some((0, hash)),
     ));
 
     // Test case 08:
-    //      self proposal is not empty and without lock, prevote is nil.
+    //      self proposal is not empty and without lock, precommit is nil.
     // This is an incorrect situation, the process can not pass self check.
     let hash = gen_hash();
     test_cases.push(StateMachineTestCase::new(
@@ -164,8 +166,26 @@ fn test_precommit_trigger() {
         Some((0, hash)),
     ));
 
+    // Test case 11:
+    //      self proposal is not empty and with a lock, precommit is not nil. However, precommit
+    //      hash is not equal to self lock hash.
+    // This is extremely dangerous because it can lead to fork. The process will return
+    // correctness err.
+    let hash = gen_hash();
+    let lock = Lock {
+        round: 0u64,
+        hash:  hash.clone(),
+    };
+    test_cases.push(StateMachineTestCase::new(
+        InnerState::new(0, Step::Precommit, hash.clone(), Some(lock)),
+        SMRTrigger::new(gen_hash(), TriggerType::PrecommitQC, Some(0)),
+        SMREvent::Commit(hash.clone()),
+        Some(ConsensusError::CorrectnessErr("Fork".to_string())),
+        Some((0, hash)),
+    ));
+
     for case in test_cases.into_iter() {
-        println!("Prevote test {}/10", index);
+        println!("Precommit test {}/11", index);
         index += 1;
         trigger_test(
             case.base,
@@ -175,5 +195,5 @@ fn test_precommit_trigger() {
             case.should_lock,
         );
     }
-    println!("Prevote test success");
+    println!("Precommit test success");
 }
