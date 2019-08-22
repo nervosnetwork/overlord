@@ -127,7 +127,7 @@ fn test_prevote_trigger() {
     ));
 
     // Test case 09:
-    //      The prevote round is not equal to self round.
+    //      the prevote round is not equal to self round.
     // This is an incorrect situation, the process will return round diff err.
     let hash = gen_hash();
     test_cases.push(StateMachineTestCase::new(
@@ -139,7 +139,7 @@ fn test_prevote_trigger() {
     ));
 
     // Test case 10:
-    //      The prevote round is not equal to self round.
+    //      the prevote round is not equal to self round.
     // This is an incorrect situation, the process will return round diff err.
     let hash = gen_hash();
     test_cases.push(StateMachineTestCase::new(

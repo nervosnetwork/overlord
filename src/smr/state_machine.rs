@@ -196,6 +196,7 @@ impl StateMachine {
                     ));
                 }
             }
+            self.update_polc(precommit_hash.clone(), self.round);
             self.throw_event(SMREvent::Commit(precommit_hash))?;
             self.goto_step(Step::Commit);
         }
@@ -288,12 +289,16 @@ impl StateMachine {
         }
 
         // While in propose step, if self lock is none, self proposal must be empty.
-        if self.step == Step::Propose && !self.proposal_hash.is_empty() && self.lock.is_none() {
+        if (self.step == Step::Propose || self.step == Step::Precommit)
+            && !self.proposal_hash.is_empty()
+            && self.lock.is_none()
+        {
             return Err(ConsensusError::SelfCheckErr(format!(
                 "Invalid proposal hash, epoch ID {}, round {}",
                 self.epoch_id, self.round
             )));
         }
+
         Ok(())
     }
 

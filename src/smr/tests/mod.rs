@@ -1,4 +1,4 @@
-///
+/// Test prevoteQC trigger process.
 mod precommit_test;
 /// Test prevoteQC trigger process.
 mod prevote_test;
