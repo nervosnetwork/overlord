@@ -175,11 +175,10 @@ impl StateMachine {
 
         self.check_round(precommit_round.unwrap())?;
         if precommit_hash.is_empty() {
-            let (lock_round, lock_proposal) = if let Some(lock) = self.lock.clone() {
-                (Some(lock.round), Some(lock.hash))
-            } else {
-                (None, None)
-            };
+            let (lock_round, lock_proposal) = self
+                .lock
+                .clone()
+                .map_or_else(|| (None, None), |lock| (Some(lock.round), Some(lock.hash)));
 
             // throw new round info event
             self.throw_event(SMREvent::NewRoundInfo {
@@ -202,7 +201,6 @@ impl StateMachine {
         Ok(())
     }
 
-    #[inline]
     fn throw_event(&mut self, event: SMREvent) -> ConsensusResult<()> {
         self.event
             .broadcast(event.clone())
@@ -211,7 +209,6 @@ impl StateMachine {
     }
 
     /// Goto a new epoch and clear everything.
-    #[inline]
     fn goto_new_epoch(&mut self, epoch_id: u64) {
         self.epoch_id = epoch_id;
         self.round = 0;
@@ -221,7 +218,6 @@ impl StateMachine {
     }
 
     /// Keep the lock, if any, when go to the next round.
-    #[inline]
     fn goto_next_round(&mut self) {
         self.round += 1;
         self.proposal_hash.clear();
@@ -240,7 +236,6 @@ impl StateMachine {
     /// Update the PoLC. Firstly set self proposal as the given hash. Secondly update the PoLC. If
     /// the hash is empty, remove it. Otherwise, set lock round and hash as the given round and
     /// hash.
-    #[inline]
     fn update_polc(&mut self, hash: Hash, round: u64) {
         self.set_proposal(hash.clone());
         if hash.is_empty() {
@@ -262,7 +257,6 @@ impl StateMachine {
     }
 
     /// Check if the given round is equal to self round.
-    #[inline]
     fn check_round(&mut self, round: u64) -> ConsensusResult<()> {
         if self.round != round {
             return Err(ConsensusError::RoundDiff {
@@ -278,7 +272,7 @@ impl StateMachine {
     /// 2. As long as there is a lock, the lock and proposal hash must be consistent.
     /// 3. Before precommit step, and round is 0, there can be no lock.
     /// 4. If the step is propose, proposal hash must be empty unless lock is some.
-    #[inline]
+    #[inline(always)]
     fn check(&mut self) -> ConsensusResult<()> {
         // Whenever self proposal is empty but self lock is some, is not correct.
         if self.proposal_hash.is_empty() && self.lock.is_some() {
@@ -311,7 +305,6 @@ impl StateMachine {
                 self.epoch_id, self.round
             )));
         }
-
         Ok(())
     }
 
