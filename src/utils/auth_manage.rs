@@ -25,7 +25,7 @@ impl AuthorityManage {
     }
 
     /// Update a new epoch of authority list. If the argument `reserve_old` is `true`, the old
-    /// authority will be reserved, else it will be cleared.
+    /// authority will be reserved, otherwise, it will be cleared.
     pub fn update(&mut self, authority_list: &mut Vec<Node>, reserve_old: bool) {
         self.last = if reserve_old {
             Some(self.current.clone())

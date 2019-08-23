@@ -4,6 +4,7 @@
 // Remove this clippy bug with async await is resolved.
 // ISSUE: https://github.com/rust-lang/rust-clippy/issues/3988
 #![allow(clippy::needless_lifetimes)]
+#![feature(async_await)]
 
 /// A module that impl rlp encodable and decodable trait
 /// for types that need to save wal.
@@ -33,8 +34,11 @@ use crate::types::{
     Address, AggregatedSignature, Commit, Hash, Node, OutputMsg, Signature, Status,
 };
 
-///
+/// Overlord consensus result.
 pub type ConsensusResult<T> = ::std::result::Result<T, ConsensusError>;
+
+const INIT_EPOCH_ID: u64 = 0;
+const INIT_ROUND: u64 = 0;
 
 /// **TODO: context libiary**
 #[async_trait]
