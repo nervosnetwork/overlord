@@ -24,13 +24,15 @@ pub struct SMRProvider {
 
 ///
 #[derive(Clone, Debug)]
-pub struct SMR(UnboundedSender<SMRTrigger>);
+pub struct SMR {
+    tx: UnboundedSender<SMRTrigger>,
+}
 
 impl SMR {
     /// A function to touch off SMR trigger gate.
     pub fn trigger(&mut self, gate: SMRTrigger) -> ConsensusResult<()> {
         let trigger_type = gate.trigger_type.clone().to_string();
-        self.0
+        self.tx
             .try_send(gate)
             .map_err(|_| ConsensusError::TriggerSMRErr(trigger_type))?;
         Ok(())
@@ -39,7 +41,7 @@ impl SMR {
     /// Trigger SMR to goto a new epoch.
     pub fn new_epoch(&mut self, epoch_id: u64) -> ConsensusResult<()> {
         let trigger = TriggerType::NewEpoch(epoch_id);
-        self.0
+        self.tx
             .try_send(SMRTrigger {
                 trigger_type: trigger.clone(),
                 source:       TriggerSource::State,
@@ -52,11 +54,13 @@ impl SMR {
 }
 
 ///
-pub struct Event(Receiver<SMREvent>);
+pub struct Event {
+    rx: Receiver<SMREvent>,
+}
 
 impl Event {
     pub async fn recv(&mut self) -> ConsensusResult<SMREvent> {
-        if let Some(event) = self.0.recv().await {
+        if let Some(event) = self.rx.recv().await {
             Ok(event)
         } else {
             Err(ConsensusError::MonitorEventErr(

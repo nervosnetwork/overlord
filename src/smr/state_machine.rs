@@ -97,12 +97,12 @@ impl StateMachine {
         }
 
         // update PoLC
-        if let Some(lround) = lock_round {
+        if let Some(lock_round) = lock_round {
             if let Some(lock) = self.lock.clone() {
-                if lround > lock.round {
+                if lock_round > lock.round {
                     self.remove_polc();
                     self.set_proposal(proposal_hash.clone());
-                } else if lround == lock.round && proposal_hash != self.proposal_hash {
+                } else if lock_round == lock.round && proposal_hash != self.proposal_hash {
                     return Err(ConsensusError::CorrectnessErr("Fork".to_string()));
                 }
             } else {
@@ -175,7 +175,7 @@ impl StateMachine {
 
         self.check_round(precommit_round.unwrap())?;
         if precommit_hash.is_empty() {
-            let (lround, lproposal) = if let Some(lock) = self.lock.clone() {
+            let (lock_round, lock_proposal) = if let Some(lock) = self.lock.clone() {
                 (Some(lock.round), Some(lock.hash))
             } else {
                 (None, None)
@@ -183,9 +183,9 @@ impl StateMachine {
 
             // throw new round info event
             self.throw_event(SMREvent::NewRoundInfo {
-                round:         self.round + 1,
-                lock_round:    lround,
-                lock_proposal: lproposal,
+                round: self.round + 1,
+                lock_round,
+                lock_proposal,
             })?;
             self.goto_next_round();
         } else {

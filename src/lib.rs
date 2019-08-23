@@ -37,8 +37,8 @@ use crate::types::{
 /// Overlord consensus result.
 pub type ConsensusResult<T> = ::std::result::Result<T, ConsensusError>;
 
-pub(crate) const INIT_EPOCH_ID: u64 = 0;
-pub(crate) const INIT_ROUND: u64 = 0;
+const INIT_EPOCH_ID: u64 = 0;
+const INIT_ROUND: u64 = 0;
 
 /// **TODO: context libiary**
 #[async_trait]

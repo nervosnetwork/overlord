@@ -45,6 +45,8 @@ impl PartialEq for ConsensusError {
     fn eq(&self, other: &Self) -> bool {
         use self::ConsensusError::*;
         match (self, other) {
+            // If compare objects are the following types of error, as long as the error type need
+            // the same, the details are ignored.
             (InvalidAddress, InvalidAddress)
             | (TriggerSMRErr(_), TriggerSMRErr(_))
             | (MonitorEventErr(_), MonitorEventErr(_))
@@ -53,6 +55,8 @@ impl PartialEq for ConsensusError {
             | (PrevoteErr(_), PrevoteErr(_))
             | (PrecommitErr(_), PrecommitErr(_))
             | (SelfCheckErr(_), SelfCheckErr(_)) => true,
+            // If it is the following two types of errors, in the judgment, the error type need the
+            // same, and the error information need the same.
             (RoundDiff { local: m, vote: n }, RoundDiff { local: p, vote: q }) => m == p && n == q,
             (Other(x), Other(y)) | (CorrectnessErr(x), CorrectnessErr(y)) => x == y,
             _ => false,
