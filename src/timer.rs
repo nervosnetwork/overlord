@@ -103,7 +103,6 @@ impl Timer {
 
         let interval = self.config.get_timeout(event.clone())?;
         let smr_timer = TimeoutInfo::new(interval, event, self.sender.clone());
-                            println!("aaaaa");
         tokio::spawn(async move {
             smr_timer.await;
         });
@@ -170,7 +169,7 @@ impl TimeoutInfo {
 
 #[cfg(test)]
 mod test {
-    // use std::{thread, time::Duration};
+    use std::{thread, time::Duration};
 
     use futures::stream::StreamExt;
     use tokio::runtime::Runtime;
@@ -249,11 +248,8 @@ mod test {
             lock_round:    None,
             lock_proposal: None,
         };
-        let prevote_event = SMREvent::PrecommitVote(Hash::new());
+        let prevote_event = SMREvent::PrevoteVote(Hash::new());
         let precommit_event = SMREvent::PrecommitVote(Hash::new());
-        event_tx.broadcast(new_round_event).unwrap();
-        event_tx.broadcast(prevote_event).unwrap();
-        event_tx.broadcast(precommit_event).unwrap();
 
         let rt = Runtime::new().unwrap();
         rt.spawn(async move {
@@ -264,6 +260,12 @@ mod test {
                 }
             }
         });
+
+        event_tx.broadcast(new_round_event).unwrap();
+        thread::sleep(Duration::from_micros(200));
+        event_tx.broadcast(prevote_event).unwrap();
+        thread::sleep(Duration::from_micros(200));
+        event_tx.broadcast(precommit_event).unwrap();
 
         rt.block_on(async move {
             let mut count = 1u32;
