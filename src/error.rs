@@ -36,6 +36,9 @@ pub enum ConsensusError {
     ///
     #[display(fmt = "Correctness error {}", _0)]
     CorrectnessErr(String),
+    ///
+    #[display(fmt = "Timer error {}", _0)]
+    TimerErr(String),
     /// Other error.
     #[display(fmt = "Other error {}", _0)]
     Other(String),

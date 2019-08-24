@@ -74,6 +74,11 @@ pub enum SMREvent {
     /// for timer: do nothing.
     #[display(fmt = "Commit event")]
     Commit(Hash),
+    /// Stop event,
+    /// for state: stop process,
+    /// for timer: stop process.
+    #[display(fmt = "Stop event")]
+    Stop,
 }
 
 /// SMR trigger types.

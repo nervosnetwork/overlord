@@ -29,6 +29,10 @@ pub struct SMR {
 }
 
 impl SMR {
+    pub fn new(sender: UnboundedSender<SMRTrigger>) -> Self {
+        SMR { tx: sender }
+    }
+
     /// A function to touch off SMR trigger gate.
     pub fn trigger(&mut self, gate: SMRTrigger) -> ConsensusResult<()> {
         let trigger_type = gate.trigger_type.clone().to_string();

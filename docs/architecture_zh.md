@@ -179,6 +179,10 @@ pub enum SMREvent {
     /// for state: do commit,
     /// for timer: do nothing.
     Commit(Hash),
+    /// Stop event,
+    /// for state: stop process,
+    /// for timer: stop process.
+    Stop,
 }
 ```
 

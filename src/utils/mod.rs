@@ -5,4 +5,4 @@ mod auth_manage;
 ///
 mod rand_proposer;
 ///
-mod timer_config;
+pub mod timer_config;
