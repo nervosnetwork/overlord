@@ -262,9 +262,9 @@ mod test {
         });
 
         event_tx.broadcast(new_round_event).unwrap();
-        thread::sleep(Duration::from_micros(200));
+        thread::sleep(Duration::from_micros(300));
         event_tx.broadcast(prevote_event).unwrap();
-        thread::sleep(Duration::from_micros(200));
+        thread::sleep(Duration::from_micros(300));
         event_tx.broadcast(precommit_event).unwrap();
 
         rt.block_on(async move {
