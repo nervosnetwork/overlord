@@ -42,6 +42,8 @@ pub enum ConsensusError {
     ///
     #[display(fmt = "Multiple proposal in epoch ID {}, round {}", _0, _1)]
     MultiProposal(u64, u64),
+    ///
+    StorageErr(String),
     /// Other error.
     #[display(fmt = "Other error {}", _0)]
     Other(String),
