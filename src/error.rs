@@ -39,6 +39,9 @@ pub enum ConsensusError {
     ///
     #[display(fmt = "Timer error {}", _0)]
     TimerErr(String),
+    ///
+    #[display(fmt = "Multiple proposal in epoch ID {}, round {}", _0, _1)]
+    MultiProposal(u64, u64),
     /// Other error.
     #[display(fmt = "Other error {}", _0)]
     Other(String),
