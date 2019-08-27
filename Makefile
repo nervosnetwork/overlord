@@ -13,7 +13,7 @@ SYS_ROCKSDB := $(if ${USE_SYS_ROCKSDB},ROCKSDB_LIB_DIR=${SYS_LIB_DIR},)
 CARGO := env ${SYS_ROCKSDB} cargo
 
 test:
-	${CARGO} test ${VERBOSE} --all -- --test-threads=1
+	${CARGO} test ${VERBOSE} --all -- --nocapture
 
 doc:
 	cargo doc --all --no-deps

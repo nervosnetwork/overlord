@@ -51,7 +51,6 @@ impl Stream for Timer {
                     }
 
                     let event = event.unwrap();
-                    println!("{:?}", event);
                     if event == SMREvent::Stop {
                         return Poll::Ready(None);
                     }
