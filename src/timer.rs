@@ -8,12 +8,10 @@ use futures::stream::{Stream, StreamExt};
 use futures::{FutureExt, SinkExt};
 use futures_timer::{Delay, TimerHandle};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
-use tokio::sync::watch::Receiver;
-// use tokio::timer::Delay;
 
 use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
-use crate::{error::ConsensusError, ConsensusResult};
-use crate::{smr::SMR, INIT_ROUND};
+use crate::smr::{Event, SMR};
+use crate::{error::ConsensusError, ConsensusResult, INIT_ROUND};
 use crate::{types::Hash, utils::timer_config::TimerConfig};
 
 /// Overlord timer used futures timer which is powered by a timer heap. When monitor a SMR event,
@@ -21,7 +19,7 @@ use crate::{types::Hash, utils::timer_config::TimerConfig};
 #[derive(Debug)]
 pub struct Timer {
     config: TimerConfig,
-    event:  Receiver<SMREvent>,
+    event:  Event,
     sender: UnboundedSender<SMREvent>,
     notify: UnboundedReceiver<SMREvent>,
     smr:    SMR,
@@ -45,6 +43,11 @@ impl Stream for Timer {
                         return Poll::Ready(Some(ConsensusError::TimerErr(
                             "Channel dropped".to_string(),
                         )));
+                    }
+
+                    let event = event.unwrap();
+                    if event.is_err() {
+                        return Poll::Ready(Some(event.err().unwrap()));
                     }
 
                     let event = event.unwrap();
@@ -82,14 +85,14 @@ impl Stream for Timer {
 }
 
 impl Timer {
-    pub fn new(event_monitor: Receiver<SMREvent>, smr: SMR, interval: u64) -> Self {
+    pub fn new(event: Event, smr: SMR, interval: u64) -> Self {
         let (tx, rx) = unbounded_channel();
         Timer {
             config: TimerConfig::new(interval),
-            event: event_monitor,
+            round: INIT_ROUND,
             sender: tx,
             notify: rx,
-            round: INIT_ROUND,
+            event,
             smr,
         }
     }
@@ -169,21 +172,19 @@ impl TimeoutInfo {
 
 #[cfg(test)]
 mod test {
-    use std::{thread, time::Duration};
-
     use futures::stream::StreamExt;
     use tokio::runtime::Runtime;
-    use tokio::sync::{mpsc::unbounded_channel, watch::channel};
+    use tokio::sync::mpsc::unbounded_channel;
 
     use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
-    use crate::types::Hash;
-    use crate::{smr::SMR, timer::Timer};
+    use crate::smr::{Event, SMR};
+    use crate::{timer::Timer, types::Hash};
 
     fn test_timer_trigger(input: SMREvent, output: SMRTrigger) {
         let (trigger_tx, mut trigger_rx) = unbounded_channel();
-        let (event_tx, event_rx) = channel(SMREvent::Commit(Hash::new()));
-        let mut timer = Timer::new(event_rx, SMR::new(trigger_tx), 3000);
-        event_tx.broadcast(input).unwrap();
+        let (mut event_tx, event_rx) = unbounded_channel();
+        let mut timer = Timer::new(Event::new(event_rx), SMR::new(trigger_tx), 3000);
+        event_tx.try_send(input).unwrap();
 
         let rt = Runtime::new().unwrap();
         rt.spawn(async move {
@@ -198,7 +199,7 @@ mod test {
         rt.block_on(async move {
             if let Some(res) = trigger_rx.recv().await {
                 assert_eq!(res, output);
-                event_tx.broadcast(SMREvent::Stop).unwrap();
+                event_tx.try_send(SMREvent::Stop).unwrap();
             }
         })
     }
@@ -240,8 +241,8 @@ mod test {
     #[test]
     fn test_order() {
         let (trigger_tx, mut trigger_rx) = unbounded_channel();
-        let (event_tx, event_rx) = channel(SMREvent::Commit(Hash::new()));
-        let mut timer = Timer::new(event_rx, SMR::new(trigger_tx), 3000);
+        let (mut event_tx, event_rx) = unbounded_channel();
+        let mut timer = Timer::new(Event::new(event_rx), SMR::new(trigger_tx), 3000);
 
         let new_round_event = SMREvent::NewRoundInfo {
             round:         0,
@@ -261,11 +262,9 @@ mod test {
             }
         });
 
-        event_tx.broadcast(new_round_event).unwrap();
-        thread::sleep(Duration::from_micros(300));
-        event_tx.broadcast(prevote_event).unwrap();
-        thread::sleep(Duration::from_micros(300));
-        event_tx.broadcast(precommit_event).unwrap();
+        event_tx.try_send(new_round_event).unwrap();
+        event_tx.try_send(prevote_event).unwrap();
+        event_tx.try_send(precommit_event).unwrap();
 
         rt.block_on(async move {
             let mut count = 1u32;
@@ -282,7 +281,7 @@ mod test {
                     count += 1;
                 } else {
                     assert_eq!(predict, output);
-                    event_tx.broadcast(SMREvent::Stop).unwrap();
+                    event_tx.try_send(SMREvent::Stop).unwrap();
                     return;
                 }
             }

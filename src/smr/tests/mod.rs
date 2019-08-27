@@ -9,7 +9,7 @@ mod proposal_test;
 
 use rand::random;
 use tokio::runtime::Runtime;
-use tokio::sync::{mpsc::unbounded_channel, watch::channel};
+use tokio::sync::mpsc::unbounded_channel;
 
 use crate::smr::smr_types::{Lock, SMREvent, SMRTrigger, Step, TriggerSource, TriggerType};
 use crate::smr::state_machine::StateMachine;
@@ -88,9 +88,10 @@ fn trigger_test(
     should_lock: Option<(u64, Hash)>,
 ) {
     let (mut trigger_tx, trigger_rx) = unbounded_channel::<SMRTrigger>();
-    let (event_tx, mut event_rx) = channel::<SMREvent>(SMREvent::Commit(Hash::new()));
+    let (event_tx, mut event_rx) = unbounded_channel();
+    let (state_tx, _state_rx) = unbounded_channel();
 
-    let mut state_machine = StateMachine::new(event_tx, trigger_rx);
+    let mut state_machine = StateMachine::new((event_tx, state_tx), trigger_rx);
     state_machine.set_status(base.round, base.step, base.proposal_hash, base.lock);
     trigger_tx.try_send(input).unwrap();
 

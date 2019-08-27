@@ -1,4 +1,4 @@
-use tokio::sync::{mpsc::UnboundedReceiver, watch::Sender};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::error::ConsensusError;
 use crate::smr::smr_types::{Lock, SMREvent, SMRTrigger, Step, TriggerSource, TriggerType};
@@ -14,13 +14,13 @@ pub struct StateMachine {
     proposal_hash: Hash,
     lock:          Option<Lock>,
 
-    event:   Sender<SMREvent>,
+    event:   (UnboundedSender<SMREvent>, UnboundedSender<SMREvent>),
     trigger: UnboundedReceiver<SMRTrigger>,
 }
 
 impl StateMachine {
     pub fn new(
-        event_sender: Sender<SMREvent>,
+        event_sender: (UnboundedSender<SMREvent>, UnboundedSender<SMREvent>),
         trigger_receiver: UnboundedReceiver<SMRTrigger>,
     ) -> Self {
         StateMachine {
@@ -203,7 +203,12 @@ impl StateMachine {
 
     fn throw_event(&mut self, event: SMREvent) -> ConsensusResult<()> {
         self.event
-            .broadcast(event.clone())
+            .0
+            .try_send(event.clone())
+            .map_err(|_| ConsensusError::ThrowEventErr(format!("{}", event.clone())))?;
+        self.event
+            .1
+            .try_send(event.clone())
             .map_err(|_| ConsensusError::ThrowEventErr(format!("{}", event)))?;
         Ok(())
     }
