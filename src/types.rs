@@ -127,6 +127,28 @@ pub struct SignedVote {
     pub vote: Vote,
 }
 
+impl SignedVote {
+    /// Get the epoch ID of the signed vote.
+    pub fn get_epoch(&self) -> u64 {
+        self.vote.epoch_id
+    }
+
+    /// Get the round of the signed vote.
+    pub fn get_round(&self) -> u64 {
+        self.vote.round
+    }
+
+    /// Get the hash of the signed vote.
+    pub fn get_hash(&self) -> Hash {
+        self.vote.epoch_hash.clone()
+    }
+
+    /// If the signed vote is a prevote vote.
+    pub fn is_prevote(&self) -> bool {
+        self.vote.vote_type == VoteType::Prevote
+    }
+}
+
 /// An aggregrated signature.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AggregatedSignature {
@@ -149,6 +171,23 @@ pub struct AggregatedVote {
     pub round: u64,
     /// Proposal hash of the vote.
     pub epoch_hash: Hash,
+}
+
+impl AggregatedVote {
+    /// Get the epoch ID of the aggregate vote.
+    pub fn get_epoch(&self) -> u64 {
+        self.epoch_id
+    }
+
+    /// Get the round of the aggregate vote.
+    pub fn get_round(&self) -> u64 {
+        self.round
+    }
+
+    /// If the aggregate vote is a prevote quorum certificate.
+    pub fn is_prevote_qc(&self) -> bool {
+        self.vote_type == VoteType::Prevote
+    }
 }
 
 /// A vote.
