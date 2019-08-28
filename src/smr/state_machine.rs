@@ -48,9 +48,9 @@ impl Stream for StateMachine {
                 };
 
                 if res.is_err() {
-                    return Poll::Ready(Some(res.err().unwrap()));
+                    Poll::Ready(Some(res.err().unwrap()))
                 } else {
-                    return Poll::Ready(None);
+                    Poll::Ready(None)
                 }
             }
         }
