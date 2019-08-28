@@ -104,11 +104,10 @@ fn trigger_test(
             return;
         }
 
-        if should_lock.is_some() {
+        if let Some(lock) = should_lock {
             let self_lock = state_machine.get_lock().unwrap();
-            let should_lock = should_lock.unwrap();
-            assert_eq!(self_lock.round, should_lock.0);
-            assert_eq!(self_lock.hash, should_lock.1);
+            assert_eq!(self_lock.round, lock.0);
+            assert_eq!(self_lock.hash, lock.1);
         } else {
             assert!(state_machine.get_lock().is_none());
         }
