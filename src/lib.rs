@@ -1,10 +1,6 @@
 //! Overlord Consensus Protocol
 
 #![deny(missing_docs)]
-// Remove this clippy bug with async await is resolved.
-// ISSUE: https://github.com/rust-lang/rust-clippy/issues/3988
-#![allow(clippy::needless_lifetimes)]
-#![feature(async_await)]
 
 /// A module that impl rlp encodable and decodable trait
 /// for types that need to save wal.
