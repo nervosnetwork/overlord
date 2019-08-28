@@ -8,7 +8,11 @@ mod state_machine;
 #[cfg(test)]
 mod tests;
 
-use tokio::sync::{mpsc::UnboundedSender, watch::Receiver};
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
+use futures::stream::{Stream, StreamExt};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
 use crate::smr::state_machine::StateMachine;
@@ -29,6 +33,10 @@ pub struct SMR {
 }
 
 impl SMR {
+    pub fn new(sender: UnboundedSender<SMRTrigger>) -> Self {
+        SMR { tx: sender }
+    }
+
     /// A function to touch off SMR trigger gate.
     pub fn trigger(&mut self, gate: SMRTrigger) -> ConsensusResult<()> {
         let trigger_type = gate.trigger_type.clone().to_string();
@@ -54,11 +62,31 @@ impl SMR {
 }
 
 ///
+#[derive(Debug)]
 pub struct Event {
-    rx: Receiver<SMREvent>,
+    rx: UnboundedReceiver<SMREvent>,
+}
+
+impl Stream for Event {
+    type Item = ConsensusResult<SMREvent>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+        match self.rx.poll_next_unpin(cx) {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(msg) => {
+                Poll::Ready(Some(msg.ok_or_else(|| {
+                    ConsensusError::MonitorEventErr("Sender has dropped".to_string())
+                })))
+            }
+        }
+    }
 }
 
 impl Event {
+    pub fn new(receiver: UnboundedReceiver<SMREvent>) -> Self {
+        Event { rx: receiver }
+    }
+
     pub async fn recv(&mut self) -> ConsensusResult<SMREvent> {
         if let Some(event) = self.rx.recv().await {
             Ok(event)
