@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+#[cfg(test)]
 use std::cmp::{Eq, PartialEq};
 
 use derive_more::Display;
@@ -39,11 +39,18 @@ pub enum ConsensusError {
     ///
     #[display(fmt = "Timer error {}", _0)]
     TimerErr(String),
+    ///
+    #[display(fmt = "Multiple proposal in epoch ID {}, round {}", _0, _1)]
+    MultiProposal(u64, u64),
+    ///
+    #[display(fmt = "Storage error {}", _0)]
+    StorageErr(String),
     /// Other error.
     #[display(fmt = "Other error {}", _0)]
     Other(String),
 }
 
+#[cfg(test)]
 impl PartialEq for ConsensusError {
     fn eq(&self, other: &Self) -> bool {
         use self::ConsensusError::*;
@@ -67,4 +74,5 @@ impl PartialEq for ConsensusError {
     }
 }
 
+#[cfg(test)]
 impl Eq for ConsensusError {}
