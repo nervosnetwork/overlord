@@ -289,7 +289,7 @@ impl RoundCollector {
     }
 }
 
-/// A struct includes precoteQC and precommitQC in a round.
+/// A struct includes prevoteQC and precommitQC in a round.
 struct QuorumCertificate {
     prevote:   Option<AggregatedVote>,
     precommit: Option<AggregatedVote>,
