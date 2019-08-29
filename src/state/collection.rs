@@ -51,6 +51,7 @@ where
         )))
     }
 
+    /// Remove items that epoch ID is less than `till`.
     pub fn flush(&mut self, till: u64) {
         self.0.split_off(&till);
     }
@@ -182,7 +183,7 @@ impl VoteCollector {
             })
     }
 
-    /// Clear the outdate things till the given epoch ID.
+    /// Remove items that epoch ID is less than `till`.
     pub fn flush(&mut self, till: u64) {
         self.0.split_off(&till);
     }
@@ -288,7 +289,7 @@ impl RoundCollector {
     }
 }
 
-/// A struct includes precoteQC and precommitQC in a round.
+/// A struct includes prevoteQC and precommitQC in a round.
 struct QuorumCertificate {
     prevote:   Option<AggregatedVote>,
     precommit: Option<AggregatedVote>,
@@ -345,14 +346,12 @@ impl Votes {
     }
 
     fn get_votes(&mut self, hash: &Hash) -> Option<Vec<SignedVote>> {
-        let mut res = Vec::new();
-        if let Some(address) = self.by_hash.get(hash) {
-            for addr in address.iter() {
-                res.push(self.by_address.get(addr).unwrap().to_owned());
-            }
-            return Some(res);
-        }
-        None
+        self.by_hash.get(hash).and_then(|addresses| {
+            addresses
+                .iter()
+                .map(|addr| self.by_address.get(addr).cloned())
+                .collect::<Option<Vec<_>>>()
+        })
     }
 }
 
