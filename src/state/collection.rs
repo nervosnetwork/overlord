@@ -21,19 +21,18 @@ where
         epoch_id: u64,
         round: u64,
         proposal: SignedProposal<T>,
-        hash: Hash,
     ) -> ConsensusResult<()> {
         self.0
             .entry(epoch_id)
             .or_insert_with(ProposalRoundCollector::new)
-            .insert(round, ProposalWithHash::new(proposal, hash))
+            .insert(round, proposal)
             .map_err(|_| ConsensusError::MultiProposal(epoch_id, round))?;
         Ok(())
     }
 
-    pub fn get(&self, epoch_id: u64, round: u64) -> ConsensusResult<(SignedProposal<T>, Hash)> {
+    pub fn get(&self, epoch_id: u64, round: u64) -> ConsensusResult<SignedProposal<T>> {
         if let Some(round_collector) = self.0.get(&epoch_id) {
-            let res = round_collector
+            return Ok(round_collector
                 .get(round)
                 .map_err(|_| {
                     ConsensusError::StorageErr(format!(
@@ -41,8 +40,7 @@ where
                         epoch_id, round
                     ))
                 })?
-                .to_owned();
-            return Ok((res.proposal, res.hash));
+                .to_owned());
         }
 
         Err(ConsensusError::StorageErr(format!(
@@ -60,7 +58,7 @@ where
 /// A struct to collect signed proposals in each round. It stores each round and the corresponding
 /// signed proposals in a `HashMap`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct ProposalRoundCollector<T: Codec>(HashMap<u64, ProposalWithHash<T>>);
+struct ProposalRoundCollector<T: Codec>(HashMap<u64, SignedProposal<T>>);
 
 impl<T> ProposalRoundCollector<T>
 where
@@ -70,7 +68,7 @@ where
         ProposalRoundCollector(HashMap::new())
     }
 
-    fn insert(&mut self, round: u64, proposal: ProposalWithHash<T>) -> ConsensusResult<()> {
+    fn insert(&mut self, round: u64, proposal: SignedProposal<T>) -> ConsensusResult<()> {
         if self.0.get(&round).is_some() {
             return Err(ConsensusError::Other("_".to_string()));
         }
@@ -78,31 +76,16 @@ where
         Ok(())
     }
 
-    fn get(&self, round: u64) -> ConsensusResult<&ProposalWithHash<T>> {
+    fn get(&self, round: u64) -> ConsensusResult<&SignedProposal<T>> {
         self.0
             .get(&round)
             .ok_or_else(|| ConsensusError::StorageErr("_".to_string()))
     }
 }
 
-/// A signed proposal with its hash.
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct ProposalWithHash<T: Codec> {
-    proposal: SignedProposal<T>,
-    hash:     Hash,
-}
-
-impl<T> ProposalWithHash<T>
-where
-    T: Codec,
-{
-    pub fn new(proposal: SignedProposal<T>, hash: Hash) -> Self {
-        ProposalWithHash { proposal, hash }
-    }
-}
-
 /// A struct to collect votes in each epoch. It stores each epoch and the corresponding votes in a
 /// `BTreeMap`. The votes includes aggregated vote and signed vote.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VoteCollector(BTreeMap<u64, VoteRoundCollector>);
 
 impl VoteCollector {
@@ -191,6 +174,7 @@ impl VoteCollector {
 
 /// A struct to collect votes in each round.  It stores each round votes and the corresponding votes
 /// in a `HashMap`.
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct VoteRoundCollector(HashMap<u64, RoundCollector>);
 
 impl VoteRoundCollector {
@@ -243,6 +227,7 @@ impl VoteRoundCollector {
 }
 
 /// A round collector contains a qc and prevote votes and precommit votes.
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct RoundCollector {
     qc:        QuorumCertificate,
     prevote:   Votes,
@@ -290,6 +275,7 @@ impl RoundCollector {
 }
 
 /// A struct includes prevoteQC and precommitQC in a round.
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct QuorumCertificate {
     prevote:   Option<AggregatedVote>,
     precommit: Option<AggregatedVote>,
@@ -320,6 +306,7 @@ impl QuorumCertificate {
 }
 
 ///
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct Votes {
     by_hash:    HashMap<Hash, Vec<Address>>,
     by_address: HashMap<Address, SignedVote>,

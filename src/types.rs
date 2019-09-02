@@ -72,9 +72,9 @@ impl From<u8> for VoteType {
     }
 }
 
-/// Overlord output messages.
+/// Overlord messages.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum OutputMsg<T: Codec> {
+pub enum OverlordMsg<T: Codec> {
     /// Signed proposal message.
     SignedProposal(SignedProposal<T>),
     /// Signed vote message.
