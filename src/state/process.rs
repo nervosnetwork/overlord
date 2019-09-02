@@ -162,7 +162,7 @@ where
             proposer:   self.address.clone(),
         };
 
-        // **TODO: parallelism**
+        // **TODO: parallelism and write Wal**
         self.function
             .broadcast_to_other(
                 vec![CTX],
@@ -204,7 +204,7 @@ where
             return Ok(());
         }
 
-        // TODO: handle proposal.epoch_id == self.epoch_id - 1 && proposal.round > self.round
+        // **TODO: handle proposal.epoch_id == self.epoch_id - 1 && proposal.round > self.round**
 
         //  Verify proposal signature.
         let proposal = signed_proposal.proposal;
@@ -250,6 +250,7 @@ where
             hash:         proposal.epoch_hash,
             round:        lock_round,
         })?;
+        // **TODO: write Wal**
         Ok(())
     }
 
