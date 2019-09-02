@@ -23,7 +23,11 @@ enum MsgType {
     SignedVote,
 }
 
-///
+/// Overlord state struct. It maintains the local state of the node, and monitor the SMR event. The
+/// `proposals` is used to cache the signed proposals that are with higher epoch ID or round. The
+/// `hash_with_epoch` field saves hash and its corresponding epoch with the current epoch ID and
+/// round. The `votes` field saves all signed votes and quorum certificates which epoch ID is higher
+/// than `current_epoch - 1`.
 #[derive(Debug)]
 pub struct Overlord<T: Codec, F: Consensus<T>, C: Crypto> {
     rx:    UnboundedReceiver<OverlordMsg<T>>,
