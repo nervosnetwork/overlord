@@ -7,6 +7,7 @@ mod prevote_test;
 /// Test proposal trigger process.
 mod proposal_test;
 
+use futures::StreamExt;
 use rand::random;
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc::unbounded_channel;
@@ -97,9 +98,9 @@ fn trigger_test(
 
     let rt = Runtime::new().unwrap();
     rt.block_on(async {
-        let res = state_machine.process_events().await;
-        if res.is_err() {
-            assert_eq!(Err(err.unwrap()), res);
+        let res = state_machine.next().await;
+        if res.is_some() {
+            assert_eq!(err, res);
             return;
         }
 

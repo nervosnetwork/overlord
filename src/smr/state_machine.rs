@@ -1,3 +1,7 @@
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
+use futures::stream::Stream;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::error::ConsensusError;
@@ -18,6 +22,41 @@ pub struct StateMachine {
     trigger: UnboundedReceiver<SMRTrigger>,
 }
 
+impl Stream for StateMachine {
+    type Item = ConsensusError;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+        match Stream::poll_next(Pin::new(&mut self.trigger), cx) {
+            Poll::Pending => Poll::Pending,
+
+            Poll::Ready(msg) => {
+                if msg.is_none() {
+                    return Poll::Ready(Some(ConsensusError::TriggerSMRErr(
+                        "Channel dropped".to_string(),
+                    )));
+                }
+
+                let msg = msg.unwrap();
+                let trigger_type = msg.trigger_type.clone();
+                let res = match trigger_type {
+                    TriggerType::NewEpoch(epoch_id) => self.handle_new_epoch(epoch_id, msg.source),
+                    TriggerType::Proposal => self.handle_proposal(msg.hash, msg.round, msg.source),
+                    TriggerType::PrevoteQC => self.handle_prevote(msg.hash, msg.round, msg.source),
+                    TriggerType::PrecommitQC => {
+                        self.handle_precommit(msg.hash, msg.round, msg.source)
+                    }
+                };
+
+                if res.is_err() {
+                    Poll::Ready(Some(res.err().unwrap()))
+                } else {
+                    Poll::Ready(None)
+                }
+            }
+        }
+    }
+}
+
 impl StateMachine {
     pub fn new(
         event_sender: (UnboundedSender<SMREvent>, UnboundedSender<SMREvent>),
@@ -32,27 +71,6 @@ impl StateMachine {
             trigger:       trigger_receiver,
             event:         event_sender,
         }
-    }
-
-    pub async fn process_events(&mut self) -> ConsensusResult<()> {
-        if let Some(trigger) = self.trigger.recv().await {
-            let trigger_type = trigger.trigger_type.clone();
-            match trigger_type {
-                TriggerType::NewEpoch(epoch_id) => {
-                    self.handle_new_epoch(epoch_id, trigger.source)?;
-                }
-                TriggerType::Proposal => {
-                    self.handle_proposal(trigger.hash, trigger.round, trigger.source)?;
-                }
-                TriggerType::PrevoteQC => {
-                    self.handle_prevote(trigger.hash, trigger.round, trigger.source)?;
-                }
-                TriggerType::PrecommitQC => {
-                    self.handle_precommit(trigger.hash, trigger.round, trigger.source)?;
-                }
-            }
-        }
-        Ok(())
     }
 
     /// Handle a new epoch trigger. If new epoch ID is higher than current, goto a new epoch and
@@ -87,7 +105,7 @@ impl StateMachine {
         lock_round: Option<u64>,
         _source: TriggerSource,
     ) -> ConsensusResult<()> {
-        if self.step != Step::Propose {
+        if self.step > Step::Propose {
             return Ok(());
         }
 
@@ -126,9 +144,9 @@ impl StateMachine {
         &mut self,
         prevote_hash: Hash,
         prevote_round: Option<u64>,
-        _source: TriggerSource,
+        source: TriggerSource,
     ) -> ConsensusResult<()> {
-        if self.step != Step::Prevote {
+        if self.step > Step::Prevote {
             return Ok(());
         }
 
@@ -137,15 +155,20 @@ impl StateMachine {
             return Err(ConsensusError::PrevoteErr("No vote round".to_string()));
         }
 
-        // update PoLC
-        let vote_round = prevote_round.unwrap();
-        self.check_round(vote_round)?;
-        if let Some(lock) = self.lock.clone() {
-            if vote_round > lock.round {
+        // A prevote QC from timer which means prevote timeout can not lead to unlock. Therefore,
+        // only prevote QCs from state will update the PoLC. If the prevote QC is from timer, throw
+        // precommit vote event directly.
+        if source == TriggerSource::State {
+            // update PoLC
+            let vote_round = prevote_round.unwrap();
+            self.check_round(vote_round)?;
+            if let Some(lock) = self.lock.clone() {
+                if vote_round > lock.round {
+                    self.update_polc(prevote_hash.clone(), vote_round);
+                }
+            } else {
                 self.update_polc(prevote_hash.clone(), vote_round);
             }
-        } else {
-            self.update_polc(prevote_hash.clone(), vote_round);
         }
 
         // throw precommit vote event
@@ -164,10 +187,6 @@ impl StateMachine {
         precommit_round: Option<u64>,
         _source: TriggerSource,
     ) -> ConsensusResult<()> {
-        if self.step != Step::Precommit {
-            return Ok(());
-        }
-
         self.check()?;
         if precommit_round.is_none() {
             return Err(ConsensusError::PrevoteErr("No vote round".to_string()));
