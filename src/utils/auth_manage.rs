@@ -48,6 +48,7 @@ impl AuthorityManage {
     }
 
     /// Get a vote weight that correspond to the given address.
+    /// **TODO: simplify**
     pub fn get_vote_weight(&self, addr: &Address, is_current: bool) -> ConsensusResult<u8> {
         if is_current {
             self.current.get_vote_weight(addr)
@@ -84,6 +85,39 @@ impl AuthorityManage {
                 "There is no authority list cache of last epoch".to_string(),
             ))
         }
+    }
+
+    /// **TODO: add unit test**
+    pub fn contains(&self, address: &Address, is_current: bool) -> ConsensusResult<bool> {
+        if is_current {
+            Ok(self.current.contains(address))
+        } else if let Some(auth_list) = self.last.clone() {
+            Ok(auth_list.contains(address))
+        } else {
+            Err(ConsensusError::Other(
+                "There is no authority list cache of last epoch".to_string(),
+            ))
+        }
+    }
+
+    pub fn get_vote_weight_sum(&self, is_current: bool) -> ConsensusResult<u64> {
+        if is_current {
+            Ok(self.current.get_vote_weight_sum())
+        } else if let Some(auth_list) = self.last.clone() {
+            Ok(auth_list.get_vote_weight_sum())
+        } else {
+            Err(ConsensusError::Other(
+                "There is no authority list cache of last epoch".to_string(),
+            ))
+        }
+    }
+
+    pub fn current_len(&self) -> usize {
+        self.current.address.len()
+    }
+
+    pub fn get_addres_ref(&self) -> &Vec<Address> {
+        &self.current.address
     }
 }
 
@@ -173,6 +207,16 @@ impl EpochAuthorityManage {
         }
 
         Ok(acc * 3 > self.vote_weight_sum * 2)
+    }
+
+    /// **TODO: add unit test**
+    fn contains(&self, address: &Address) -> bool {
+        self.address.contains(address)
+    }
+
+    ///
+    fn get_vote_weight_sum(&self) -> u64 {
+        self.vote_weight_sum
     }
 
     /// Clear the EpochAuthorityManage, removing all values.

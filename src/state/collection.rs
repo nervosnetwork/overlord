@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::types::{Address, AggregatedVote, Hash, SignedProposal, SignedVote, VoteType};
 use crate::{error::ConsensusError, Codec, ConsensusResult};
@@ -117,7 +117,7 @@ impl VoteCollector {
         epoch: u64,
         round: u64,
         vote_type: VoteType,
-    ) -> ConsensusResult<&HashMap<Hash, Vec<Address>>> {
+    ) -> ConsensusResult<&HashMap<Hash, HashSet<Address>>> {
         self.0
             .get_mut(&epoch)
             .and_then(|vrc| vrc.get_vote_map(round, vote_type.clone()))
@@ -200,7 +200,7 @@ impl VoteRoundCollector {
         &mut self,
         round: u64,
         vote_type: VoteType,
-    ) -> Option<&HashMap<Hash, Vec<Address>>> {
+    ) -> Option<&HashMap<Hash, HashSet<Address>>> {
         self.0.get_mut(&round).and_then(|rc| {
             let res = rc.get_vote_map(vote_type);
             if res.is_empty() {
@@ -255,7 +255,7 @@ impl RoundCollector {
         self.qc.set_quorum_certificate(qc);
     }
 
-    fn get_vote_map(&self, vote_type: VoteType) -> &HashMap<Hash, Vec<Address>> {
+    fn get_vote_map(&self, vote_type: VoteType) -> &HashMap<Hash, HashSet<Address>> {
         match vote_type {
             VoteType::Prevote => self.prevote.get_vote_map(),
             VoteType::Precommit => self.precommit.get_vote_map(),
@@ -308,7 +308,7 @@ impl QuorumCertificate {
 ///
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Votes {
-    by_hash:    HashMap<Hash, Vec<Address>>,
+    by_hash:    HashMap<Hash, HashSet<Address>>,
     by_address: HashMap<Address, SignedVote>,
 }
 
@@ -323,12 +323,12 @@ impl Votes {
     fn insert(&mut self, hash: Hash, addr: Address, vote: SignedVote) {
         self.by_hash
             .entry(hash)
-            .or_insert_with(Vec::new)
-            .push(addr.clone());
+            .or_insert_with(HashSet::new)
+            .insert(addr.clone());
         self.by_address.entry(addr).or_insert(vote);
     }
 
-    fn get_vote_map(&self) -> &HashMap<Hash, Vec<Address>> {
+    fn get_vote_map(&self) -> &HashMap<Hash, HashSet<Address>> {
         &self.by_hash
     }
 

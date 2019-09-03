@@ -2,6 +2,7 @@ use std::cmp::{Ord, Ordering, PartialOrd};
 
 use bytes::Bytes;
 
+use crate::smr::smr_types::TriggerType;
 use crate::Codec;
 
 /// Address type.
@@ -56,8 +57,17 @@ pub enum VoteType {
 impl Into<u8> for VoteType {
     fn into(self) -> u8 {
         match self {
-            VoteType::Prevote => 0,
-            VoteType::Precommit => 1,
+            VoteType::Prevote => 1,
+            VoteType::Precommit => 2,
+        }
+    }
+}
+
+impl Into<TriggerType> for VoteType {
+    fn into(self) -> TriggerType {
+        match self {
+            VoteType::Prevote => TriggerType::PrevoteQC,
+            VoteType::Precommit => TriggerType::PrecommitQC,
         }
     }
 }
