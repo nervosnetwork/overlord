@@ -181,6 +181,8 @@ pub struct AggregatedVote {
     pub round: u64,
     /// Proposal hash of the vote.
     pub epoch_hash: Hash,
+    ///
+    pub leader: Address,
 }
 
 impl AggregatedVote {

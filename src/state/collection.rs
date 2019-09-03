@@ -406,6 +406,7 @@ mod test {
             round,
             vote_type,
             epoch_hash: gen_hash(),
+            leader: gen_address(),
         }
     }
 

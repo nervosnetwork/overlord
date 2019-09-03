@@ -131,19 +131,20 @@ impl Decodable for AggregatedSignature {
 impl Encodable for AggregatedVote {
     fn rlp_append(&self, s: &mut RlpStream) {
         let vote_type: u8 = self.vote_type.clone().into();
-        s.begin_list(5)
+        s.begin_list(6)
             .append(&self.signature)
             .append(&vote_type)
             .append(&self.epoch_id)
             .append(&self.round)
-            .append(&self.epoch_hash.to_vec());
+            .append(&self.epoch_hash.to_vec())
+            .append(&self.leader.to_vec());
     }
 }
 
 impl Decodable for AggregatedVote {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         match r.prototype()? {
-            Prototype::List(5) => {
+            Prototype::List(6) => {
                 let signature: AggregatedSignature = r.val_at(0)?;
                 let tmp: u8 = r.val_at(1)?;
                 let vote_type = VoteType::from(tmp);
@@ -151,12 +152,15 @@ impl Decodable for AggregatedVote {
                 let round: u64 = r.val_at(3)?;
                 let tmp: Vec<u8> = r.val_at(4)?;
                 let epoch_hash = Hash::from(tmp);
+                let tmp: Vec<u8> = r.val_at(5)?;
+                let leader = Address::from(tmp);
                 Ok(AggregatedVote {
                     signature,
                     vote_type,
                     epoch_id,
                     round,
                     epoch_hash,
+                    leader,
                 })
             }
             _ => Err(DecoderError::RlpInconsistentLengthAndData),
@@ -497,6 +501,7 @@ mod test {
                 epoch_id:   random::<u64>(),
                 round:      random::<u64>(),
                 epoch_hash: gen_hash(),
+                leader:     gen_address(),
             }
         }
     }

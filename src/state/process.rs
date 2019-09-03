@@ -47,7 +47,7 @@ pub struct Overlord<T: Codec, F: Consensus<T>, C: Crypto> {
     leader_address:       Address,
     proof:                Option<Proof>,
     last_commit_round:    Option<u64>,
-    last_commit_proposal: Option<u64>,
+    last_commit_proposal: Option<Hash>,
 
     function: F,
     util:     C,
@@ -113,7 +113,7 @@ where
         // has, then handle it.
         if !self.is_proposer()? {
             if let Ok(signed_proposal) = self.proposals.get(self.epoch_id, self.round) {
-                return self.handle_signed_proposal(signed_proposal);
+                return self.handle_signed_proposal(signed_proposal).await;
             }
             return Ok(());
         }
@@ -181,7 +181,7 @@ where
 
     /// This function only handle signed proposals which epoch ID and round are equal to current.
     /// Others will be ignored or storaged in the proposal collector.
-    fn handle_signed_proposal(
+    async fn handle_signed_proposal(
         &mut self,
         signed_proposal: SignedProposal<T>,
     ) -> ConsensusResult<()> {
@@ -203,17 +203,37 @@ where
             return Ok(());
         }
 
-        // TODO: handle proposal.epoch_id == self.epoch_id - 1 && proposal.round > self.round
-
         //  Verify proposal signature.
         let proposal = signed_proposal.proposal;
         let signature = signed_proposal.signature;
+        self.verify_address(&proposal.proposer, epoch_id == self.epoch_id)?;
         self.verify_signature(
             self.util.hash(Bytes::from(encode(&proposal))),
             signature,
             &proposal.proposer,
             MsgType::SignedProposal,
         )?;
+
+        // Deal with proposal's epoch ID is equal to the current epoch ID - 1 and round is higher
+        // than the last commit round. Retransmit prevote vote to the last commit proposal.
+        if epoch_id == self.epoch_id - 1 {
+            if let Some((last_round, last_proposal)) = self.last_commit_msg()? {
+                if round <= last_round {
+                    return Ok(());
+                }
+
+                self.retransmit_vote(
+                    last_round,
+                    last_proposal,
+                    VoteType::Prevote,
+                    proposal.proposer,
+                )
+                .await?;
+                return Ok(());
+            } else {
+                return Ok(());
+            }
+        }
 
         // If the signed proposal is with a lock, check the lock round and the QC then trigger it to
         // SMR. Otherwise, touch off SMR directly.
@@ -223,7 +243,7 @@ where
                 proposal.epoch_id == self.epoch_id,
             )? {
                 return Err(ConsensusError::AggregatedSignatureErr(format!(
-                    "Aggregated signature below two thrids, proposal of epoch ID {:?}, round {:?}",
+                    "Aggregrated signature below two thrids, proposal of epoch ID {:?}, round {:?}",
                     proposal.epoch_id, proposal.round
                 )));
             }
@@ -363,8 +383,8 @@ where
             return Ok(());
         }
 
-        // Build the quorum certificate needs to aggregated signatures into an aggregated signature
-        // besides the address bitmap.
+        // Build the quorum certificate needs to aggregrated signatures into an aggregrated
+        // signature besides the address bitmap.
         let vote_hash = vote_hash.unwrap();
         let votes = self
             .votes
@@ -392,6 +412,7 @@ where
             epoch_id:   self.epoch_id,
             round:      self.round,
             epoch_hash: vote_hash.clone(),
+            leader:     self.address.clone(),
         };
 
         self.votes.set_qc(qc.clone());
@@ -405,6 +426,20 @@ where
         Ok(())
     }
 
+    /// The main process to handle aggregrated votes contains four cases.
+    ///
+    /// 1. The QC is later than current which means the QC's epoch ID is higher than current or is
+    /// equal to the current and the round is higher than current. In this cases, check the
+    /// aggregrated signature subject to availability, and save it.
+    ///
+    /// 2. The QC is equal to the current epoch ID and round. In this case, check the aggregrated
+    /// signature, then save it, and touch off SMR trigger.
+    ///
+    /// 3. The QC is equal to the `current epoch ID - 1` and the round is higher than the last
+    /// commit round. In this case, check the aggregrated signature firstly. If the type of the QC
+    /// is precommit, ignore it. Otherwise, retransmit precommit vote to the last commit proposal.
+    ///
+    /// 4. Other cases, return `Ok(())` directly.
     async fn handle_aggregate_vote(
         &mut self,
         aggregrated_vote: AggregatedVote,
@@ -440,9 +475,61 @@ where
             return Ok(());
         }
 
+        // Deal with QC's epoch ID is equal to the current epoch ID - 1 and round is higher than the
+        // last commit round. If the QC is a prevoteQC, ignore it. Retransmit precommit vote to the
+        // last commit proposal.
+        if epoch_id == self.epoch_id - 1 {
+            if let Some((last_round, last_proposal)) = self.last_commit_msg()? {
+                if round <= last_round || qc_type == VoteType::Precommit {
+                    return Ok(());
+                }
+
+                self.retransmit_vote(
+                    last_round,
+                    last_proposal,
+                    VoteType::Precommit,
+                    aggregrated_vote.leader,
+                )
+                .await?;
+                return Ok(());
+            } else {
+                return Ok(());
+            }
+        }
+
+        let qc_hash = aggregrated_vote.epoch_hash.clone();
+        self.votes.set_qc(aggregrated_vote);
+        self.state_machine.trigger(SMRTrigger {
+            trigger_type: qc_type.into(),
+            source:       TriggerSource::State,
+            hash:         qc_hash,
+            round:        Some(round),
+        })?;
         Ok(())
     }
 
+    /// Check last commit round and last commit proposal.
+    fn last_commit_msg(&self) -> ConsensusResult<Option<(u64, Hash)>> {
+        if self
+            .last_commit_round
+            .is_some()
+            .bitxor(self.last_commit_proposal.is_some())
+        {
+            return Err(ConsensusError::Other(
+                "Last commit things conflict".to_string(),
+            ));
+        }
+
+        if self.last_commit_round.is_none() {
+            return Ok(None);
+        }
+        let last_round = self.last_commit_round.clone().unwrap();
+        let last_proposal = self.last_commit_proposal.clone().unwrap();
+        Ok(Some((last_round, last_proposal)))
+    }
+
+    /// If self is not the proposer of the epoch ID and round, set leader address as the proposer
+    /// address.
     fn is_proposer(&mut self) -> ConsensusResult<bool> {
         let proposer = self
             .authority
@@ -544,6 +631,32 @@ where
     async fn transmit(&self, msg: OverlordMsg<T>) -> ConsensusResult<()> {
         self.function
             .transmit_to_relayer(vec![CTX], self.leader_address.clone(), msg)
+            .await
+            .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
+        Ok(())
+    }
+
+    async fn retransmit_vote(
+        &self,
+        last_round: u64,
+        hash: Hash,
+        v_type: VoteType,
+        leader_address: Address,
+    ) -> ConsensusResult<()> {
+        let vote = Vote {
+            epoch_id:   self.epoch_id - 1,
+            round:      last_round,
+            epoch_hash: hash,
+            voter:      self.address.clone(),
+            vote_type:  v_type,
+        };
+
+        self.function
+            .transmit_to_relayer(
+                vec![CTX],
+                leader_address,
+                OverlordMsg::SignedVote(self.sign_vote(vote)?),
+            )
             .await
             .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
         Ok(())
