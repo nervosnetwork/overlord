@@ -272,11 +272,33 @@ where
         Ok(())
     }
 
+    async fn handle_precommit_vote(&mut self, hash: Hash) -> ConsensusResult<()> {
+        let precommit = Vote {
+            epoch_id:   self.epoch_id,
+            round:      self.round,
+            vote_type:  VoteType::Precommit,
+            epoch_hash: hash,
+            voter:      self.address.clone(),
+        };
+
+        let signed_vote = self.sign_vote(precommit)?;
+        // **TODO: write Wal**
+        if self.is_leader {
+            self.votes
+                .insert_vote(signed_vote.get_hash(), signed_vote, self.address.clone());
+        } else {
+            self.transmit(OverlordMsg::SignedVote(signed_vote)).await?;
+        }
+        Ok(())
+    }
+
     /// The main process of handle signed vote is that only handle those epoch ID and round are both
-    /// equal to the current. The lower votes will be ignored directly. For the higher votes,
-    /// check the signature and save them in the vote collector. Whenevet the current vote is
-    /// received, a statistic is made to check if the sum of the voting weights corresponding to the
-    /// hash exceeds the threshold.
+    /// equal to the current. The lower votes will be ignored directly even if the epoch ID is equal
+    /// to the `current epoch ID - 1` and the round is higher than the current round. The reason is
+    /// that the effective leader must in the lower epoch, and the task of handling signed votes
+    /// will be done by the leader. For the higher votes, check the signature and save them in
+    /// the vote collector. Whenevet the current vote is received, a statistic is made to check
+    /// if the sum of the voting weights corresponding to the hash exceeds the threshold.
     async fn handle_signed_vote(&mut self, signed_vote: SignedVote) -> ConsensusResult<()> {
         let epoch_id = signed_vote.get_epoch();
         let round = signed_vote.get_round();
@@ -387,8 +409,37 @@ where
         &mut self,
         aggregrated_vote: AggregatedVote,
     ) -> ConsensusResult<()> {
-        let _epoch_id = aggregrated_vote.get_epoch();
-        let _round = aggregrated_vote.get_round();
+        let epoch_id = aggregrated_vote.get_epoch();
+        let round = aggregrated_vote.get_round();
+        let qc_type = if aggregrated_vote.is_prevote_qc() {
+            VoteType::Prevote
+        } else {
+            VoteType::Precommit
+        };
+
+        // If the vote epoch ID is lower than the current epoch ID - 1, or the vote epoch ID
+        // is equal to the current epoch ID and the vote round is lower than the current round,
+        // ignore it directly.
+        if epoch_id < self.epoch_id - 1 || (epoch_id == self.epoch_id && round < self.round) {
+            return Ok(());
+        } else if epoch_id > self.epoch_id {
+            self.votes.set_qc(aggregrated_vote);
+            return Ok(());
+        }
+
+        // Verify aggregrated signature and check the sum of the voting weights corresponding to the
+        // hash exceeds the threshold.
+        self.verify_aggregated_signature(
+            aggregrated_vote.signature.clone(),
+            epoch_id,
+            qc_type.clone(),
+        )?;
+
+        if epoch_id == self.epoch_id && round > self.round {
+            self.votes.set_qc(aggregrated_vote);
+            return Ok(());
+        }
+
         Ok(())
     }
 
@@ -463,16 +514,18 @@ where
             .authority
             .is_above_threshold(signature.address_bitmap.clone(), epoch == self.epoch_id)?
         {
-            return Err(ConsensusError::PrevoteErr(format!(
-                "Prevote QC of epoch {}, round {} is not above threshold",
-                self.epoch_id, self.round
+            return Err(ConsensusError::AggregatedSignatureErr(format!(
+                "{:?} QC of epoch {}, round {} is not above threshold",
+                vote_type.clone(),
+                self.epoch_id,
+                self.round
             )));
         }
 
         self.util
             .verify_aggregated_signature(signature)
             .map_err(|err| {
-                ConsensusError::CryptoErr(format!(
+                ConsensusError::AggregatedSignatureErr(format!(
                     "{:?} aggregrated signature error {:?}",
                     vote_type, err
                 ))
@@ -480,6 +533,7 @@ where
         Ok(())
     }
 
+    /// Check whether the given address is included in the corresponding authority list.
     fn verify_address(&self, address: &Address, is_current: bool) -> ConsensusResult<()> {
         if !self.authority.contains(address, is_current)? {
             return Err(ConsensusError::InvalidAddress);
@@ -501,5 +555,31 @@ where
             .await
             .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use bit_vec::BitVec;
+    use bytes::Bytes;
+    use rand::random;
+
+    #[test]
+    fn test_bitmap() {
+        let len = random::<u8>() as usize;
+        let bitmap = (0..len).map(|_| random::<bool>()).collect::<Vec<_>>();
+        let mut bv = BitVec::from_elem(len, false);
+        for (index, is_vote) in bitmap.iter().enumerate() {
+            if *is_vote {
+                bv.set(index, true);
+            }
+        }
+
+        let tmp = Bytes::from(bv.to_bytes());
+        let output = BitVec::from_bytes(tmp.as_ref());
+
+        for item in output.iter().zip(bitmap.iter()) {
+            assert_eq!(item.0, *item.1);
+        }
     }
 }

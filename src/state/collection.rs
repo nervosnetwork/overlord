@@ -344,7 +344,7 @@ impl Votes {
 
 #[cfg(test)]
 mod test {
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
 
     use bytes::Bytes;
     use rand::random;
@@ -415,6 +415,7 @@ mod test {
 
         let mut map = HashMap::new();
         let mut vec = Vec::new();
+        let mut set = HashSet::new();
 
         let hash_01 = gen_hash();
         let hash_02 = gen_hash();
@@ -427,7 +428,8 @@ mod test {
 
         votes.insert_vote(hash_01.clone(), signed_vote_01.clone(), addr_01.clone());
 
-        map.insert(hash_01.clone(), vec![addr_01.clone()]);
+        set.insert(addr_01.clone());
+        map.insert(hash_01.clone(), set);
         vec.push(signed_vote_01);
 
         assert_eq!(votes.get_vote_map(1, 0, VoteType::Prevote), Ok(&map));
@@ -444,10 +446,16 @@ mod test {
         assert!(votes.get_votes(1, 0, VoteType::Prevote, &hash_02).is_err());
 
         votes.insert_vote(hash_01.clone(), signed_vote_02.clone(), addr_02.clone());
-        map.get_mut(&hash_01).unwrap().push(addr_02.clone());
+        map.get_mut(&hash_01).unwrap().insert(addr_02.clone());
         vec.push(signed_vote_02);
 
         assert_eq!(votes.get_vote_map(1, 0, VoteType::Prevote), Ok(&map));
-        assert_eq!(votes.get_votes(1, 0, VoteType::Prevote, &hash_01), Ok(vec));
+        let res = votes
+            .get_votes(1, 0, VoteType::Prevote, &hash_01)
+            .unwrap()
+            .iter()
+            .cloned()
+            .collect::<HashSet<_>>();
+        assert_eq!(res, vec.iter().cloned().collect::<HashSet<_>>());
     }
 }

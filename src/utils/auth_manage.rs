@@ -186,13 +186,8 @@ impl EpochAuthorityManage {
     ///
     fn is_above_threshold(&self, bitmap: Bytes) -> ConsensusResult<bool> {
         let bitmap = BitVec::from_bytes(&bitmap);
-        if bitmap.len() != self.address.len() {
-            return Err(ConsensusError::AggregatedSignatureErr(
-                "Bitmap length error".to_string(),
-            ));
-        }
-
         let mut acc = 0u64;
+
         for node in bitmap.iter().zip(self.address.iter()) {
             if node.0 {
                 if let Some(weight) = self.vote_weight_map.get(node.1) {

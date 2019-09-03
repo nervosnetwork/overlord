@@ -46,7 +46,7 @@ impl From<u8> for Role {
 
 /// Vote or QC types. Prevote and precommit QC will promise the rightness and the final consistency
 /// of overlord consensus protocol.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum VoteType {
     /// Prevote vote or QC.
     Prevote,
@@ -75,8 +75,8 @@ impl Into<TriggerType> for VoteType {
 impl From<u8> for VoteType {
     fn from(s: u8) -> Self {
         match s {
-            0 => VoteType::Prevote,
-            1 => VoteType::Precommit,
+            1 => VoteType::Prevote,
+            2 => VoteType::Precommit,
             _ => panic!("Invalid vote type!"),
         }
     }
@@ -129,7 +129,7 @@ pub struct PoLC {
 }
 
 /// A signed vote.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SignedVote {
     /// Signature of the vote.
     pub signature: Bytes,
@@ -201,7 +201,7 @@ impl AggregatedVote {
 }
 
 /// A vote.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Vote {
     /// Epoch ID of the vote.
     pub epoch_id: u64,
