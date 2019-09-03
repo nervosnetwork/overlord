@@ -10,8 +10,8 @@ use crate::smr::smr_types::{SMRTrigger, TriggerSource, TriggerType};
 use crate::smr::{Event, SMR};
 use crate::state::collection::{ProposalCollector, VoteCollector};
 use crate::types::{
-    Address, AggregatedSignature, AggregatedVote, Hash, OverlordMsg, PoLC, Proof, Proposal,
-    Signature, SignedProposal, SignedVote, Vote, VoteType,
+    Address, AggregatedSignature, AggregatedVote, Commit, Hash, OverlordMsg, PoLC, Proof, Proposal,
+    Signature, SignedProposal, SignedVote, Status, Vote, VoteType,
 };
 use crate::{error::ConsensusError, utils::auth_manage::AuthorityManage};
 use crate::{Codec, Consensus, ConsensusResult, Crypto, INIT_EPOCH_ID, INIT_ROUND};
@@ -310,6 +310,43 @@ where
             self.transmit(OverlordMsg::SignedVote(signed_vote)).await?;
         }
         Ok(())
+    }
+
+    async fn handle_commit(&mut self, hash: Hash) -> ConsensusResult<Status> {
+        let epoch = self.epoch_id;
+        let content = self
+            .hash_with_epoch
+            .get(&hash)
+            .ok_or_else(|| {
+                ConsensusError::Other(format!(
+                    "Lose the whole epoch epoch ID {}, round {}",
+                    self.epoch_id, self.round
+                ))
+            })?
+            .to_owned();
+        let qc = self
+            .votes
+            .get_qc(epoch, self.round, VoteType::Precommit)?
+            .signature;
+
+        let proof = Proof {
+            epoch_id:   epoch,
+            round:      self.round,
+            epoch_hash: hash.clone(),
+            signature:  qc,
+        };
+        let commit = Commit {
+            epoch_id: epoch,
+            content,
+            proof,
+        };
+        // **TODO: write Wal**
+        let status = self
+            .function
+            .commit(vec![CTX], epoch, commit)
+            .await
+            .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
+        Ok(status)
     }
 
     /// The main process of handle signed vote is that only handle those epoch ID and round are both
