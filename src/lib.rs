@@ -27,7 +27,7 @@ use bytes::Bytes;
 
 use crate::error::ConsensusError;
 use crate::types::{
-    Address, AggregatedSignature, Commit, Hash, Node, OutputMsg, Signature, Status,
+    Address, AggregatedSignature, Commit, Hash, Node, OverlordMsg, Signature, Status,
 };
 
 /// Overlord consensus result.
@@ -69,14 +69,14 @@ pub trait Consensus<T: Codec>: Send + Sync {
     async fn broadcast_to_other(
         &self,
         _ctx: Vec<u8>,
-        msg: OutputMsg<T>,
+        msg: OverlordMsg<T>,
     ) -> Result<(), Box<dyn Error + Send>>;
     /// Transmit a message to the Relayer.
     async fn transmit_to_relayer(
         &self,
         _ctx: Vec<u8>,
         addr: Address,
-        msg: OutputMsg<T>,
+        msg: OverlordMsg<T>,
     ) -> Result<(), Box<dyn Error + Send>>;
 }
 

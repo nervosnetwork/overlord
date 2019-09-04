@@ -1,5 +1,8 @@
 use std::collections::HashMap;
 
+use bit_vec::BitVec;
+use bytes::Bytes;
+
 use crate::error::ConsensusError;
 use crate::types::{Address, Node};
 use crate::utils::rand_proposer::get_proposer_index;
@@ -69,6 +72,19 @@ impl AuthorityManage {
             ))
         }
     }
+
+    ///
+    pub fn is_above_threshold(&self, bitmap: Bytes, is_current: bool) -> ConsensusResult<bool> {
+        if is_current {
+            self.current.is_above_threshold(bitmap)
+        } else if let Some(auth_list) = self.last.clone() {
+            auth_list.is_above_threshold(bitmap)
+        } else {
+            Err(ConsensusError::Other(
+                "There is no authority list cache of last epoch".to_string(),
+            ))
+        }
+    }
 }
 
 /// Epoch authority manage is an extensional data structure of authority list which means
@@ -131,6 +147,32 @@ impl EpochAuthorityManage {
         Err(ConsensusError::Other(
             "The address list mismatch propose weight list".to_string(),
         ))
+    }
+
+    ///
+    fn is_above_threshold(&self, bitmap: Bytes) -> ConsensusResult<bool> {
+        let bitmap = BitVec::from_bytes(&bitmap);
+        if bitmap.len() != self.address.len() {
+            return Err(ConsensusError::AggregatedSignatureErr(
+                "Bitmap length error".to_string(),
+            ));
+        }
+
+        let mut acc = 0u64;
+        for node in bitmap.iter().zip(self.address.iter()) {
+            if node.0 {
+                if let Some(weight) = self.vote_weight_map.get(node.1) {
+                    acc += u64::from(*weight);
+                } else {
+                    return Err(ConsensusError::Other(format!(
+                        "Lose {:?} vote weight",
+                        node.1.clone()
+                    )));
+                }
+            }
+        }
+
+        Ok(acc * 3 > self.vote_weight_sum * 2)
     }
 
     /// Clear the EpochAuthorityManage, removing all values.
