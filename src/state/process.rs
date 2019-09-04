@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::ops::BitXor;
+use std::time::Instant;
 
 use bit_vec::BitVec;
 use bytes::Bytes;
@@ -48,6 +49,7 @@ pub struct Overlord<T: Codec, F: Consensus<T>, C: Crypto> {
     proof:                Option<Proof>,
     last_commit_round:    Option<u64>,
     last_commit_proposal: Option<Hash>,
+    epoch_start:          Instant,
 
     function: F,
     util:     C,
@@ -84,6 +86,7 @@ where
             proof:                None,
             last_commit_round:    None,
             last_commit_proposal: None,
+            epoch_start:          Instant::now(),
 
             function: consensus,
             util:     crypto,
