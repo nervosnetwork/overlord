@@ -232,10 +232,8 @@ where
                     proposal.proposer,
                 )
                 .await?;
-                return Ok(());
-            } else {
-                return Ok(());
             }
+            return Ok(());
         }
 
         // If the signed proposal is with a lock, check the lock round and the QC then trigger it to
