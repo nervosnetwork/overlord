@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::ops::BitXor;
-use std::time::Instant;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use bit_vec::BitVec;
 use bytes::Bytes;
@@ -44,21 +46,21 @@ pub struct Overlord<T: Codec, F: Consensus<T>, C: Crypto> {
     votes:                VoteCollector,
     authority:            AuthorityManage,
     hash_with_epoch:      HashMap<Hash, T>,
+    full_transcation:     Arc<AtomicBool>,
     is_leader:            bool,
     leader_address:       Address,
-    proof:                Option<Proof>,
     last_commit_round:    Option<u64>,
     last_commit_proposal: Option<Hash>,
     epoch_start:          Instant,
 
-    function: F,
+    function: Arc<F>,
     util:     C,
 }
 
 impl<T, F, C> Overlord<T, F, C>
 where
     T: Codec,
-    F: Consensus<T>,
+    F: Consensus<T> + 'static,
     C: Crypto,
 {
     pub fn new(
@@ -81,16 +83,21 @@ where
             votes:                VoteCollector::new(),
             authority:            AuthorityManage::new(),
             hash_with_epoch:      HashMap::new(),
+            full_transcation:     Arc::new(AtomicBool::new(false)),
             is_leader:            false,
             leader_address:       Address::default(),
-            proof:                None,
             last_commit_round:    None,
             last_commit_proposal: None,
             epoch_start:          Instant::now(),
 
-            function: consensus,
+            function: Arc::new(consensus),
             util:     crypto,
         }
+    }
+
+    fn goto_new_epoch(&mut self) -> ConsensusResult<()> {
+        // TODO
+        Ok(())
     }
 
     /// Handle `NewRoundInfo` event from SMR. Firstly, goto new round and check the `XOR`
@@ -110,6 +117,13 @@ where
             return Err(ConsensusError::ProposalErr(
                 "Lock round is inconsistent with lock proposal".to_string(),
             ));
+        }
+
+        if lock_proposal.is_none() {
+            // Clear full transcation signal.
+            self.full_transcation = Arc::new(AtomicBool::new(false));
+            // Clear hash with epoch.
+            self.hash_with_epoch.clear();
         }
 
         // If self is not proposer, check whether it has received current signed proposal before. If
@@ -175,10 +189,18 @@ where
 
         self.state_machine.trigger(SMRTrigger {
             trigger_type: TriggerType::Proposal,
-            source: TriggerSource::State,
-            hash,
-            round: lock_round,
+            source:       TriggerSource::State,
+            hash:         hash.clone(),
+            round:        lock_round,
         })?;
+
+        let epoch_id = self.epoch_id;
+        let tx_signal = Arc::clone(&self.full_transcation);
+        let function = Arc::clone(&self.function);
+        tokio::spawn(async move {
+            let _ = check_current_epoch(function, tx_signal, epoch_id, hash).await;
+        });
+
         Ok(())
     }
 
@@ -262,14 +284,21 @@ where
             None
         };
 
-        self.hash_with_epoch
-            .insert(proposal.epoch_hash.clone(), proposal.content);
+        let hash = proposal.epoch_hash.clone();
+        self.hash_with_epoch.insert(hash.clone(), proposal.content);
         self.state_machine.trigger(SMRTrigger {
             trigger_type: TriggerType::Proposal,
             source:       TriggerSource::State,
-            hash:         proposal.epoch_hash,
+            hash:         hash.clone(),
             round:        lock_round,
         })?;
+
+        let epoch_id = self.epoch_id;
+        let tx_signal = Arc::clone(&self.full_transcation);
+        let function = Arc::clone(&self.function);
+        tokio::spawn(async move {
+            let _ = check_current_epoch(function, tx_signal, epoch_id, hash).await;
+        });
         Ok(())
     }
 
@@ -341,7 +370,11 @@ where
             content,
             proof,
         };
+
+        self.last_commit_round = Some(self.round);
+        self.last_commit_proposal = Some(hash);
         // **TODO: write Wal**
+
         let status = self
             .function
             .commit(vec![CTX], epoch, commit)
@@ -455,12 +488,19 @@ where
 
         self.votes.set_qc(qc.clone());
         self.broadcast(OverlordMsg::AggregatedVote(qc)).await?;
+
+        let vote_hash = if self.full_transcation.load(Ordering::Release) {
+            vote_hash
+        } else {
+            Hash::new()
+        };
         self.state_machine.trigger(SMRTrigger {
             trigger_type: vote_type.into(),
             source:       TriggerSource::State,
             hash:         vote_hash,
             round:        Some(round),
         })?;
+
         Ok(())
     }
 
@@ -537,10 +577,16 @@ where
 
         let qc_hash = aggregrated_vote.epoch_hash.clone();
         self.votes.set_qc(aggregrated_vote);
+
+        let vote_hash = if self.full_transcation.load(Ordering::Release) {
+            qc_hash
+        } else {
+            Hash::new()
+        };
         self.state_machine.trigger(SMRTrigger {
             trigger_type: qc_type.into(),
             source:       TriggerSource::State,
-            hash:         qc_hash,
+            hash:         vote_hash,
             round:        Some(round),
         })?;
         Ok(())
@@ -707,6 +753,21 @@ where
             .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
         Ok(())
     }
+}
+
+async fn check_current_epoch<U: Consensus<S>, S: Codec>(
+    function: Arc<U>,
+    tx_signal: Arc<AtomicBool>,
+    epoch_id: u64,
+    hash: Hash,
+) -> ConsensusResult<()> {
+    let _transcation = function
+        .check_epoch(vec![CTX], epoch_id, hash)
+        .await
+        .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
+    tx_signal.store(true, Ordering::Relaxed);
+    // TODO: write Wal
+    Ok(())
 }
 
 #[cfg(test)]
