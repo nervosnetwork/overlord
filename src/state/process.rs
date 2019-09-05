@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 
 use bit_vec::BitVec;
 use bytes::Bytes;
+use futures_timer::Delay;
 use rlp::encode;
 use tokio::sync::mpsc::UnboundedReceiver;
 
@@ -52,6 +53,7 @@ pub struct Overlord<T: Codec, F: Consensus<T>, C: Crypto> {
     last_commit_round:    Option<u64>,
     last_commit_proposal: Option<Hash>,
     epoch_start:          Instant,
+    interval:             u64,
 
     function: Arc<F>,
     util:     C,
@@ -89,14 +91,39 @@ where
             last_commit_round:    None,
             last_commit_proposal: None,
             epoch_start:          Instant::now(),
+            interval:             3000,
 
             function: Arc::new(consensus),
             util:     crypto,
         }
     }
 
-    fn goto_new_epoch(&mut self) -> ConsensusResult<()> {
-        // TODO
+    async fn goto_new_epoch(&mut self, status: Status) -> ConsensusResult<()> {
+        let new_epoch_id = status.epoch_id;
+        if new_epoch_id != self.epoch_id + 1 {
+            let mut tmp = self
+                .function
+                .get_authority_list(vec![CTX], new_epoch_id - 1)
+                .await
+                .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
+            self.authority.update(&mut tmp, false);
+        }
+
+        self.epoch_id = new_epoch_id;
+        self.round = INIT_ROUND;
+        let mut auth_list = status.authority_list;
+        self.authority.update(&mut auth_list, true);
+        self.interval = status.interval;
+
+        // TODO: recheck proposals and votes.
+        // TODO: clear outdate proposals and votes.
+
+        self.state_machine.trigger(SMRTrigger {
+            trigger_type: TriggerType::NewEpoch(new_epoch_id),
+            source:       TriggerSource::State,
+            hash:         Hash::new(),
+            round:        None,
+        })?;
         Ok(())
     }
 
@@ -342,7 +369,7 @@ where
         Ok(())
     }
 
-    async fn handle_commit(&mut self, hash: Hash) -> ConsensusResult<Status> {
+    async fn handle_commit(&mut self, hash: Hash) -> ConsensusResult<()> {
         let epoch = self.epoch_id;
         let content = self
             .hash_with_epoch
@@ -380,7 +407,15 @@ where
             .commit(vec![CTX], epoch, commit)
             .await
             .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
-        Ok(status)
+
+        if Instant::now() < self.epoch_start + Duration::from_millis(self.interval) {
+            Delay::new_at(self.epoch_start + Duration::from_millis(self.interval))
+                .await
+                .map_err(|err| ConsensusError::Other(format!("Overlord delay error {:?}", err)))?;
+        }
+
+        self.goto_new_epoch(status).await?;
+        Ok(())
     }
 
     /// The main process of handle signed vote is that only handle those epoch ID and round are both
