@@ -1,16 +1,15 @@
 use std::collections::{HashMap, HashSet};
-use std::ops::BitXor;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::time::{Duration, Instant};
+use std::{ops::BitXor, sync::Arc};
 
 use bit_vec::BitVec;
 use bytes::Bytes;
 use futures_timer::Delay;
+use parking_lot::Mutex;
 use rlp::encode;
 use tokio::sync::mpsc::UnboundedReceiver;
 
-use crate::smr::smr_types::{SMRTrigger, TriggerSource, TriggerType};
+use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
 use crate::smr::{Event, SMR};
 use crate::state::collection::{ProposalCollector, VoteCollector};
 use crate::types::{
@@ -29,13 +28,23 @@ enum MsgType {
     SignedVote,
 }
 
+pub struct Overlord<T: Codec> {
+    rx:    UnboundedReceiver<OverlordMsg<T>>,
+    event: Event,
+}
+
+impl<T: Codec> Overlord<T> {
+    pub fn new(rx: UnboundedReceiver<OverlordMsg<T>>, event: Event) -> Self {
+        Overlord { rx, event }
+    }
+}
+
 /// Overlord state struct. It maintains the local state of the node, and monitor the SMR event. The
 /// `proposals` is used to cache the signed proposals that are with higher epoch ID or round. The
 /// `hash_with_epoch` field saves hash and its corresponding epoch with the current epoch ID and
 /// round. The `votes` field saves all signed votes and quorum certificates which epoch ID is higher
 /// than `current_epoch - 1`.
-#[derive(Debug)]
-pub struct Overlord<T: Codec, F: Consensus<T>, C: Crypto> {
+pub struct State<T: Codec, F: Consensus<T>, C: Crypto> {
     rx:    UnboundedReceiver<OverlordMsg<T>>,
     event: Event,
 
@@ -47,7 +56,7 @@ pub struct Overlord<T: Codec, F: Consensus<T>, C: Crypto> {
     votes:                VoteCollector,
     authority:            AuthorityManage,
     hash_with_epoch:      HashMap<Hash, T>,
-    full_transcation:     Arc<AtomicBool>,
+    full_transcation:     Arc<Mutex<HashSet<Hash>>>,
     is_leader:            bool,
     leader_address:       Address,
     last_commit_round:    Option<u64>,
@@ -59,7 +68,7 @@ pub struct Overlord<T: Codec, F: Consensus<T>, C: Crypto> {
     util:     C,
 }
 
-impl<T, F, C> Overlord<T, F, C>
+impl<T, F, C> State<T, F, C>
 where
     T: Codec,
     F: Consensus<T> + 'static,
@@ -73,7 +82,7 @@ where
         consensus: F,
         crypto: C,
     ) -> Self {
-        Overlord {
+        State {
             rx:    receiver,
             event: monitor,
 
@@ -85,7 +94,7 @@ where
             votes:                VoteCollector::new(),
             authority:            AuthorityManage::new(),
             hash_with_epoch:      HashMap::new(),
-            full_transcation:     Arc::new(AtomicBool::new(false)),
+            full_transcation:     Arc::new(Mutex::new(HashSet::new())),
             is_leader:            false,
             leader_address:       Address::default(),
             last_commit_round:    None,
@@ -95,6 +104,47 @@ where
 
             function: Arc::new(consensus),
             util:     crypto,
+        }
+    }
+
+    async fn handle_msg(&mut self, msg: Option<OverlordMsg<T>>) -> ConsensusResult<()> {
+        if msg.is_none() {
+            return Err(ConsensusError::Other("Message sender dropped".to_string()));
+        }
+
+        match msg.unwrap() {
+            OverlordMsg::SignedProposal(sp) => self.handle_signed_proposal(sp).await,
+            OverlordMsg::AggregatedVote(av) => self.handle_aggregated_vote(av).await,
+            OverlordMsg::SignedVote(sv) => self.handle_signed_vote(sv).await,
+        }
+    }
+
+    async fn handle_event(
+        &mut self,
+        event: Option<ConsensusResult<SMREvent>>,
+    ) -> ConsensusResult<()> {
+        if event.is_none() {
+            return Err(ConsensusError::Other("Event sender dropped".to_string()));
+        }
+
+        let event = event.unwrap();
+        if event.is_err() {
+            return Err(ConsensusError::Other("Event sender dropped".to_string()));
+        }
+
+        match event.unwrap() {
+            SMREvent::NewRoundInfo {
+                round,
+                lock_round,
+                lock_proposal,
+            } => {
+                self.handle_new_round(round, lock_round, lock_proposal)
+                    .await
+            }
+            SMREvent::PrevoteVote(hash) => self.handle_prevote_vote(hash).await,
+            SMREvent::PrecommitVote(hash) => self.handle_precommit_vote(hash).await,
+            SMREvent::Commit(hash) => self.handle_commit(hash).await,
+            _ => unreachable!(),
         }
     }
 
@@ -148,7 +198,7 @@ where
 
         if lock_proposal.is_none() {
             // Clear full transcation signal.
-            self.full_transcation = Arc::new(AtomicBool::new(false));
+            self.full_transcation = Arc::new(Mutex::new(HashSet::new()));
             // Clear hash with epoch.
             self.hash_with_epoch.clear();
         }
@@ -293,7 +343,7 @@ where
                 proposal.epoch_id == self.epoch_id,
             )? {
                 return Err(ConsensusError::AggregatedSignatureErr(format!(
-                    "Aggregrated signature below two thrids, proposal of epoch ID {:?}, round {:?}",
+                    "aggregate signature below two thrids, proposal of epoch ID {:?}, round {:?}",
                     proposal.epoch_id, proposal.round
                 )));
             }
@@ -489,7 +539,7 @@ where
             return Ok(());
         }
 
-        // Build the quorum certificate needs to aggregrated signatures into an aggregrated
+        // Build the quorum certificate needs to aggregate signatures into an aggregate
         // signature besides the address bitmap.
         let vote_hash = vote_hash.unwrap();
         let votes = self
@@ -524,7 +574,8 @@ where
         self.votes.set_qc(qc.clone());
         self.broadcast(OverlordMsg::AggregatedVote(qc)).await?;
 
-        let vote_hash = if self.full_transcation.load(Ordering::Release) {
+        let set = self.full_transcation.lock();
+        let vote_hash = if set.contains(&vote_hash) {
             vote_hash
         } else {
             Hash::new()
@@ -539,27 +590,27 @@ where
         Ok(())
     }
 
-    /// The main process to handle aggregrated votes contains four cases.
+    /// The main process to handle aggregate votes contains four cases.
     ///
     /// 1. The QC is later than current which means the QC's epoch ID is higher than current or is
     /// equal to the current and the round is higher than current. In this cases, check the
-    /// aggregrated signature subject to availability, and save it.
+    /// aggregate signature subject to availability, and save it.
     ///
-    /// 2. The QC is equal to the current epoch ID and round. In this case, check the aggregrated
+    /// 2. The QC is equal to the current epoch ID and round. In this case, check the aggregate
     /// signature, then save it, and touch off SMR trigger.
     ///
     /// 3. The QC is equal to the `current epoch ID - 1` and the round is higher than the last
-    /// commit round. In this case, check the aggregrated signature firstly. If the type of the QC
+    /// commit round. In this case, check the aggregate signature firstly. If the type of the QC
     /// is precommit, ignore it. Otherwise, retransmit precommit vote to the last commit proposal.
     ///
     /// 4. Other cases, return `Ok(())` directly.
-    async fn handle_aggregate_vote(
+    async fn handle_aggregated_vote(
         &mut self,
-        aggregrated_vote: AggregatedVote,
+        aggregated_vote: AggregatedVote,
     ) -> ConsensusResult<()> {
-        let epoch_id = aggregrated_vote.get_epoch();
-        let round = aggregrated_vote.get_round();
-        let qc_type = if aggregrated_vote.is_prevote_qc() {
+        let epoch_id = aggregated_vote.get_epoch();
+        let round = aggregated_vote.get_round();
+        let qc_type = if aggregated_vote.is_prevote_qc() {
             VoteType::Prevote
         } else {
             VoteType::Precommit
@@ -571,20 +622,20 @@ where
         if epoch_id < self.epoch_id - 1 || (epoch_id == self.epoch_id && round < self.round) {
             return Ok(());
         } else if epoch_id > self.epoch_id {
-            self.votes.set_qc(aggregrated_vote);
+            self.votes.set_qc(aggregated_vote);
             return Ok(());
         }
 
-        // Verify aggregrated signature and check the sum of the voting weights corresponding to the
+        // Verify aggregate signature and check the sum of the voting weights corresponding to the
         // hash exceeds the threshold.
         self.verify_aggregated_signature(
-            aggregrated_vote.signature.clone(),
+            aggregated_vote.signature.clone(),
             epoch_id,
             qc_type.clone(),
         )?;
 
         if epoch_id == self.epoch_id && round > self.round {
-            self.votes.set_qc(aggregrated_vote);
+            self.votes.set_qc(aggregated_vote);
             return Ok(());
         }
 
@@ -601,7 +652,7 @@ where
                     last_round,
                     last_proposal,
                     VoteType::Precommit,
-                    aggregrated_vote.leader,
+                    aggregated_vote.leader,
                 )
                 .await?;
                 return Ok(());
@@ -610,10 +661,11 @@ where
             }
         }
 
-        let qc_hash = aggregrated_vote.epoch_hash.clone();
-        self.votes.set_qc(aggregrated_vote);
+        let qc_hash = aggregated_vote.epoch_hash.clone();
+        self.votes.set_qc(aggregated_vote);
 
-        let vote_hash = if self.full_transcation.load(Ordering::Release) {
+        let set = self.full_transcation.lock();
+        let vote_hash = if set.contains(&qc_hash) {
             qc_hash
         } else {
             Hash::new()
@@ -732,7 +784,7 @@ where
             .verify_aggregated_signature(signature)
             .map_err(|err| {
                 ConsensusError::AggregatedSignatureErr(format!(
-                    "{:?} aggregrated signature error {:?}",
+                    "{:?} aggregate signature error {:?}",
                     vote_type, err
                 ))
             })?;
@@ -792,15 +844,16 @@ where
 
 async fn check_current_epoch<U: Consensus<S>, S: Codec>(
     function: Arc<U>,
-    tx_signal: Arc<AtomicBool>,
+    tx_signal: Arc<Mutex<HashSet<Hash>>>,
     epoch_id: u64,
     hash: Hash,
 ) -> ConsensusResult<()> {
     let _transcation = function
-        .check_epoch(vec![CTX], epoch_id, hash)
+        .check_epoch(vec![CTX], epoch_id, hash.clone())
         .await
         .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
-    tx_signal.store(true, Ordering::Relaxed);
+    let mut set = tx_signal.lock();
+    set.insert(hash);
     // TODO: write Wal
     Ok(())
 }

@@ -40,6 +40,9 @@ pub enum ConsensusError {
     #[display(fmt = "Timer error {}", _0)]
     TimerErr(String),
     ///
+    #[display(fmt = "State error {}", _0)]
+    StateErr(String),
+    ///
     #[display(fmt = "Multiple proposal in epoch ID {}, round {}", _0, _1)]
     MultiProposal(u64, u64),
     ///
@@ -52,7 +55,7 @@ pub enum ConsensusError {
     #[display(fmt = "Crypto error {}", _0)]
     CryptoErr(String),
     ///
-    #[display(fmt = "Aggregrated signature error {}", _0)]
+    #[display(fmt = "Aggregated signature error {}", _0)]
     AggregatedSignatureErr(String),
     /// Other error.
     #[display(fmt = "Other error {}", _0)]

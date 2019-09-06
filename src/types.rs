@@ -159,7 +159,7 @@ impl SignedVote {
     }
 }
 
-/// An aggregrated signature.
+/// An aggregate signature.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AggregatedSignature {
     /// Aggregated signature.
@@ -168,7 +168,7 @@ pub struct AggregatedSignature {
     pub address_bitmap: Bytes,
 }
 
-/// An aggregrated vote.
+/// An aggregated vote.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AggregatedVote {
     /// Aggregated signature of the vote.

@@ -16,23 +16,23 @@ pub enum Step {
     /// Prevote step, in this step:
     /// Leader:
     ///     1. wait for others signed prevote votes,
-    ///     2. aggregrate them to an aggregrated vote,
-    ///     3. broadcast the aggregrated vote to others.
+    ///     2. aggregate them to an aggregated vote,
+    ///     3. broadcast the aggregated vote to others.
     /// Replica:
     ///     1. transmit prevote vote,
-    ///     2. wait for aggregrated vote,
-    ///     3. check the aggregrated vote.
+    ///     2. wait for aggregated vote,
+    ///     3. check the aggregated vote.
     /// Then goto precommit step.
     Prevote = 1,
     /// Precommit step, in this step:
     /// Leader:
     ///     1. wait for others signed precommit votes,
-    ///     2. aggregrate them to an aggregrated vote,
-    ///     3. broadcast the aggregrated vote to others.
+    ///     2. aggregate them to an aggregated vote,
+    ///     3. broadcast the aggregated vote to others.
     /// Replica:
     ///     1. transmit precommit vote,
-    ///     2. wait for aggregrated vote,
-    ///     3. check the aggregrated vote.
+    ///     2. wait for aggregated vote,
+    ///     3. check the aggregated vote.
     /// If there is no consensus in the precommit step, goto propose step and start a new round
     /// cycle. Otherwise, goto commit step.
     Precommit = 2,

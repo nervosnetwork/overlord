@@ -622,13 +622,13 @@ mod test {
         assert_eq!(signed_vote, res);
 
         // Test AggregatedVote
-        let aggregrated_vote = AggregatedVote::new(2u8);
-        let res: AggregatedVote = rlp::decode(&aggregrated_vote.rlp_bytes()).unwrap();
-        assert_eq!(aggregrated_vote, res);
+        let aggregated_vote = AggregatedVote::new(2u8);
+        let res: AggregatedVote = rlp::decode(&aggregated_vote.rlp_bytes()).unwrap();
+        assert_eq!(aggregated_vote, res);
 
-        let aggregrated_vote = AggregatedVote::new(1u8);
-        let res: AggregatedVote = rlp::decode(&aggregrated_vote.rlp_bytes()).unwrap();
-        assert_eq!(aggregrated_vote, res);
+        let aggregated_vote = AggregatedVote::new(1u8);
+        let res: AggregatedVote = rlp::decode(&aggregated_vote.rlp_bytes()).unwrap();
+        assert_eq!(aggregated_vote, res);
 
         // Test Commit
         let commit = Commit::new(Pill::new());
