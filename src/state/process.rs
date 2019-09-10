@@ -60,7 +60,12 @@ where
     F: Consensus<T> + 'static,
     C: Crypto,
 {
-    pub fn new(smr: SMR, addr: Address, consensus: F, crypto: C) -> Self {
+    pub fn new(
+        smr: SMR,
+        addr: Address,
+        consensus: F,
+        crypto: C,
+    ) -> Self {
         State {
             epoch_id:             INIT_EPOCH_ID,
             round:                INIT_ROUND,
