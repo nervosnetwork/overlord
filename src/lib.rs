@@ -1,7 +1,7 @@
 //! Overlord Consensus Protocol
 
 #![deny(missing_docs)]
-#![recursion_limit = "256"]
+#![feature(async_closure)]
 
 /// A module that impl rlp encodable and decodable trait
 /// for types that need to save wal.

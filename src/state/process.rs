@@ -28,17 +28,6 @@ enum MsgType {
     SignedVote,
 }
 
-pub struct Overlord<T: Codec> {
-    rx:    UnboundedReceiver<OverlordMsg<T>>,
-    event: Event,
-}
-
-impl<T: Codec> Overlord<T> {
-    pub fn new(rx: UnboundedReceiver<OverlordMsg<T>>, event: Event) -> Self {
-        Overlord { rx, event }
-    }
-}
-
 /// Overlord state struct. It maintains the local state of the node, and monitor the SMR event. The
 /// `proposals` is used to cache the signed proposals that are with higher epoch ID or round. The
 /// `hash_with_epoch` field saves hash and its corresponding epoch with the current epoch ID and
@@ -123,11 +112,9 @@ where
         &mut self,
         event: Option<ConsensusResult<SMREvent>>,
     ) -> ConsensusResult<()> {
-        if event.is_none() {
-            return Err(ConsensusError::Other("Event sender dropped".to_string()));
-        }
+        let event =
+            event.ok_or_else(|| ConsensusError::Other("Event sender dropped".to_string()))?;
 
-        let event = event.unwrap();
         if event.is_err() {
             return Err(ConsensusError::Other("Event sender dropped".to_string()));
         }
@@ -523,28 +510,28 @@ where
         let vote_map = self
             .votes
             .get_vote_map(epoch_id, round, vote_type.clone())?;
-        let mut vote_hash = None;
+        let mut epoch_hash = None;
         let threshold = self.authority.get_vote_weight_sum(true)? * 2;
         for (hash, set) in vote_map.iter() {
             let mut acc = 0u8;
             for addr in set.iter() {
-                acc += self.authority.get_vote_weight(addr, true)?;
+                acc += self.authority.get_vote_weight(addr)?;
             }
             if u64::from(acc) * 3 > threshold {
-                vote_hash = Some(hash.to_owned());
+                epoch_hash = Some(hash.to_owned());
                 break;
             }
         }
-        if vote_hash.is_none() {
+        if epoch_hash.is_none() {
             return Ok(());
         }
 
         // Build the quorum certificate needs to aggregate signatures into an aggregate
         // signature besides the address bitmap.
-        let vote_hash = vote_hash.unwrap();
+        let epoch_hash = epoch_hash.unwrap();
         let votes = self
             .votes
-            .get_votes(epoch_id, round, vote_type.clone(), &vote_hash)?;
+            .get_votes(epoch_id, round, vote_type.clone(), &epoch_hash)?;
         let mut signatures = Vec::new();
         let mut set = Vec::new();
         for vote in votes.iter() {
@@ -567,7 +554,7 @@ where
             vote_type:  vote_type.clone(),
             epoch_id:   self.epoch_id,
             round:      self.round,
-            epoch_hash: vote_hash.clone(),
+            epoch_hash: epoch_hash.clone(),
             leader:     self.address.clone(),
         };
 
@@ -575,15 +562,15 @@ where
         self.broadcast(OverlordMsg::AggregatedVote(qc)).await?;
 
         let set = self.full_transcation.lock();
-        let vote_hash = if set.contains(&vote_hash) {
-            vote_hash
+        let epoch_hash = if set.contains(&epoch_hash) {
+            epoch_hash
         } else {
             Hash::new()
         };
         self.state_machine.trigger(SMRTrigger {
             trigger_type: vote_type.into(),
             source:       TriggerSource::State,
-            hash:         vote_hash,
+            hash:         epoch_hash,
             round:        Some(round),
         })?;
 
@@ -665,7 +652,7 @@ where
         self.votes.set_qc(aggregated_vote);
 
         let set = self.full_transcation.lock();
-        let vote_hash = if set.contains(&qc_hash) {
+        let epoch_hash = if set.contains(&qc_hash) {
             qc_hash
         } else {
             Hash::new()
@@ -673,7 +660,7 @@ where
         self.state_machine.trigger(SMRTrigger {
             trigger_type: qc_type.into(),
             source:       TriggerSource::State,
-            hash:         vote_hash,
+            hash:         epoch_hash,
             round:        Some(round),
         })?;
         Ok(())

@@ -48,17 +48,8 @@ impl AuthorityManage {
     }
 
     /// Get a vote weight that correspond to the given address.
-    /// **TODO: simplify**
-    pub fn get_vote_weight(&self, addr: &Address, is_current: bool) -> ConsensusResult<u8> {
-        if is_current {
-            self.current.get_vote_weight(addr)
-        } else if let Some(auth_list) = self.last.clone() {
-            auth_list.get_vote_weight(addr)
-        } else {
-            Err(ConsensusError::Other(
-                "There is no authority list cache of last epoch".to_string(),
-            ))
-        }
+    pub fn get_vote_weight(&self, addr: &Address) -> ConsensusResult<u8> {
+        self.current.get_vote_weight(addr)
     }
 
     /// Get a proposer address of the epoch by a given seed.
@@ -74,7 +65,7 @@ impl AuthorityManage {
         }
     }
 
-    ///
+    /// Calculate whether the sum of vote weights from bitmap is above 2/3.
     pub fn is_above_threshold(&self, bitmap: Bytes, is_current: bool) -> ConsensusResult<bool> {
         if is_current {
             self.current.is_above_threshold(bitmap)
@@ -226,6 +217,8 @@ impl EpochAuthorityManage {
 
 #[cfg(test)]
 mod test {
+    use bit_vec::BitVec;
+    use bytes::Bytes;
     use rand::random;
 
     use crate::error::ConsensusError;
@@ -253,6 +246,14 @@ mod test {
         node.set_propose_weight(propose_weight);
         node.set_vote_weight(vote_weight);
         node
+    }
+
+    fn gen_bitmap(len: usize, nbits: Vec<usize>) -> BitVec {
+        let mut bv = BitVec::from_elem(len, false);
+        for n in nbits.into_iter() {
+            bv.set(n, true);
+        }
+        bv
     }
 
     #[test]
@@ -319,5 +320,42 @@ mod test {
             current: e_auth_manage,
             last:    None,
         });
+    }
+
+    #[test]
+    fn test_vote_threshold() {
+        let mut authority_list = vec![
+            gen_node(gen_address(), 1u8, 1u8),
+            gen_node(gen_address(), 1u8, 1u8),
+            gen_node(gen_address(), 1u8, 1u8),
+            gen_node(gen_address(), 1u8, 1u8),
+        ];
+        authority_list.sort();
+        let mut authority = AuthorityManage::new();
+        authority.update(&mut authority_list, false);
+
+        for i in 0..4 {
+            let bit_map = gen_bitmap(4, vec![i]);
+            let res = authority.is_above_threshold(Bytes::from(bit_map.to_bytes()), true);
+            assert_eq!(res.unwrap(), false);
+        }
+
+        let tmp = vec![vec![1, 2], vec![1, 3], vec![2, 3], vec![0, 1], vec![0, 2]];
+        for i in tmp.into_iter() {
+            let bit_map = gen_bitmap(4, i);
+            let res = authority.is_above_threshold(Bytes::from(bit_map.to_bytes()), true);
+            assert_eq!(res.unwrap(), false);
+        }
+
+        let tmp = vec![vec![0, 1, 2], vec![0, 1, 3], vec![1, 2, 3]];
+        for i in tmp.into_iter() {
+            let bit_map = gen_bitmap(4, i);
+            let res = authority.is_above_threshold(Bytes::from(bit_map.to_bytes()), true);
+            assert_eq!(res.unwrap(), true);
+        }
+
+        let bit_map = gen_bitmap(4, vec![0, 1, 2, 3]);
+        let res = authority.is_above_threshold(Bytes::from(bit_map.to_bytes()), true);
+        assert_eq!(res.unwrap(), true);
     }
 }
