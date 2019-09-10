@@ -1,6 +1,7 @@
 //! Overlord Consensus Protocol
 
 #![deny(missing_docs)]
+#![recursion_limit = "256"]
 
 /// A module that impl rlp encodable and decodable trait
 /// for types that need to save wal.
@@ -51,7 +52,7 @@ pub trait Consensus<T: Codec>: Send + Sync {
         _ctx: Vec<u8>,
         epoch_id: u64,
         hash: Hash,
-    ) -> Result<(), Box<dyn Error + Send>>;
+    ) -> Result<T, Box<dyn Error + Send>>;
     /// Commit an epoch to execute and return the rich status.
     async fn commit(
         &self,
@@ -89,7 +90,7 @@ pub trait Codec: Clone + Send {
 }
 
 ///
-pub trait Crypto {
+pub trait Crypto: Clone + Send {
     /// Hash a message.
     fn hash(&self, msg: Bytes) -> Hash;
     /// Sign to the given hash by private key.

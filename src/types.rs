@@ -2,6 +2,7 @@ use std::cmp::{Ord, Ordering, PartialOrd};
 
 use bytes::Bytes;
 
+use crate::smr::smr_types::TriggerType;
 use crate::Codec;
 
 /// Address type.
@@ -45,7 +46,7 @@ impl From<u8> for Role {
 
 /// Vote or QC types. Prevote and precommit QC will promise the rightness and the final consistency
 /// of overlord consensus protocol.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum VoteType {
     /// Prevote vote or QC.
     Prevote,
@@ -56,8 +57,17 @@ pub enum VoteType {
 impl Into<u8> for VoteType {
     fn into(self) -> u8 {
         match self {
-            VoteType::Prevote => 0,
-            VoteType::Precommit => 1,
+            VoteType::Prevote => 1,
+            VoteType::Precommit => 2,
+        }
+    }
+}
+
+impl Into<TriggerType> for VoteType {
+    fn into(self) -> TriggerType {
+        match self {
+            VoteType::Prevote => TriggerType::PrevoteQC,
+            VoteType::Precommit => TriggerType::PrecommitQC,
         }
     }
 }
@@ -65,8 +75,8 @@ impl Into<u8> for VoteType {
 impl From<u8> for VoteType {
     fn from(s: u8) -> Self {
         match s {
-            0 => VoteType::Prevote,
-            1 => VoteType::Precommit,
+            1 => VoteType::Prevote,
+            2 => VoteType::Precommit,
             _ => panic!("Invalid vote type!"),
         }
     }
@@ -119,7 +129,7 @@ pub struct PoLC {
 }
 
 /// A signed vote.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SignedVote {
     /// Signature of the vote.
     pub signature: Bytes,
@@ -149,7 +159,7 @@ impl SignedVote {
     }
 }
 
-/// An aggregrated signature.
+/// An aggregate signature.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AggregatedSignature {
     /// Aggregated signature.
@@ -158,7 +168,7 @@ pub struct AggregatedSignature {
     pub address_bitmap: Bytes,
 }
 
-/// An aggregrated vote.
+/// An aggregated vote.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AggregatedVote {
     /// Aggregated signature of the vote.
@@ -171,6 +181,8 @@ pub struct AggregatedVote {
     pub round: u64,
     /// Proposal hash of the vote.
     pub epoch_hash: Hash,
+    ///
+    pub leader: Address,
 }
 
 impl AggregatedVote {
@@ -191,7 +203,7 @@ impl AggregatedVote {
 }
 
 /// A vote.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Vote {
     /// Epoch ID of the vote.
     pub epoch_id: u64,
