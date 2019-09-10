@@ -344,10 +344,13 @@ impl Votes {
 
 #[cfg(test)]
 mod test {
+    extern crate test;
+
     use std::collections::{HashMap, HashSet};
 
     use bytes::Bytes;
     use rand::random;
+    use test::Bencher;
 
     use crate::state::collection::VoteCollector;
     use crate::types::{
@@ -458,5 +461,39 @@ mod test {
             .cloned()
             .collect::<HashSet<_>>();
         assert_eq!(res, vec.iter().cloned().collect::<HashSet<_>>());
+    }
+
+    #[bench]
+    fn bench_insert_vote(b: &mut Bencher) {
+        let mut votes = VoteCollector::new();
+        let hash = gen_hash();
+        let addr = gen_address();
+        let sv = gen_signed_vote(
+            random::<u64>(),
+            random::<u64>(),
+            VoteType::Prevote,
+            hash.clone(),
+            addr.clone(),
+        );
+        b.iter(|| votes.insert_vote(hash.clone(), sv.clone(), addr.clone()))
+    }
+
+    #[bench]
+    fn bench_insert_qc(b: &mut Bencher) {
+        let mut votes = VoteCollector::new();
+        let av = gen_aggregated_vote(random::<u64>(), random::<u64>(), VoteType::Prevote);
+        b.iter(|| votes.set_qc(av.clone()));
+    }
+
+    #[bench]
+    fn bench_get_votes(b: &mut Bencher) {
+        let mut votes = VoteCollector::new();
+        let hash = gen_hash();
+        for _ in 0..10 {
+            let addr = gen_address();
+            let sv = gen_signed_vote(1, 0, VoteType::Prevote, hash.clone(), addr.clone());
+            votes.insert_vote(hash.clone(), sv, addr);
+        }
+        b.iter(|| votes.get_votes(1, 0, VoteType::Prevote, &hash));
     }
 }

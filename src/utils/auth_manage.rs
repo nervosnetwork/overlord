@@ -223,9 +223,12 @@ impl EpochAuthorityManage {
 
 #[cfg(test)]
 mod test {
+    extern crate test;
+
     use bit_vec::BitVec;
     use bytes::Bytes;
     use rand::random;
+    use test::Bencher;
 
     use crate::error::ConsensusError;
     use crate::types::{Address, Node};
@@ -363,5 +366,22 @@ mod test {
         let bit_map = gen_bitmap(4, vec![0, 1, 2, 3]);
         let res = authority.is_above_threshold(Bytes::from(bit_map.to_bytes()), true);
         assert_eq!(res.unwrap(), true);
+    }
+
+    #[bench]
+    fn bench_update(b: &mut Bencher) {
+        let mut auth_list = gen_auth_list(10);
+        let mut authority = AuthorityManage::new();
+        b.iter(|| authority.update(&mut auth_list, true));
+    }
+
+    #[bench]
+    fn bench_cal_vote_weight(b: &mut Bencher) {
+        let mut auth_list = gen_auth_list(10);
+        let mut authority = AuthorityManage::new();
+        authority.update(&mut auth_list, false);
+        let bitmap = BitVec::from_elem(10, true);
+        let vote_bitmap = Bytes::from(bitmap.to_bytes());
+        b.iter(|| authority.is_above_threshold(vote_bitmap.clone(), true));
     }
 }

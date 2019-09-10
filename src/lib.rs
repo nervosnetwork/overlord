@@ -1,6 +1,7 @@
 //! Overlord Consensus Protocol
 
 #![deny(missing_docs)]
+#![feature(test)]
 
 /// A module that impl rlp encodable and decodable trait
 /// for types that need to save wal.
