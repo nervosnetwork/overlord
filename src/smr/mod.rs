@@ -11,8 +11,8 @@ mod tests;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use futures::stream::{Stream, StreamExt};
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
+use futures::stream::{FusedStream, Stream, StreamExt};
 
 use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
 use crate::smr::state_machine::StateMachine;
@@ -41,7 +41,7 @@ impl SMR {
     pub fn trigger(&mut self, gate: SMRTrigger) -> ConsensusResult<()> {
         let trigger_type = gate.trigger_type.clone().to_string();
         self.tx
-            .try_send(gate)
+            .unbounded_send(gate)
             .map_err(|_| ConsensusError::TriggerSMRErr(trigger_type))?;
         Ok(())
     }
@@ -50,7 +50,7 @@ impl SMR {
     pub fn new_epoch(&mut self, epoch_id: u64) -> ConsensusResult<()> {
         let trigger = TriggerType::NewEpoch(epoch_id);
         self.tx
-            .try_send(SMRTrigger {
+            .unbounded_send(SMRTrigger {
                 trigger_type: trigger.clone(),
                 source:       TriggerSource::State,
                 hash:         Hash::new(),
@@ -82,18 +82,14 @@ impl Stream for Event {
     }
 }
 
+impl FusedStream for Event {
+    fn is_terminated(&self) -> bool {
+        self.rx.is_terminated()
+    }
+}
+
 impl Event {
     pub fn new(receiver: UnboundedReceiver<SMREvent>) -> Self {
         Event { rx: receiver }
-    }
-
-    pub async fn recv(&mut self) -> ConsensusResult<SMREvent> {
-        if let Some(event) = self.rx.recv().await {
-            Ok(event)
-        } else {
-            Err(ConsensusError::MonitorEventErr(
-                "Sender has dropped".to_string(),
-            ))
-        }
     }
 }

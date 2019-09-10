@@ -4,10 +4,10 @@ use std::{ops::BitXor, sync::Arc};
 
 use bit_vec::BitVec;
 use bytes::Bytes;
+use futures::{channel::mpsc::UnboundedReceiver, select, StreamExt};
 use futures_timer::Delay;
 use parking_lot::Mutex;
 use rlp::encode;
-use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
 use crate::smr::{Event, SMR};
@@ -45,9 +45,6 @@ impl<T: Codec> Overlord<T> {
 /// round. The `votes` field saves all signed votes and quorum certificates which epoch ID is higher
 /// than `current_epoch - 1`.
 pub struct State<T: Codec, F: Consensus<T>, C: Crypto> {
-    rx:    UnboundedReceiver<OverlordMsg<T>>,
-    event: Event,
-
     epoch_id:             u64,
     round:                u64,
     state_machine:        SMR,
@@ -74,18 +71,8 @@ where
     F: Consensus<T> + 'static,
     C: Crypto,
 {
-    pub fn new(
-        receiver: UnboundedReceiver<OverlordMsg<T>>,
-        monitor: Event,
-        smr: SMR,
-        addr: Address,
-        consensus: F,
-        crypto: C,
-    ) -> Self {
+    pub fn new(smr: SMR, addr: Address, consensus: F, crypto: C) -> Self {
         State {
-            rx:    receiver,
-            event: monitor,
-
             epoch_id:             INIT_EPOCH_ID,
             round:                INIT_ROUND,
             state_machine:        smr,
@@ -104,6 +91,19 @@ where
 
             function: Arc::new(consensus),
             util:     crypto,
+        }
+    }
+
+    async fn start(
+        &mut self,
+        mut rx: UnboundedReceiver<OverlordMsg<T>>,
+        mut event: Event,
+    ) -> ConsensusResult<()> {
+        loop {
+            select! {
+                raw = rx.next() => self.handle_msg(raw).await?,
+                evt = event.next() => self.handle_event(evt).await?,
+            }
         }
     }
 
