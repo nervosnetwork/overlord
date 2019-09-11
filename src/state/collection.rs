@@ -12,10 +12,12 @@ impl<T> ProposalCollector<T>
 where
     T: Codec,
 {
+    /// Create a new proposal collector.
     pub fn new() -> Self {
         ProposalCollector(BTreeMap::new())
     }
 
+    /// Insert a signed proposal into the proposal collector.
     pub fn insert(
         &mut self,
         epoch_id: u64,
@@ -30,6 +32,8 @@ where
         Ok(())
     }
 
+    /// Get the signed proposal of the given epoch ID and round. Return `Err` when there is no
+    /// signed proposal.
     pub fn get(&self, epoch_id: u64, round: u64) -> ConsensusResult<SignedProposal<T>> {
         if let Some(round_collector) = self.0.get(&epoch_id) {
             return Ok(round_collector
@@ -51,7 +55,7 @@ where
 
     /// Remove items that epoch ID is less than `till`.
     pub fn flush(&mut self, till: u64) {
-        self.0.split_off(&till);
+        self.0 = self.0.split_off(&till);
     }
 }
 
@@ -168,7 +172,7 @@ impl VoteCollector {
 
     /// Remove items that epoch ID is less than `till`.
     pub fn flush(&mut self, till: u64) {
-        self.0.split_off(&till);
+        self.0 = self.0.split_off(&till);
     }
 }
 

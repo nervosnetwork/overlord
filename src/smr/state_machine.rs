@@ -151,16 +151,15 @@ impl StateMachine {
         }
 
         self.check()?;
-        if prevote_round.is_none() {
-            return Err(ConsensusError::PrevoteErr("No vote round".to_string()));
-        }
+        let prevote_round =
+            prevote_round.ok_or_else(|| ConsensusError::PrevoteErr("No vote round".to_string()))?;
 
         // A prevote QC from timer which means prevote timeout can not lead to unlock. Therefore,
         // only prevote QCs from state will update the PoLC. If the prevote QC is from timer, throw
         // precommit vote event directly.
         if source == TriggerSource::State {
             // update PoLC
-            let vote_round = prevote_round.unwrap();
+            let vote_round = prevote_round;
             self.check_round(vote_round)?;
             if let Some(lock) = self.lock.clone() {
                 if vote_round > lock.round {
@@ -188,11 +187,10 @@ impl StateMachine {
         _source: TriggerSource,
     ) -> ConsensusResult<()> {
         self.check()?;
-        if precommit_round.is_none() {
-            return Err(ConsensusError::PrevoteErr("No vote round".to_string()));
-        }
+        let precommit_round = precommit_round
+            .ok_or_else(|| ConsensusError::PrevoteErr("No vote round".to_string()))?;
 
-        self.check_round(precommit_round.unwrap())?;
+        self.check_round(precommit_round)?;
         if precommit_hash.is_empty() {
             let (lock_round, lock_proposal) = self
                 .lock

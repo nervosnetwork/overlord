@@ -97,11 +97,7 @@ where
     }
 
     async fn handle_msg(&mut self, msg: Option<OverlordMsg<T>>) -> ConsensusResult<()> {
-        if msg.is_none() {
-            return Err(ConsensusError::Other("Message sender dropped".to_string()));
-        }
-
-        match msg.unwrap() {
+        match msg.ok_or_else(|| ConsensusError::Other("Message sender dropped".to_string()))? {
             OverlordMsg::SignedProposal(sp) => self.handle_signed_proposal(sp).await,
             OverlordMsg::AggregatedVote(av) => self.handle_aggregated_vote(av).await,
             OverlordMsg::SignedVote(sv) => self.handle_signed_vote(sv).await,
@@ -115,11 +111,7 @@ where
         let event =
             event.ok_or_else(|| ConsensusError::Other("Event sender dropped".to_string()))?;
 
-        if event.is_err() {
-            return Err(ConsensusError::Other("Event sender dropped".to_string()));
-        }
-
-        match event.unwrap() {
+        match event.map_err(|_| ConsensusError::Other("Event sender dropped".to_string()))? {
             SMREvent::NewRoundInfo {
                 round,
                 lock_round,

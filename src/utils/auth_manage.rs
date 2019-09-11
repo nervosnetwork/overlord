@@ -201,7 +201,7 @@ impl EpochAuthorityManage {
         Ok(acc * 3 > self.vote_weight_sum * 2)
     }
 
-    ///
+    /// If the given address is in the current authority list.
     fn contains(&self, address: &Address) -> bool {
         self.address.contains(address)
     }
