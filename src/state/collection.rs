@@ -350,15 +350,46 @@ mod test {
     extern crate test;
 
     use std::collections::{HashMap, HashSet};
+    use std::error::Error;
 
+    use bincode::{deserialize, serialize};
     use bytes::Bytes;
     use rand::random;
+    use serde::{Deserialize, Serialize};
     use test::Bencher;
 
-    use crate::state::collection::VoteCollector;
+    use crate::state::collection::{ProposalCollector, VoteCollector};
     use crate::types::{
-        Address, AggregatedSignature, AggregatedVote, Hash, Signature, SignedVote, Vote, VoteType,
+        Address, AggregatedSignature, AggregatedVote, Hash, Proposal, Signature, SignedProposal,
+        SignedVote, Vote, VoteType,
     };
+    use crate::Codec;
+
+    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+    struct Pill {
+        epoch_id: u64,
+        epoch:    Vec<u64>,
+    }
+
+    impl Codec for Pill {
+        fn encode(&self) -> Result<Bytes, Box<dyn Error + Send>> {
+            let encode: Vec<u8> = serialize(&self).expect("Serialize Pill error");
+            Ok(Bytes::from(encode))
+        }
+
+        fn decode(data: Bytes) -> Result<Self, Box<dyn Error + Send>> {
+            let decode: Pill = deserialize(&data.as_ref()).expect("Deserialize Pill error.");
+            Ok(decode)
+        }
+    }
+
+    impl Pill {
+        fn new() -> Self {
+            let epoch_id = random::<u64>();
+            let epoch = (0..128).map(|_| random::<u64>()).collect::<Vec<_>>();
+            Pill { epoch_id, epoch }
+        }
+    }
 
     fn gen_hash() -> Hash {
         Hash::from((0..16).map(|_| random::<u8>()).collect::<Vec<_>>())
@@ -376,6 +407,23 @@ mod test {
         AggregatedSignature {
             signature:      gen_signature(),
             address_bitmap: Bytes::from((0..8).map(|_| random::<u8>()).collect::<Vec<_>>()),
+        }
+    }
+
+    fn gen_signed_proposal(epoch_id: u64, round: u64) -> SignedProposal<Pill> {
+        let signature = gen_signature();
+        let proposal = Proposal {
+            epoch_id,
+            round,
+            content: Pill::new(),
+            epoch_hash: gen_hash(),
+            lock: None,
+            proposer: gen_address(),
+        };
+
+        SignedProposal {
+            signature,
+            proposal,
         }
     }
 
@@ -414,6 +462,28 @@ mod test {
             epoch_hash: gen_hash(),
             leader: gen_address(),
         }
+    }
+
+    #[test]
+    fn test_proposal_collector() {
+        let mut proposals = ProposalCollector::<Pill>::new();
+        let proposal_01 = gen_signed_proposal(1, 0);
+        let proposal_02 = gen_signed_proposal(1, 0);
+
+        assert!(proposals.insert(1, 0, proposal_01.clone()).is_ok());
+        assert!(proposals.insert(1, 0, proposal_02).is_err());
+        assert_eq!(proposals.get(1, 0).unwrap(), proposal_01);
+
+        let proposal_03 = gen_signed_proposal(2, 0);
+        let proposal_04 = gen_signed_proposal(3, 0);
+
+        assert!(proposals.insert(2, 0, proposal_03.clone()).is_ok());
+        assert!(proposals.insert(3, 0, proposal_04.clone()).is_ok());
+
+        proposals.flush(2);
+        assert!(proposals.get(1, 0).is_err());
+        assert_eq!(proposals.get(2, 0).unwrap(), proposal_03);
+        assert_eq!(proposals.get(3, 0).unwrap(), proposal_04);
     }
 
     #[test]

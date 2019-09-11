@@ -7,7 +7,7 @@ use crate::types::{Address, OverlordMsg};
 use crate::{smr::SMRProvider, timer::Timer};
 use crate::{Codec, Consensus, ConsensusResult, Crypto};
 
-///
+/// An overlord consensus instance.
 pub struct Overlord<T: Codec, F: Consensus<T>, C: Crypto> {
     sender:    Option<UnboundedSender<OverlordMsg<T>>>,
     address:   Option<Address>,
@@ -21,7 +21,7 @@ where
     F: Consensus<T> + 'static,
     C: Crypto + Send + Sync + 'static,
 {
-    ///
+    /// Create a new overlord and return an overlord instance with an unbounded receiver.
     pub fn new(
         address: Address,
         consensus: F,
@@ -37,25 +37,29 @@ where
         (overlord, rx)
     }
 
-    ///
+    /// Take the overlord handler from the overlord instance.
     pub fn take_handler(&mut self) -> OverlordHandler<T> {
         OverlordHandler::new(self.sender.take().unwrap())
     }
 
-    ///
+    /// Run overlord consensus process. The `interval` is the epoch interval as millisecond. Use the
+    /// unbounded receiver created by the `new()` function as the third argument.
     pub fn run(mut self, interval: u64, rx: UnboundedReceiver<OverlordMsg<T>>) {
         let (mut smr_provider, evt_1, evt_2) = SMRProvider::new();
         let smr = smr_provider.take_smr();
-
+        let mut timer = Timer::new(evt_2, smr.clone(), interval);
         let mut state = State::new(
-            smr.clone(),
+            smr,
             self.address.take().unwrap(),
             interval,
             self.consensus.take().unwrap(),
             self.crypto.take().unwrap(),
         );
 
-        let mut timer = Timer::new(evt_2, smr, interval);
+        assert!(self.sender.is_none());
+        assert!(self.address.is_none());
+        assert!(self.consensus.is_none());
+        assert!(self.crypto.is_none());
 
         // Run SMR.
         smr_provider.run();
@@ -74,7 +78,7 @@ where
     }
 }
 
-///
+/// An overlord handler to send messages to an overlord instance.
 #[derive(Clone, Debug)]
 pub struct OverlordHandler<T: Codec>(UnboundedSender<OverlordMsg<T>>);
 
@@ -83,7 +87,7 @@ impl<T: Codec> OverlordHandler<T> {
         OverlordHandler(tx)
     }
 
-    ///
+    /// Send overlord message to the instance. Return `Err()` when the message channel is closed.
     pub fn send_msg(&mut self, msg: OverlordMsg<T>) -> ConsensusResult<()> {
         self.0
             .unbounded_send(msg)
