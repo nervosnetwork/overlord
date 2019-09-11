@@ -97,11 +97,6 @@ impl Stream for Event {
     type Item = SMREvent;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-        // match self.rx.poll_next_unpin(cx) {
-        //     Poll::Pending => Poll::Pending,
-        //     Poll::Ready(msg) => Poll::
-        //     }
-        // }
         self.rx.poll_next_unpin(cx)
     }
 }
