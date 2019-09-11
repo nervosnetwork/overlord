@@ -46,11 +46,6 @@ impl Stream for Timer {
                     }
 
                     let event = event.unwrap();
-                    if event.is_err() {
-                        return Poll::Ready(Some(event.err().unwrap()));
-                    }
-
-                    let event = event.unwrap();
                     if event == SMREvent::Stop {
                         return Poll::Ready(None);
                     }

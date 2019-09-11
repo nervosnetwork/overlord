@@ -1,12 +1,12 @@
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::Stream;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::error::ConsensusError;
 use crate::smr::smr_types::{Lock, SMREvent, SMRTrigger, Step, TriggerSource, TriggerType};
-use crate::types::Hash;
+use crate::{smr::Event, types::Hash};
 use crate::{ConsensusResult, INIT_EPOCH_ID, INIT_ROUND};
 
 /// A smallest implementation of an atomic overlord state machine. It
@@ -58,19 +58,21 @@ impl Stream for StateMachine {
 }
 
 impl StateMachine {
-    pub fn new(
-        event_sender: (UnboundedSender<SMREvent>, UnboundedSender<SMREvent>),
-        trigger_receiver: UnboundedReceiver<SMRTrigger>,
-    ) -> Self {
-        StateMachine {
+    pub fn new(trigger_receiver: UnboundedReceiver<SMRTrigger>) -> (Self, Event, Event) {
+        let (tx_1, rx_1) = unbounded();
+        let (tx_2, rx_2) = unbounded();
+
+        let state_machine = StateMachine {
             epoch_id:      INIT_EPOCH_ID,
             round:         INIT_ROUND,
             step:          Step::default(),
             proposal_hash: Hash::new(),
             lock:          None,
             trigger:       trigger_receiver,
-            event:         event_sender,
-        }
+            event:         (tx_1, tx_2),
+        };
+
+        (state_machine, Event::new(rx_1), Event::new(rx_2))
     }
 
     /// Handle a new epoch trigger. If new epoch ID is higher than current, goto a new epoch and
@@ -221,11 +223,11 @@ impl StateMachine {
     fn throw_event(&mut self, event: SMREvent) -> ConsensusResult<()> {
         self.event
             .0
-            .try_send(event.clone())
+            .unbounded_send(event.clone())
             .map_err(|_| ConsensusError::ThrowEventErr(format!("{}", event.clone())))?;
         self.event
             .1
-            .try_send(event.clone())
+            .unbounded_send(event.clone())
             .map_err(|_| ConsensusError::ThrowEventErr(format!("{}", event)))?;
         Ok(())
     }

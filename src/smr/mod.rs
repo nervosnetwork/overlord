@@ -11,7 +11,7 @@ mod tests;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
+use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::{FusedStream, Stream, StreamExt};
 
 use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
@@ -24,6 +24,34 @@ use crate::{error::ConsensusError, ConsensusResult};
 pub struct SMRProvider {
     smr:           Option<SMR>,
     state_machine: StateMachine,
+}
+
+impl SMRProvider {
+    pub fn new() -> (Self, Event, Event) {
+        let (tx, rx) = unbounded();
+        let smr = SMR::new(tx);
+        let (state_machine, evt_1, evt_2) = StateMachine::new(rx);
+
+        let provider = SMRProvider {
+            smr: Some(smr),
+            state_machine,
+        };
+
+        (provider, evt_1, evt_2)
+    }
+
+    ///
+    pub fn take_smr(&mut self) -> SMR {
+        self.smr.take().unwrap()
+    }
+
+    pub fn run(mut self) {
+        tokio::spawn(async move {
+            loop {
+                let _ = self.state_machine.next().await;
+            }
+        });
+    }
 }
 
 ///
@@ -42,8 +70,7 @@ impl SMR {
         let trigger_type = gate.trigger_type.clone().to_string();
         self.tx
             .unbounded_send(gate)
-            .map_err(|_| ConsensusError::TriggerSMRErr(trigger_type))?;
-        Ok(())
+            .map_err(|_| ConsensusError::TriggerSMRErr(trigger_type))
     }
 
     /// Trigger SMR to goto a new epoch.
@@ -56,8 +83,7 @@ impl SMR {
                 hash:         Hash::new(),
                 round:        None,
             })
-            .map_err(|_| ConsensusError::TriggerSMRErr(trigger.to_string()))?;
-        Ok(())
+            .map_err(|_| ConsensusError::TriggerSMRErr(trigger.to_string()))
     }
 }
 
@@ -68,17 +94,15 @@ pub struct Event {
 }
 
 impl Stream for Event {
-    type Item = ConsensusResult<SMREvent>;
+    type Item = SMREvent;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-        match self.rx.poll_next_unpin(cx) {
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(msg) => {
-                Poll::Ready(Some(msg.ok_or_else(|| {
-                    ConsensusError::MonitorEventErr("Sender has dropped".to_string())
-                })))
-            }
-        }
+        // match self.rx.poll_next_unpin(cx) {
+        //     Poll::Pending => Poll::Pending,
+        //     Poll::Ready(msg) => Poll::
+        //     }
+        // }
+        self.rx.poll_next_unpin(cx)
     }
 }
 

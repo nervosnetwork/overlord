@@ -3,15 +3,16 @@
 #![deny(missing_docs)]
 #![feature(test)]
 
-/// A module that impl rlp encodable and decodable trait
-/// for types that need to save wal.
+/// A module that impl rlp encodable and decodable trait for types that need to save wal.
 mod codec;
 /// Consensus error module.
 mod error;
 ///
+pub mod overlord;
+///
 mod smr;
 ///
-pub mod state;
+mod state;
 ///
 mod timer;
 ///
@@ -20,6 +21,9 @@ pub mod types;
 mod utils;
 ///
 mod wal;
+
+pub use self::overlord::Overlord;
+pub use self::overlord::OverlordHandler;
 
 use std::error::Error;
 

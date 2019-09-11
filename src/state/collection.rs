@@ -28,8 +28,7 @@ where
             .entry(epoch_id)
             .or_insert_with(ProposalRoundCollector::new)
             .insert(round, proposal)
-            .map_err(|_| ConsensusError::MultiProposal(epoch_id, round))?;
-        Ok(())
+            .map_err(|_| ConsensusError::MultiProposal(epoch_id, round))
     }
 
     /// Get the signed proposal of the given epoch ID and round. Return `Err` when there is no

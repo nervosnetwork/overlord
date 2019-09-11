@@ -48,7 +48,7 @@ pub struct State<T: Codec, F: Consensus<T>, C: Crypto> {
     last_commit_round:    Option<u64>,
     last_commit_proposal: Option<Hash>,
     epoch_start:          Instant,
-    interval:             u64,
+    epoch_interval:       u64,
 
     function: Arc<F>,
     util:     C,
@@ -60,7 +60,8 @@ where
     F: Consensus<T> + 'static,
     C: Crypto,
 {
-    pub fn new(smr: SMR, addr: Address, consensus: F, crypto: C) -> Self {
+    ///
+    pub fn new(smr: SMR, addr: Address, interval: u64, consensus: F, crypto: C) -> Self {
         State {
             epoch_id:             INIT_EPOCH_ID,
             round:                INIT_ROUND,
@@ -76,14 +77,15 @@ where
             last_commit_round:    None,
             last_commit_proposal: None,
             epoch_start:          Instant::now(),
-            interval:             3000,
+            epoch_interval:       interval,
 
             function: Arc::new(consensus),
             util:     crypto,
         }
     }
 
-    async fn start(
+    ///
+    pub async fn run(
         &mut self,
         mut rx: UnboundedReceiver<OverlordMsg<T>>,
         mut event: Event,
@@ -104,14 +106,8 @@ where
         }
     }
 
-    async fn handle_event(
-        &mut self,
-        event: Option<ConsensusResult<SMREvent>>,
-    ) -> ConsensusResult<()> {
-        let event =
-            event.ok_or_else(|| ConsensusError::Other("Event sender dropped".to_string()))?;
-
-        match event.map_err(|_| ConsensusError::Other("Event sender dropped".to_string()))? {
+    async fn handle_event(&mut self, event: Option<SMREvent>) -> ConsensusResult<()> {
+        match event.ok_or_else(|| ConsensusError::Other("Event sender dropped".to_string()))? {
             SMREvent::NewRoundInfo {
                 round,
                 lock_round,
@@ -142,7 +138,7 @@ where
         self.round = INIT_ROUND;
         let mut auth_list = status.authority_list;
         self.authority.update(&mut auth_list, true);
-        self.interval = status.interval;
+        self.epoch_interval = status.interval;
 
         // TODO: recheck proposals and votes.
         // TODO: clear outdate proposals and votes.
@@ -437,8 +433,8 @@ where
             .await
             .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
 
-        if Instant::now() < self.epoch_start + Duration::from_millis(self.interval) {
-            Delay::new_at(self.epoch_start + Duration::from_millis(self.interval))
+        if Instant::now() < self.epoch_start + Duration::from_millis(self.epoch_interval) {
+            Delay::new_at(self.epoch_start + Duration::from_millis(self.epoch_interval))
                 .await
                 .map_err(|err| ConsensusError::Other(format!("Overlord delay error {:?}", err)))?;
         }
