@@ -17,7 +17,8 @@ where
         ProposalCollector(BTreeMap::new())
     }
 
-    /// Insert a signed proposal into the proposal collector.
+    /// Insert a signed proposal into the proposal collector. Return `Err()` while the proposal of
+    /// the given epoch ID and round exists.
     pub fn insert(
         &mut self,
         epoch_id: u64,
@@ -32,7 +33,7 @@ where
     }
 
     /// Get the signed proposal of the given epoch ID and round. Return `Err` when there is no
-    /// signed proposal.
+    /// signed proposal. Return `Err` when can not get it.
     pub fn get(&self, epoch_id: u64, round: u64) -> ConsensusResult<SignedProposal<T>> {
         if let Some(round_collector) = self.0.get(&epoch_id) {
             return Ok(round_collector
@@ -50,6 +51,14 @@ where
             "No proposal epoch ID {}, round {}",
             epoch_id, round
         )))
+    }
+
+    /// Get all proposals of the given epoch ID.
+    pub fn get_epoch_proposals(&mut self, epoch_id: u64) -> Option<Vec<SignedProposal<T>>> {
+        self.0.remove(&epoch_id).map_or_else(
+            || None,
+            |map| Some(map.0.values().cloned().collect::<Vec<_>>()),
+        )
     }
 
     /// Remove items that epoch ID is less than `till`.
@@ -167,6 +176,27 @@ impl VoteCollector {
                     qc_type, epoch, round
                 ))
             })
+    }
+
+    /// Get all votes and quorum certificates of the given epoch ID.
+    pub fn get_epoch_votes(
+        &mut self,
+        epoch_id: u64,
+    ) -> Option<(Vec<SignedVote>, Vec<AggregatedVote>)> {
+        self.0.remove(&epoch_id).map_or_else(
+            || None,
+            |mut vrc| {
+                let mut votes = Vec::new();
+                let mut qcs = Vec::new();
+
+                for (_, rc) in vrc.0.iter_mut() {
+                    votes.append(&mut rc.prevote.get_all_votes());
+                    votes.append(&mut rc.precommit.get_all_votes());
+                    qcs.append(&mut rc.qc.get_all_qcs());
+                }
+                Some((votes, qcs))
+            },
+        )
     }
 
     /// Remove items that epoch ID is less than `till`.
@@ -306,6 +336,19 @@ impl QuorumCertificate {
             VoteType::Precommit => self.precommit.clone(),
         }
     }
+
+    fn get_all_qcs(&mut self) -> Vec<AggregatedVote> {
+        let mut res = Vec::new();
+
+        if let Some(tmp) = self.prevote.clone() {
+            res.push(tmp);
+        }
+
+        if let Some(tmp) = self.precommit.clone() {
+            res.push(tmp);
+        }
+        res
+    }
 }
 
 ///
@@ -342,6 +385,10 @@ impl Votes {
                 .map(|addr| self.by_address.get(addr).cloned())
                 .collect::<Option<Vec<_>>>()
         })
+    }
+
+    fn get_all_votes(&mut self) -> Vec<SignedVote> {
+        self.by_address.values().cloned().collect::<Vec<_>>()
     }
 }
 
@@ -534,6 +581,13 @@ mod test {
             .cloned()
             .collect::<HashSet<_>>();
         assert_eq!(res, vec.iter().cloned().collect::<HashSet<_>>());
+    }
+
+    #[bench]
+    fn bench_insert_proposal(b: &mut Bencher) {
+        let mut proposals = ProposalCollector::<Pill>::new();
+        let proposal = gen_signed_proposal(1, 0);
+        b.iter(|| proposals.insert(1, 0, proposal.clone()));
     }
 
     #[bench]

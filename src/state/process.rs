@@ -103,6 +103,7 @@ where
             OverlordMsg::SignedProposal(sp) => self.handle_signed_proposal(sp).await,
             OverlordMsg::AggregatedVote(av) => self.handle_aggregated_vote(av).await,
             OverlordMsg::SignedVote(sv) => self.handle_signed_vote(sv).await,
+            OverlordMsg::RichStatus(rs) => self.goto_new_epoch(rs).await,
         }
     }
 
@@ -134,14 +135,25 @@ where
             self.authority.update(&mut tmp, false);
         }
 
+        // Update epoch ID and authority list.
         self.epoch_id = new_epoch_id;
         self.round = INIT_ROUND;
         let mut auth_list = status.authority_list;
         self.authority.update(&mut auth_list, true);
         self.epoch_interval = status.interval;
 
-        // TODO: recheck proposals and votes.
-        // TODO: clear outdate proposals and votes.
+        // Clear outdated proposals and votes.
+        self.proposals.flush(new_epoch_id - 1);
+        self.votes.flush(new_epoch_id - 1);
+
+        // Re-check proposals that have been in the proposal collector, of the current epoch ID.
+        self.re_check_proposals()?;
+
+        // Re-check votes and quorum certificates in the vote collector, of the current epoch ID.
+        if let Some((votes, qcs)) = self.votes.get_epoch_votes(new_epoch_id) {
+            self.re_check_votes(votes)?;
+            self.re_check_qcs(qcs)?;
+        }
 
         self.state_machine.trigger(SMRTrigger {
             trigger_type: TriggerType::NewEpoch(new_epoch_id),
@@ -283,7 +295,7 @@ where
         //  Verify proposal signature.
         let proposal = signed_proposal.proposal;
         let signature = signed_proposal.signature;
-        self.verify_address(&proposal.proposer, epoch_id == self.epoch_id)?;
+        self.verify_proposer(round, &proposal.proposer, epoch_id == self.epoch_id)?;
         self.verify_signature(
             self.util.hash(Bytes::from(encode(&proposal))),
             signature,
@@ -654,6 +666,77 @@ where
         Ok(())
     }
 
+    fn re_check_proposals(&mut self) -> ConsensusResult<()> {
+        if let Some(proposals) = self.proposals.get_epoch_proposals(self.epoch_id) {
+            for sp in proposals.into_iter() {
+                let signature = sp.signature.clone();
+                let proposal = sp.proposal.clone();
+
+                if self
+                    .verify_proposer(proposal.round, &proposal.proposer, true)
+                    .is_ok()
+                    && self
+                        .verify_signature(
+                            self.util.hash(Bytes::from(encode(&proposal))),
+                            signature,
+                            &proposal.proposer,
+                            MsgType::SignedProposal,
+                        )
+                        .is_ok()
+                {
+                    self.proposals
+                        .insert(proposal.epoch_id, proposal.round, sp)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn re_check_votes(&mut self, votes: Vec<SignedVote>) -> ConsensusResult<()> {
+        if votes.is_empty() {
+            return Ok(());
+        }
+
+        for sv in votes.into_iter() {
+            let signature = sv.signature.clone();
+            let vote = sv.vote.clone();
+
+            if self
+                .verify_signature(
+                    self.util.hash(Bytes::from(encode(&vote))),
+                    signature,
+                    &vote.voter,
+                    MsgType::SignedVote,
+                )
+                .is_ok()
+                && self.verify_address(&vote.voter, true).is_ok()
+            {
+                self.votes.insert_vote(sv.get_hash(), sv, vote.voter);
+            }
+        }
+        Ok(())
+    }
+
+    fn re_check_qcs(&mut self, qcs: Vec<AggregatedVote>) -> ConsensusResult<()> {
+        if qcs.is_empty() {
+            return Ok(());
+        }
+
+        for qc in qcs.into_iter() {
+            if self
+                .verify_aggregated_signature(
+                    qc.signature.clone(),
+                    self.epoch_id,
+                    qc.vote_type.clone(),
+                )
+                .is_ok()
+            {
+                self.votes.set_qc(qc);
+            }
+        }
+        Ok(())
+    }
+
     /// Check last commit round and last commit proposal.
     fn last_commit_msg(&self) -> ConsensusResult<Option<(u64, Hash)>> {
         if self
@@ -763,6 +846,23 @@ where
                     vote_type, err
                 ))
             })?;
+        Ok(())
+    }
+
+    fn verify_proposer(
+        &self,
+        round: u64,
+        address: &Address,
+        is_current: bool,
+    ) -> ConsensusResult<()> {
+        self.verify_address(address, is_current)?;
+        if address
+            == &self
+                .authority
+                .get_proposer(self.epoch_id + round, is_current)?
+        {
+            return Err(ConsensusError::ProposalErr("Invalid proposer".to_string()));
+        }
         Ok(())
     }
 
