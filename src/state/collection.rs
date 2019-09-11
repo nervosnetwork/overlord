@@ -529,8 +529,12 @@ mod test {
 
         proposals.flush(2);
         assert!(proposals.get(1, 0).is_err());
-        assert_eq!(proposals.get(2, 0).unwrap(), proposal_03);
+        assert_eq!(proposals.get(2, 0).unwrap(), proposal_03.clone());
         assert_eq!(proposals.get(3, 0).unwrap(), proposal_04);
+
+        assert!(proposals.get_epoch_proposals(1).is_none());
+        assert_eq!(proposals.get_epoch_proposals(2).unwrap(), vec![proposal_03]);
+        assert!(proposals.get(2, 0).is_err());
     }
 
     #[test]

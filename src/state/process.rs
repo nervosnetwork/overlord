@@ -124,6 +124,15 @@ where
         }
     }
 
+    /// On receiving a rich status will call this method. This status can be either the return value
+    /// of the `commit()` interface, or lastest status after the synchronization is completed send
+    /// by the overlord handler.
+    ///
+    /// If the difference between the status epoch ID and current's over one, get the last authority
+    /// list of the status epoch ID firstly. Then update the epoch ID, authority_list and the epoch
+    /// interval. Since it is possible to have received and cached the current epoch's proposals,
+    /// votes and quorum certificates before, these should be re-checked as goto new epoch. Finally,
+    /// trigger SMR to goto new epoch.
     async fn goto_new_epoch(&mut self, status: Status) -> ConsensusResult<()> {
         let new_epoch_id = status.epoch_id;
         if new_epoch_id != self.epoch_id + 1 {
@@ -147,7 +156,9 @@ where
         self.votes.flush(new_epoch_id - 1);
 
         // Re-check proposals that have been in the proposal collector, of the current epoch ID.
-        self.re_check_proposals()?;
+        if let Some(proposals) = self.proposals.get_epoch_proposals(self.epoch_id) {
+            self.re_check_proposals(proposals)?;
+        }
 
         // Re-check votes and quorum certificates in the vote collector, of the current epoch ID.
         if let Some((votes, qcs)) = self.votes.get_epoch_votes(new_epoch_id) {
@@ -666,27 +677,25 @@ where
         Ok(())
     }
 
-    fn re_check_proposals(&mut self) -> ConsensusResult<()> {
-        if let Some(proposals) = self.proposals.get_epoch_proposals(self.epoch_id) {
-            for sp in proposals.into_iter() {
-                let signature = sp.signature.clone();
-                let proposal = sp.proposal.clone();
+    fn re_check_proposals(&mut self, proposals: Vec<SignedProposal<T>>) -> ConsensusResult<()> {
+        for sp in proposals.into_iter() {
+            let signature = sp.signature.clone();
+            let proposal = sp.proposal.clone();
 
-                if self
-                    .verify_proposer(proposal.round, &proposal.proposer, true)
+            if self
+                .verify_proposer(proposal.round, &proposal.proposer, true)
+                .is_ok()
+                && self
+                    .verify_signature(
+                        self.util.hash(Bytes::from(encode(&proposal))),
+                        signature,
+                        &proposal.proposer,
+                        MsgType::SignedProposal,
+                    )
                     .is_ok()
-                    && self
-                        .verify_signature(
-                            self.util.hash(Bytes::from(encode(&proposal))),
-                            signature,
-                            &proposal.proposer,
-                            MsgType::SignedProposal,
-                        )
-                        .is_ok()
-                {
-                    self.proposals
-                        .insert(proposal.epoch_id, proposal.round, sp)?;
-                }
+            {
+                self.proposals
+                    .insert(proposal.epoch_id, proposal.round, sp)?;
             }
         }
         Ok(())
