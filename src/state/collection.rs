@@ -12,10 +12,13 @@ impl<T> ProposalCollector<T>
 where
     T: Codec,
 {
+    /// Create a new proposal collector.
     pub fn new() -> Self {
         ProposalCollector(BTreeMap::new())
     }
 
+    /// Insert a signed proposal into the proposal collector. Return `Err()` while the proposal of
+    /// the given epoch ID and round exists.
     pub fn insert(
         &mut self,
         epoch_id: u64,
@@ -26,10 +29,11 @@ where
             .entry(epoch_id)
             .or_insert_with(ProposalRoundCollector::new)
             .insert(round, proposal)
-            .map_err(|_| ConsensusError::MultiProposal(epoch_id, round))?;
-        Ok(())
+            .map_err(|_| ConsensusError::MultiProposal(epoch_id, round))
     }
 
+    /// Get the signed proposal of the given epoch ID and round. Return `Err` when there is no
+    /// signed proposal. Return `Err` when can not get it.
     pub fn get(&self, epoch_id: u64, round: u64) -> ConsensusResult<SignedProposal<T>> {
         if let Some(round_collector) = self.0.get(&epoch_id) {
             return Ok(round_collector
@@ -49,9 +53,17 @@ where
         )))
     }
 
+    /// Get all proposals of the given epoch ID.
+    pub fn get_epoch_proposals(&mut self, epoch_id: u64) -> Option<Vec<SignedProposal<T>>> {
+        self.0.remove(&epoch_id).map_or_else(
+            || None,
+            |map| Some(map.0.values().cloned().collect::<Vec<_>>()),
+        )
+    }
+
     /// Remove items that epoch ID is less than `till`.
     pub fn flush(&mut self, till: u64) {
-        self.0.split_off(&till);
+        self.0 = self.0.split_off(&till);
     }
 }
 
@@ -166,9 +178,30 @@ impl VoteCollector {
             })
     }
 
+    /// Get all votes and quorum certificates of the given epoch ID.
+    pub fn get_epoch_votes(
+        &mut self,
+        epoch_id: u64,
+    ) -> Option<(Vec<SignedVote>, Vec<AggregatedVote>)> {
+        self.0.remove(&epoch_id).map_or_else(
+            || None,
+            |mut vrc| {
+                let mut votes = Vec::new();
+                let mut qcs = Vec::new();
+
+                for (_, rc) in vrc.0.iter_mut() {
+                    votes.append(&mut rc.prevote.get_all_votes());
+                    votes.append(&mut rc.precommit.get_all_votes());
+                    qcs.append(&mut rc.qc.get_all_qcs());
+                }
+                Some((votes, qcs))
+            },
+        )
+    }
+
     /// Remove items that epoch ID is less than `till`.
     pub fn flush(&mut self, till: u64) {
-        self.0.split_off(&till);
+        self.0 = self.0.split_off(&till);
     }
 }
 
@@ -303,6 +336,19 @@ impl QuorumCertificate {
             VoteType::Precommit => self.precommit.clone(),
         }
     }
+
+    fn get_all_qcs(&mut self) -> Vec<AggregatedVote> {
+        let mut res = Vec::new();
+
+        if let Some(tmp) = self.prevote.clone() {
+            res.push(tmp);
+        }
+
+        if let Some(tmp) = self.precommit.clone() {
+            res.push(tmp);
+        }
+        res
+    }
 }
 
 ///
@@ -340,19 +386,57 @@ impl Votes {
                 .collect::<Option<Vec<_>>>()
         })
     }
+
+    fn get_all_votes(&mut self) -> Vec<SignedVote> {
+        self.by_address.values().cloned().collect::<Vec<_>>()
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use std::collections::{HashMap, HashSet};
+    extern crate test;
 
+    use std::collections::{HashMap, HashSet};
+    use std::error::Error;
+
+    use bincode::{deserialize, serialize};
     use bytes::Bytes;
     use rand::random;
+    use serde::{Deserialize, Serialize};
+    use test::Bencher;
 
-    use crate::state::collection::VoteCollector;
+    use crate::state::collection::{ProposalCollector, VoteCollector};
     use crate::types::{
-        Address, AggregatedSignature, AggregatedVote, Hash, Signature, SignedVote, Vote, VoteType,
+        Address, AggregatedSignature, AggregatedVote, Hash, Proposal, Signature, SignedProposal,
+        SignedVote, Vote, VoteType,
     };
+    use crate::Codec;
+
+    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+    struct Pill {
+        epoch_id: u64,
+        epoch:    Vec<u64>,
+    }
+
+    impl Codec for Pill {
+        fn encode(&self) -> Result<Bytes, Box<dyn Error + Send>> {
+            let encode: Vec<u8> = serialize(&self).expect("Serialize Pill error");
+            Ok(Bytes::from(encode))
+        }
+
+        fn decode(data: Bytes) -> Result<Self, Box<dyn Error + Send>> {
+            let decode: Pill = deserialize(&data.as_ref()).expect("Deserialize Pill error.");
+            Ok(decode)
+        }
+    }
+
+    impl Pill {
+        fn new() -> Self {
+            let epoch_id = random::<u64>();
+            let epoch = (0..128).map(|_| random::<u64>()).collect::<Vec<_>>();
+            Pill { epoch_id, epoch }
+        }
+    }
 
     fn gen_hash() -> Hash {
         Hash::from((0..16).map(|_| random::<u8>()).collect::<Vec<_>>())
@@ -370,6 +454,23 @@ mod test {
         AggregatedSignature {
             signature:      gen_signature(),
             address_bitmap: Bytes::from((0..8).map(|_| random::<u8>()).collect::<Vec<_>>()),
+        }
+    }
+
+    fn gen_signed_proposal(epoch_id: u64, round: u64) -> SignedProposal<Pill> {
+        let signature = gen_signature();
+        let proposal = Proposal {
+            epoch_id,
+            round,
+            content: Pill::new(),
+            epoch_hash: gen_hash(),
+            lock: None,
+            proposer: gen_address(),
+        };
+
+        SignedProposal {
+            signature,
+            proposal,
         }
     }
 
@@ -408,6 +509,32 @@ mod test {
             epoch_hash: gen_hash(),
             leader: gen_address(),
         }
+    }
+
+    #[test]
+    fn test_proposal_collector() {
+        let mut proposals = ProposalCollector::<Pill>::new();
+        let proposal_01 = gen_signed_proposal(1, 0);
+        let proposal_02 = gen_signed_proposal(1, 0);
+
+        assert!(proposals.insert(1, 0, proposal_01.clone()).is_ok());
+        assert!(proposals.insert(1, 0, proposal_02).is_err());
+        assert_eq!(proposals.get(1, 0).unwrap(), proposal_01);
+
+        let proposal_03 = gen_signed_proposal(2, 0);
+        let proposal_04 = gen_signed_proposal(3, 0);
+
+        assert!(proposals.insert(2, 0, proposal_03.clone()).is_ok());
+        assert!(proposals.insert(3, 0, proposal_04.clone()).is_ok());
+
+        proposals.flush(2);
+        assert!(proposals.get(1, 0).is_err());
+        assert_eq!(proposals.get(2, 0).unwrap(), proposal_03.clone());
+        assert_eq!(proposals.get(3, 0).unwrap(), proposal_04);
+
+        assert!(proposals.get_epoch_proposals(1).is_none());
+        assert_eq!(proposals.get_epoch_proposals(2).unwrap(), vec![proposal_03]);
+        assert!(proposals.get(2, 0).is_err());
     }
 
     #[test]
@@ -458,5 +585,46 @@ mod test {
             .cloned()
             .collect::<HashSet<_>>();
         assert_eq!(res, vec.iter().cloned().collect::<HashSet<_>>());
+    }
+
+    #[bench]
+    fn bench_insert_proposal(b: &mut Bencher) {
+        let mut proposals = ProposalCollector::<Pill>::new();
+        let proposal = gen_signed_proposal(1, 0);
+        b.iter(|| proposals.insert(1, 0, proposal.clone()));
+    }
+
+    #[bench]
+    fn bench_insert_vote(b: &mut Bencher) {
+        let mut votes = VoteCollector::new();
+        let hash = gen_hash();
+        let addr = gen_address();
+        let sv = gen_signed_vote(
+            random::<u64>(),
+            random::<u64>(),
+            VoteType::Prevote,
+            hash.clone(),
+            addr.clone(),
+        );
+        b.iter(|| votes.insert_vote(hash.clone(), sv.clone(), addr.clone()))
+    }
+
+    #[bench]
+    fn bench_insert_qc(b: &mut Bencher) {
+        let mut votes = VoteCollector::new();
+        let av = gen_aggregated_vote(random::<u64>(), random::<u64>(), VoteType::Prevote);
+        b.iter(|| votes.set_qc(av.clone()));
+    }
+
+    #[bench]
+    fn bench_get_votes(b: &mut Bencher) {
+        let mut votes = VoteCollector::new();
+        let hash = gen_hash();
+        for _ in 0..10 {
+            let addr = gen_address();
+            let sv = gen_signed_vote(1, 0, VoteType::Prevote, hash.clone(), addr.clone());
+            votes.insert_vote(hash.clone(), sv, addr);
+        }
+        b.iter(|| votes.get_votes(1, 0, VoteType::Prevote, &hash));
     }
 }

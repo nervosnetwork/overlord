@@ -91,6 +91,8 @@ pub enum OverlordMsg<T: Codec> {
     SignedVote(SignedVote),
     /// Aggregated vote message.
     AggregatedVote(AggregatedVote),
+    /// Rich status message.
+    RichStatus(Status),
 }
 
 /// A signed proposal.

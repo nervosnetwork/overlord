@@ -4,10 +4,10 @@ use std::{ops::BitXor, sync::Arc};
 
 use bit_vec::BitVec;
 use bytes::Bytes;
+use futures::{channel::mpsc::UnboundedReceiver, select, StreamExt};
 use futures_timer::Delay;
 use parking_lot::Mutex;
 use rlp::encode;
-use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
 use crate::smr::{Event, SMR};
@@ -34,9 +34,6 @@ enum MsgType {
 /// round. The `votes` field saves all signed votes and quorum certificates which epoch ID is higher
 /// than `current_epoch - 1`.
 pub struct State<T: Codec, F: Consensus<T>, C: Crypto> {
-    rx:    UnboundedReceiver<OverlordMsg<T>>,
-    event: Event,
-
     epoch_id:             u64,
     round:                u64,
     state_machine:        SMR,
@@ -51,7 +48,7 @@ pub struct State<T: Codec, F: Consensus<T>, C: Crypto> {
     last_commit_round:    Option<u64>,
     last_commit_proposal: Option<Hash>,
     epoch_start:          Instant,
-    interval:             u64,
+    epoch_interval:       u64,
 
     function: Arc<F>,
     util:     C,
@@ -63,18 +60,9 @@ where
     F: Consensus<T> + 'static,
     C: Crypto,
 {
-    pub fn new(
-        receiver: UnboundedReceiver<OverlordMsg<T>>,
-        monitor: Event,
-        smr: SMR,
-        addr: Address,
-        consensus: F,
-        crypto: C,
-    ) -> Self {
+    ///
+    pub fn new(smr: SMR, addr: Address, interval: u64, consensus: F, crypto: C) -> Self {
         State {
-            rx:    receiver,
-            event: monitor,
-
             epoch_id:             INIT_EPOCH_ID,
             round:                INIT_ROUND,
             state_machine:        smr,
@@ -89,39 +77,38 @@ where
             last_commit_round:    None,
             last_commit_proposal: None,
             epoch_start:          Instant::now(),
-            interval:             3000,
+            epoch_interval:       interval,
 
             function: Arc::new(consensus),
             util:     crypto,
         }
     }
 
-    async fn handle_msg(&mut self, msg: Option<OverlordMsg<T>>) -> ConsensusResult<()> {
-        if msg.is_none() {
-            return Err(ConsensusError::Other("Message sender dropped".to_string()));
-        }
-
-        match msg.unwrap() {
-            OverlordMsg::SignedProposal(sp) => self.handle_signed_proposal(sp).await,
-            OverlordMsg::AggregatedVote(av) => self.handle_aggregated_vote(av).await,
-            OverlordMsg::SignedVote(sv) => self.handle_signed_vote(sv).await,
+    ///
+    pub async fn run(
+        &mut self,
+        mut rx: UnboundedReceiver<OverlordMsg<T>>,
+        mut event: Event,
+    ) -> ConsensusResult<()> {
+        loop {
+            select! {
+                raw = rx.next() => self.handle_msg(raw).await?,
+                evt = event.next() => self.handle_event(evt).await?,
+            }
         }
     }
 
-    async fn handle_event(
-        &mut self,
-        event: Option<ConsensusResult<SMREvent>>,
-    ) -> ConsensusResult<()> {
-        if event.is_none() {
-            return Err(ConsensusError::Other("Event sender dropped".to_string()));
+    async fn handle_msg(&mut self, msg: Option<OverlordMsg<T>>) -> ConsensusResult<()> {
+        match msg.ok_or_else(|| ConsensusError::Other("Message sender dropped".to_string()))? {
+            OverlordMsg::SignedProposal(sp) => self.handle_signed_proposal(sp).await,
+            OverlordMsg::AggregatedVote(av) => self.handle_aggregated_vote(av).await,
+            OverlordMsg::SignedVote(sv) => self.handle_signed_vote(sv).await,
+            OverlordMsg::RichStatus(rs) => self.goto_new_epoch(rs).await,
         }
+    }
 
-        let event = event.unwrap();
-        if event.is_err() {
-            return Err(ConsensusError::Other("Event sender dropped".to_string()));
-        }
-
-        match event.unwrap() {
+    async fn handle_event(&mut self, event: Option<SMREvent>) -> ConsensusResult<()> {
+        match event.ok_or_else(|| ConsensusError::Other("Event sender dropped".to_string()))? {
             SMREvent::NewRoundInfo {
                 round,
                 lock_round,
@@ -137,6 +124,15 @@ where
         }
     }
 
+    /// On receiving a rich status will call this method. This status can be either the return value
+    /// of the `commit()` interface, or lastest status after the synchronization is completed send
+    /// by the overlord handler.
+    ///
+    /// If the difference between the status epoch ID and current's over one, get the last authority
+    /// list of the status epoch ID firstly. Then update the epoch ID, authority_list and the epoch
+    /// interval. Since it is possible to have received and cached the current epoch's proposals,
+    /// votes and quorum certificates before, these should be re-checked as goto new epoch. Finally,
+    /// trigger SMR to goto new epoch.
     async fn goto_new_epoch(&mut self, status: Status) -> ConsensusResult<()> {
         let new_epoch_id = status.epoch_id;
         if new_epoch_id != self.epoch_id + 1 {
@@ -148,14 +144,27 @@ where
             self.authority.update(&mut tmp, false);
         }
 
+        // Update epoch ID and authority list.
         self.epoch_id = new_epoch_id;
         self.round = INIT_ROUND;
         let mut auth_list = status.authority_list;
         self.authority.update(&mut auth_list, true);
-        self.interval = status.interval;
+        self.epoch_interval = status.interval;
 
-        // TODO: recheck proposals and votes.
-        // TODO: clear outdate proposals and votes.
+        // Clear outdated proposals and votes.
+        self.proposals.flush(new_epoch_id - 1);
+        self.votes.flush(new_epoch_id - 1);
+
+        // Re-check proposals that have been in the proposal collector, of the current epoch ID.
+        if let Some(proposals) = self.proposals.get_epoch_proposals(self.epoch_id) {
+            self.re_check_proposals(proposals)?;
+        }
+
+        // Re-check votes and quorum certificates in the vote collector, of the current epoch ID.
+        if let Some((votes, qcs)) = self.votes.get_epoch_votes(new_epoch_id) {
+            self.re_check_votes(votes)?;
+            self.re_check_qcs(qcs)?;
+        }
 
         self.state_machine.trigger(SMRTrigger {
             trigger_type: TriggerType::NewEpoch(new_epoch_id),
@@ -297,7 +306,7 @@ where
         //  Verify proposal signature.
         let proposal = signed_proposal.proposal;
         let signature = signed_proposal.signature;
-        self.verify_address(&proposal.proposer, epoch_id == self.epoch_id)?;
+        self.verify_proposer(round, &proposal.proposer, epoch_id == self.epoch_id)?;
         self.verify_signature(
             self.util.hash(Bytes::from(encode(&proposal))),
             signature,
@@ -447,8 +456,8 @@ where
             .await
             .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
 
-        if Instant::now() < self.epoch_start + Duration::from_millis(self.interval) {
-            Delay::new_at(self.epoch_start + Duration::from_millis(self.interval))
+        if Instant::now() < self.epoch_start + Duration::from_millis(self.epoch_interval) {
+            Delay::new_at(self.epoch_start + Duration::from_millis(self.epoch_interval))
                 .await
                 .map_err(|err| ConsensusError::Other(format!("Overlord delay error {:?}", err)))?;
         }
@@ -517,7 +526,7 @@ where
         for (hash, set) in vote_map.iter() {
             let mut acc = 0u8;
             for addr in set.iter() {
-                acc += self.authority.get_vote_weight(addr, true)?;
+                acc += self.authority.get_vote_weight(addr)?;
             }
             if u64::from(acc) * 3 > threshold {
                 epoch_hash = Some(hash.to_owned());
@@ -668,6 +677,75 @@ where
         Ok(())
     }
 
+    fn re_check_proposals(&mut self, proposals: Vec<SignedProposal<T>>) -> ConsensusResult<()> {
+        for sp in proposals.into_iter() {
+            let signature = sp.signature.clone();
+            let proposal = sp.proposal.clone();
+
+            if self
+                .verify_proposer(proposal.round, &proposal.proposer, true)
+                .is_ok()
+                && self
+                    .verify_signature(
+                        self.util.hash(Bytes::from(encode(&proposal))),
+                        signature,
+                        &proposal.proposer,
+                        MsgType::SignedProposal,
+                    )
+                    .is_ok()
+            {
+                self.proposals
+                    .insert(proposal.epoch_id, proposal.round, sp)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn re_check_votes(&mut self, votes: Vec<SignedVote>) -> ConsensusResult<()> {
+        if votes.is_empty() {
+            return Ok(());
+        }
+
+        for sv in votes.into_iter() {
+            let signature = sv.signature.clone();
+            let vote = sv.vote.clone();
+
+            if self
+                .verify_signature(
+                    self.util.hash(Bytes::from(encode(&vote))),
+                    signature,
+                    &vote.voter,
+                    MsgType::SignedVote,
+                )
+                .is_ok()
+                && self.verify_address(&vote.voter, true).is_ok()
+            {
+                self.votes.insert_vote(sv.get_hash(), sv, vote.voter);
+            }
+        }
+        Ok(())
+    }
+
+    fn re_check_qcs(&mut self, qcs: Vec<AggregatedVote>) -> ConsensusResult<()> {
+        if qcs.is_empty() {
+            return Ok(());
+        }
+
+        for qc in qcs.into_iter() {
+            if self
+                .verify_aggregated_signature(
+                    qc.signature.clone(),
+                    self.epoch_id,
+                    qc.vote_type.clone(),
+                )
+                .is_ok()
+            {
+                self.votes.set_qc(qc);
+            }
+        }
+        Ok(())
+    }
+
     /// Check last commit round and last commit proposal.
     fn last_commit_msg(&self) -> ConsensusResult<Option<(u64, Hash)>> {
         if self
@@ -777,6 +855,23 @@ where
                     vote_type, err
                 ))
             })?;
+        Ok(())
+    }
+
+    fn verify_proposer(
+        &self,
+        round: u64,
+        address: &Address,
+        is_current: bool,
+    ) -> ConsensusResult<()> {
+        self.verify_address(address, is_current)?;
+        if address
+            == &self
+                .authority
+                .get_proposer(self.epoch_id + round, is_current)?
+        {
+            return Err(ConsensusError::ProposalErr("Invalid proposer".to_string()));
+        }
         Ok(())
     }
 

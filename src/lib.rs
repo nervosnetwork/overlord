@@ -1,25 +1,29 @@
 //! Overlord Consensus Protocol
 
 #![deny(missing_docs)]
-#![recursion_limit = "256"]
+#![feature(test)]
 
-/// A module that impl rlp encodable and decodable trait
-/// for types that need to save wal.
+/// A module that impl rlp encodable and decodable trait for types that need to save wal.
 mod codec;
-/// Consensus error module.
-mod error;
-///
+/// Overlord error module.
+pub mod error;
+/// Create and run the overlord consensus process.
+pub mod overlord;
+/// State machine replicas module to do state changes.
 mod smr;
-///
-pub mod state;
-///
+/// The state module to storage proposals and votes.
+mod state;
+/// The timer module to ensure the protocol liveness.
 mod timer;
-///
+/// Message types using in the overlord consensus protocol.
 pub mod types;
-///
+/// Some utility functions.
 mod utils;
-///
+/// Write ahead log module.
 mod wal;
+
+pub use self::overlord::Overlord;
+pub use self::overlord::OverlordHandler;
 
 use std::error::Error;
 
@@ -37,42 +41,48 @@ pub type ConsensusResult<T> = ::std::result::Result<T, ConsensusError>;
 const INIT_EPOCH_ID: u64 = 0;
 const INIT_ROUND: u64 = 0;
 
-/// **TODO: context libiary**
+/// A necessary trait to keep
 #[async_trait]
 pub trait Consensus<T: Codec>: Send + Sync {
-    /// Get an epoch of an epoch_id and return the epoch with its hash.
+    /// Get an epoch of the given epoch ID and return the epoch with its hash.
     async fn get_epoch(
         &self,
         _ctx: Vec<u8>,
         epoch_id: u64,
     ) -> Result<(T, Hash), Box<dyn Error + Send>>;
-    /// Check the correctness of an epoch.
+
+    /// Check the correctness of an epoch. If is passed, return the integrated transcations to do
+    /// data persistence.
     async fn check_epoch(
         &self,
         _ctx: Vec<u8>,
         epoch_id: u64,
         hash: Hash,
     ) -> Result<T, Box<dyn Error + Send>>;
-    /// Commit an epoch to execute and return the rich status.
+
+    /// Commit a given epoch to execute and return the rich status.
     async fn commit(
         &self,
         _ctx: Vec<u8>,
         epoch_id: u64,
         commit: Commit<T>,
     ) -> Result<Status, Box<dyn Error + Send>>;
-    /// Get an authority list of the given epoch.
+
+    /// Get an authority list of the given epoch ID.
     async fn get_authority_list(
         &self,
         _ctx: Vec<u8>,
         epoch_id: u64,
     ) -> Result<Vec<Node>, Box<dyn Error + Send>>;
+
     /// Broadcast a message to other replicas.
     async fn broadcast_to_other(
         &self,
         _ctx: Vec<u8>,
         msg: OverlordMsg<T>,
     ) -> Result<(), Box<dyn Error + Send>>;
-    /// Transmit a message to the Relayer.
+
+    /// Transmit a message to the Relayer, the third argument is the relayer's address.
     async fn transmit_to_relayer(
         &self,
         _ctx: Vec<u8>,
@@ -81,31 +91,36 @@ pub trait Consensus<T: Codec>: Send + Sync {
     ) -> Result<(), Box<dyn Error + Send>>;
 }
 
-///
+/// Trait for doing serialize and deserialize.
 pub trait Codec: Clone + Send {
     /// Serialize self into bytes.
     fn encode(&self) -> Result<Bytes, Box<dyn Error + Send>>;
+
     /// Deserialize date into self.
     fn decode(data: Bytes) -> Result<Self, Box<dyn Error + Send>>;
 }
 
-///
+/// Trait for some crypto methods.
 pub trait Crypto: Clone + Send {
-    /// Hash a message.
+    /// Hash a message bytes.
     fn hash(&self, msg: Bytes) -> Hash;
-    /// Sign to the given hash by private key.
+
+    /// Sign to the given hash by private key and return the signature if success.
     fn sign(&self, hash: Hash) -> Result<Signature, Box<dyn Error + Send>>;
-    /// Aggregate signatures into an aggregated signature.
+
+    /// Aggregate the given signatures into an aggregated signature according to the given bitmap.
     fn aggregate_signatures(
         &self,
         signatures: Vec<Signature>,
     ) -> Result<Signature, Box<dyn Error + Send>>;
-    /// Verify a signature.
+
+    /// Verify a signature and return the recovered address.
     fn verify_signature(
         &self,
         signature: Signature,
         hash: Hash,
     ) -> Result<Address, Box<dyn Error + Send>>;
+
     /// Verify an aggregated signature.
     fn verify_aggregated_signature(
         &self,

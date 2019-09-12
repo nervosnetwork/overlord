@@ -3,4 +3,4 @@
 ///
 mod collection;
 ///
-mod process;
+pub mod process;

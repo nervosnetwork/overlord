@@ -7,10 +7,10 @@ mod prevote_test;
 /// Test proposal trigger process.
 mod proposal_test;
 
+use futures::channel::mpsc::unbounded;
 use futures::StreamExt;
 use rand::random;
 use tokio::runtime::Runtime;
-use tokio::sync::mpsc::unbounded_channel;
 
 use crate::smr::smr_types::{Lock, SMREvent, SMRTrigger, Step, TriggerSource, TriggerType};
 use crate::smr::state_machine::StateMachine;
@@ -88,13 +88,13 @@ fn trigger_test(
     err: Option<ConsensusError>,
     should_lock: Option<(u64, Hash)>,
 ) {
-    let (mut trigger_tx, trigger_rx) = unbounded_channel::<SMRTrigger>();
-    let (event_tx, mut event_rx) = unbounded_channel();
-    let (state_tx, _state_rx) = unbounded_channel();
+    let (trigger_tx, trigger_rx) = unbounded();
+    // let (event_tx, mut event_rx) = unbounded();
+    // let (state_tx, _state_rx) = unbounded();
 
-    let mut state_machine = StateMachine::new((event_tx, state_tx), trigger_rx);
+    let (mut state_machine, mut event, _event) = StateMachine::new(trigger_rx);
     state_machine.set_status(base.round, base.step, base.proposal_hash, base.lock);
-    trigger_tx.try_send(input).unwrap();
+    trigger_tx.unbounded_send(input).unwrap();
 
     let rt = Runtime::new().unwrap();
     rt.block_on(async {
@@ -113,7 +113,7 @@ fn trigger_test(
         }
 
         loop {
-            match event_rx.recv().await {
+            match event.next().await {
                 Some(event) => {
                     assert_eq!(output, event);
                     return;

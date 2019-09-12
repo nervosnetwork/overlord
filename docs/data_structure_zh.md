@@ -23,10 +23,11 @@ pub enum VoteType {
     Precommit = 1,
 }
 
-pub enum OutputMsg {
+pub enum OverlordMsg {
     SignedProposal(SignedProposal),
     SignedVote(SignedVote),
     AggregatedVote(AggregatedVote),
+    RichStatus(Status),
 }
 ```
 

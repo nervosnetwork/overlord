@@ -11,8 +11,8 @@ mod tests;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use futures::stream::{Stream, StreamExt};
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
+use futures::stream::{FusedStream, Stream, StreamExt};
 
 use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
 use crate::smr::state_machine::StateMachine;
@@ -24,6 +24,35 @@ use crate::{error::ConsensusError, ConsensusResult};
 pub struct SMRProvider {
     smr:           Option<SMR>,
     state_machine: StateMachine,
+}
+
+impl SMRProvider {
+    pub fn new() -> (Self, Event, Event) {
+        let (tx, rx) = unbounded();
+        let smr = SMR::new(tx);
+        let (state_machine, evt_1, evt_2) = StateMachine::new(rx);
+
+        let provider = SMRProvider {
+            smr: Some(smr),
+            state_machine,
+        };
+
+        (provider, evt_1, evt_2)
+    }
+
+    /// Take the SMR handler and this function will be called only once.
+    pub fn take_smr(&mut self) -> SMR {
+        assert!(self.smr.is_some());
+        self.smr.take().unwrap()
+    }
+
+    pub fn run(mut self) {
+        tokio::spawn(async move {
+            loop {
+                let _ = self.state_machine.next().await;
+            }
+        });
+    }
 }
 
 ///
@@ -41,23 +70,21 @@ impl SMR {
     pub fn trigger(&mut self, gate: SMRTrigger) -> ConsensusResult<()> {
         let trigger_type = gate.trigger_type.clone().to_string();
         self.tx
-            .try_send(gate)
-            .map_err(|_| ConsensusError::TriggerSMRErr(trigger_type))?;
-        Ok(())
+            .unbounded_send(gate)
+            .map_err(|_| ConsensusError::TriggerSMRErr(trigger_type))
     }
 
     /// Trigger SMR to goto a new epoch.
     pub fn new_epoch(&mut self, epoch_id: u64) -> ConsensusResult<()> {
         let trigger = TriggerType::NewEpoch(epoch_id);
         self.tx
-            .try_send(SMRTrigger {
+            .unbounded_send(SMRTrigger {
                 trigger_type: trigger.clone(),
                 source:       TriggerSource::State,
                 hash:         Hash::new(),
                 round:        None,
             })
-            .map_err(|_| ConsensusError::TriggerSMRErr(trigger.to_string()))?;
-        Ok(())
+            .map_err(|_| ConsensusError::TriggerSMRErr(trigger.to_string()))
     }
 }
 
@@ -68,32 +95,21 @@ pub struct Event {
 }
 
 impl Stream for Event {
-    type Item = ConsensusResult<SMREvent>;
+    type Item = SMREvent;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-        match self.rx.poll_next_unpin(cx) {
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(msg) => {
-                Poll::Ready(Some(msg.ok_or_else(|| {
-                    ConsensusError::MonitorEventErr("Sender has dropped".to_string())
-                })))
-            }
-        }
+        self.rx.poll_next_unpin(cx)
+    }
+}
+
+impl FusedStream for Event {
+    fn is_terminated(&self) -> bool {
+        self.rx.is_terminated()
     }
 }
 
 impl Event {
     pub fn new(receiver: UnboundedReceiver<SMREvent>) -> Self {
         Event { rx: receiver }
-    }
-
-    pub async fn recv(&mut self) -> ConsensusResult<SMREvent> {
-        if let Some(event) = self.rx.recv().await {
-            Ok(event)
-        } else {
-            Err(ConsensusError::MonitorEventErr(
-                "Sender has dropped".to_string(),
-            ))
-        }
     }
 }

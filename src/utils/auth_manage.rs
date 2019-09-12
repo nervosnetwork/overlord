@@ -47,21 +47,14 @@ impl AuthorityManage {
         self.last = Some(auth_manage);
     }
 
-    /// Get a vote weight that correspond to the given address.
-    /// **TODO: simplify**
-    pub fn get_vote_weight(&self, addr: &Address, is_current: bool) -> ConsensusResult<u8> {
-        if is_current {
-            self.current.get_vote_weight(addr)
-        } else if let Some(auth_list) = self.last.clone() {
-            auth_list.get_vote_weight(addr)
-        } else {
-            Err(ConsensusError::Other(
-                "There is no authority list cache of last epoch".to_string(),
-            ))
-        }
+    /// Get a vote weight that correspond to the given address. Return `Err` when the given address
+    /// is not in the authority list.
+    pub fn get_vote_weight(&self, addr: &Address) -> ConsensusResult<&u8> {
+        self.current.get_vote_weight(addr)
     }
 
-    /// Get a proposer address of the epoch by a given seed.
+    /// Get a proposer address of the epoch by a given seed. Return `Err` when `is_current` is
+    /// `false`, and the when last epoch ID's authority management is `None`.
     pub fn get_proposer(&self, seed: u64, is_current: bool) -> ConsensusResult<Address> {
         if is_current {
             self.current.get_proposer(seed)
@@ -74,7 +67,8 @@ impl AuthorityManage {
         }
     }
 
-    ///
+    /// Calculate whether the sum of vote weights from bitmap is above 2/3. Return `Err` when
+    /// `is_current` is `false`, and the when last epoch ID's authority management is `None`.
     pub fn is_above_threshold(&self, bitmap: Bytes, is_current: bool) -> ConsensusResult<bool> {
         if is_current {
             self.current.is_above_threshold(bitmap)
@@ -87,7 +81,8 @@ impl AuthorityManage {
         }
     }
 
-    /// **TODO: add unit test**
+    /// Check whether the authority management contains the given address. Return `Err` when
+    /// `is_current` is `false`, and the last epoch ID's authority management is `None`.
     pub fn contains(&self, address: &Address, is_current: bool) -> ConsensusResult<bool> {
         if is_current {
             Ok(self.current.contains(address))
@@ -100,6 +95,8 @@ impl AuthorityManage {
         }
     }
 
+    /// Get the sum of the vote weights. Return `Err` when `is_current` is `false`, and the last
+    /// epoch ID's authority management is `None`.
     pub fn get_vote_weight_sum(&self, is_current: bool) -> ConsensusResult<u64> {
         if is_current {
             Ok(self.current.get_vote_weight_sum())
@@ -112,6 +109,7 @@ impl AuthorityManage {
         }
     }
 
+    /// Get the length of the current authority list.
     pub fn current_len(&self) -> usize {
         self.current.address.len()
     }
@@ -165,11 +163,10 @@ impl EpochAuthorityManage {
     }
 
     /// Get a vote weight of the node.
-    fn get_vote_weight(&self, addr: &Address) -> ConsensusResult<u8> {
-        if let Some(vote_weight) = self.vote_weight_map.get(addr) {
-            return Ok(*vote_weight);
-        }
-        Err(ConsensusError::InvalidAddress)
+    fn get_vote_weight(&self, addr: &Address) -> ConsensusResult<&u8> {
+        self.vote_weight_map
+            .get(addr)
+            .ok_or_else(|| ConsensusError::InvalidAddress)
     }
 
     /// Get the proposer address by a given seed.
@@ -183,7 +180,7 @@ impl EpochAuthorityManage {
         ))
     }
 
-    ///
+    /// Calculate whether the sum of vote weights from bitmap is above 2/3.
     fn is_above_threshold(&self, bitmap: Bytes) -> ConsensusResult<bool> {
         let bitmap = BitVec::from_bytes(&bitmap);
         let mut acc = 0u64;
@@ -204,12 +201,12 @@ impl EpochAuthorityManage {
         Ok(acc * 3 > self.vote_weight_sum * 2)
     }
 
-    /// **TODO: add unit test**
+    /// If the given address is in the current authority list.
     fn contains(&self, address: &Address) -> bool {
         self.address.contains(address)
     }
 
-    ///
+    /// Get the sum of the vote weights in the current epoch ID.
     fn get_vote_weight_sum(&self) -> u64 {
         self.vote_weight_sum
     }
@@ -226,7 +223,12 @@ impl EpochAuthorityManage {
 
 #[cfg(test)]
 mod test {
+    extern crate test;
+
+    use bit_vec::BitVec;
+    use bytes::Bytes;
     use rand::random;
+    use test::Bencher;
 
     use crate::error::ConsensusError;
     use crate::types::{Address, Node};
@@ -255,6 +257,14 @@ mod test {
         node
     }
 
+    fn gen_bitmap(len: usize, nbits: Vec<usize>) -> BitVec {
+        let mut bv = BitVec::from_elem(len, false);
+        for n in nbits.into_iter() {
+            bv.set(n, true);
+        }
+        bv
+    }
+
     #[test]
     fn test_vote_weight() {
         let mut authority_list = gen_auth_list(0);
@@ -276,7 +286,7 @@ mod test {
 
         for node in authority_list.iter() {
             assert_eq!(
-                authority_manage.get_vote_weight(&node.address).unwrap(),
+                *authority_manage.get_vote_weight(&node.address).unwrap(),
                 node.propose_weight
             );
         }
@@ -319,5 +329,59 @@ mod test {
             current: e_auth_manage,
             last:    None,
         });
+    }
+
+    #[test]
+    fn test_vote_threshold() {
+        let mut authority_list = vec![
+            gen_node(gen_address(), 1u8, 1u8),
+            gen_node(gen_address(), 1u8, 1u8),
+            gen_node(gen_address(), 1u8, 1u8),
+            gen_node(gen_address(), 1u8, 1u8),
+        ];
+        authority_list.sort();
+        let mut authority = AuthorityManage::new();
+        authority.update(&mut authority_list, false);
+
+        for i in 0..4 {
+            let bit_map = gen_bitmap(4, vec![i]);
+            let res = authority.is_above_threshold(Bytes::from(bit_map.to_bytes()), true);
+            assert_eq!(res.unwrap(), false);
+        }
+
+        let tmp = vec![vec![1, 2], vec![1, 3], vec![2, 3], vec![0, 1], vec![0, 2]];
+        for i in tmp.into_iter() {
+            let bit_map = gen_bitmap(4, i);
+            let res = authority.is_above_threshold(Bytes::from(bit_map.to_bytes()), true);
+            assert_eq!(res.unwrap(), false);
+        }
+
+        let tmp = vec![vec![0, 1, 2], vec![0, 1, 3], vec![1, 2, 3]];
+        for i in tmp.into_iter() {
+            let bit_map = gen_bitmap(4, i);
+            let res = authority.is_above_threshold(Bytes::from(bit_map.to_bytes()), true);
+            assert_eq!(res.unwrap(), true);
+        }
+
+        let bit_map = gen_bitmap(4, vec![0, 1, 2, 3]);
+        let res = authority.is_above_threshold(Bytes::from(bit_map.to_bytes()), true);
+        assert_eq!(res.unwrap(), true);
+    }
+
+    #[bench]
+    fn bench_update(b: &mut Bencher) {
+        let mut auth_list = gen_auth_list(10);
+        let mut authority = AuthorityManage::new();
+        b.iter(|| authority.update(&mut auth_list, true));
+    }
+
+    #[bench]
+    fn bench_cal_vote_weight(b: &mut Bencher) {
+        let mut auth_list = gen_auth_list(10);
+        let mut authority = AuthorityManage::new();
+        authority.update(&mut auth_list, false);
+        let bitmap = BitVec::from_elem(10, true);
+        let vote_bitmap = Bytes::from(bitmap.to_bytes());
+        b.iter(|| authority.is_above_threshold(vote_bitmap.clone(), true));
     }
 }

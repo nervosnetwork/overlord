@@ -4,10 +4,10 @@ use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use std::{future::Future, pin::Pin};
 
+use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::{Stream, StreamExt};
 use futures::{FutureExt, SinkExt};
 use futures_timer::{Delay, TimerHandle};
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 
 use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
 use crate::smr::{Event, SMR};
@@ -46,11 +46,6 @@ impl Stream for Timer {
                     }
 
                     let event = event.unwrap();
-                    if event.is_err() {
-                        return Poll::Ready(Some(event.err().unwrap()));
-                    }
-
-                    let event = event.unwrap();
                     if event == SMREvent::Stop {
                         return Poll::Ready(None);
                     }
@@ -85,7 +80,7 @@ impl Stream for Timer {
 
 impl Timer {
     pub fn new(event: Event, smr: SMR, interval: u64) -> Self {
-        let (tx, rx) = unbounded_channel();
+        let (tx, rx) = unbounded();
         Timer {
             config: TimerConfig::new(interval),
             round: INIT_ROUND,
@@ -171,19 +166,19 @@ impl TimeoutInfo {
 
 #[cfg(test)]
 mod test {
+    use futures::channel::mpsc::unbounded;
     use futures::stream::StreamExt;
     use tokio::runtime::Runtime;
-    use tokio::sync::mpsc::unbounded_channel;
 
     use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
     use crate::smr::{Event, SMR};
     use crate::{timer::Timer, types::Hash};
 
     fn test_timer_trigger(input: SMREvent, output: SMRTrigger) {
-        let (trigger_tx, mut trigger_rx) = unbounded_channel();
-        let (mut event_tx, event_rx) = unbounded_channel();
+        let (trigger_tx, mut trigger_rx) = unbounded();
+        let (event_tx, event_rx) = unbounded();
         let mut timer = Timer::new(Event::new(event_rx), SMR::new(trigger_tx), 3000);
-        event_tx.try_send(input).unwrap();
+        event_tx.unbounded_send(input).unwrap();
 
         let rt = Runtime::new().unwrap();
         rt.spawn(async move {
@@ -196,9 +191,9 @@ mod test {
         });
 
         rt.block_on(async move {
-            if let Some(res) = trigger_rx.recv().await {
+            if let Some(res) = trigger_rx.next().await {
                 assert_eq!(res, output);
-                event_tx.try_send(SMREvent::Stop).unwrap();
+                event_tx.unbounded_send(SMREvent::Stop).unwrap();
             }
         })
     }
@@ -239,8 +234,8 @@ mod test {
 
     #[test]
     fn test_order() {
-        let (trigger_tx, mut trigger_rx) = unbounded_channel();
-        let (mut event_tx, event_rx) = unbounded_channel();
+        let (trigger_tx, mut trigger_rx) = unbounded();
+        let (event_tx, event_rx) = unbounded();
         let mut timer = Timer::new(Event::new(event_rx), SMR::new(trigger_tx), 3000);
 
         let new_round_event = SMREvent::NewRoundInfo {
@@ -261,9 +256,9 @@ mod test {
             }
         });
 
-        event_tx.try_send(new_round_event).unwrap();
-        event_tx.try_send(prevote_event).unwrap();
-        event_tx.try_send(precommit_event).unwrap();
+        event_tx.unbounded_send(new_round_event).unwrap();
+        event_tx.unbounded_send(prevote_event).unwrap();
+        event_tx.unbounded_send(precommit_event).unwrap();
 
         rt.block_on(async move {
             let mut count = 1u32;
@@ -274,13 +269,13 @@ mod test {
                 gen_output(TriggerType::Proposal, None),
             ];
 
-            while let Some(res) = trigger_rx.recv().await {
+            while let Some(res) = trigger_rx.next().await {
                 output.push(res);
                 if count != 3 {
                     count += 1;
                 } else {
                     assert_eq!(predict, output);
-                    event_tx.try_send(SMREvent::Stop).unwrap();
+                    event_tx.unbounded_send(SMREvent::Stop).unwrap();
                     return;
                 }
             }

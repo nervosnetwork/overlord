@@ -29,7 +29,12 @@ pub enum ConsensusError {
     PrecommitErr(String),
     ///
     #[display(fmt = "Self round is {}, vote round is {}", local, vote)]
-    RoundDiff { local: u64, vote: u64 },
+    RoundDiff {
+        ///
+        local: u64,
+        ///
+        vote: u64,
+    },
     ///
     #[display(fmt = "Self check not pass {}", _0)]
     SelfCheckErr(String),
