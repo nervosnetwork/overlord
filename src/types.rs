@@ -249,7 +249,7 @@ pub struct Status {
     /// New epoch ID.
     pub epoch_id: u64,
     /// New block interval.
-    pub interval: u64,
+    pub interval: Option<u64>,
     /// New authority list.
     pub authority_list: Vec<Node>,
 }

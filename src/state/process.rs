@@ -149,7 +149,10 @@ where
         self.round = INIT_ROUND;
         let mut auth_list = status.authority_list;
         self.authority.update(&mut auth_list, true);
-        self.epoch_interval = status.interval;
+
+        if let Some(interval) = status.interval.clone() {
+            self.epoch_interval = interval;
+        }
 
         // Clear outdated proposals and votes.
         self.proposals.flush(new_epoch_id - 1);

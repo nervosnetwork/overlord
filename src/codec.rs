@@ -295,9 +295,14 @@ impl Decodable for Proof {
 // impl Encodable and Decodable trait for Status
 impl Encodable for Status {
     fn rlp_append(&self, s: &mut RlpStream) {
+        let tmp = if self.interval.is_none() {
+            0u64
+        } else {
+            self.interval.clone().unwrap()
+        };
         s.begin_list(3)
             .append(&self.epoch_id)
-            .append(&self.interval)
+            .append(&tmp)
             .append_list(&self.authority_list);
     }
 }
@@ -307,8 +312,10 @@ impl Decodable for Status {
         match r.prototype()? {
             Prototype::List(3) => {
                 let epoch_id: u64 = r.val_at(0)?;
-                let interval: u64 = r.val_at(1)?;
+                let tmp: u64 = r.val_at(1)?;
                 let authority_list: Vec<Node> = r.list_at(2)?;
+                let interval = if tmp == 0 { None } else { Some(tmp) };
+
                 Ok(Status {
                     epoch_id,
                     interval,
@@ -542,10 +549,10 @@ mod test {
     }
 
     impl Status {
-        fn new() -> Self {
+        fn new(time: Option<u64>) -> Self {
             Status {
                 epoch_id:       random::<u64>(),
-                interval:       random::<u64>(),
+                interval:       time,
                 authority_list: vec![Node::new(gen_address())],
             }
         }
@@ -636,7 +643,12 @@ mod test {
         assert_eq!(commit, res);
 
         // Test Status
-        let status = Status::new();
+        let status = Status::new(None);
+        let res: Status = rlp::decode(&status.rlp_bytes()).unwrap();
+        assert_eq!(status, res);
+
+        // Test Status
+        let status = Status::new(Some(3000));
         let res: Status = rlp::decode(&status.rlp_bytes()).unwrap();
         assert_eq!(status, res);
 
