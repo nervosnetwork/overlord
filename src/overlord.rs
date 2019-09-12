@@ -39,6 +39,7 @@ where
 
     /// Take the overlord handler from the overlord instance.
     pub fn take_handler(&mut self) -> OverlordHandler<T> {
+        assert!(self.sender.is_some());
         OverlordHandler::new(self.sender.take().unwrap())
     }
 

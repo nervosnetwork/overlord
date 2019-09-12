@@ -40,8 +40,9 @@ impl SMRProvider {
         (provider, evt_1, evt_2)
     }
 
-    ///
+    /// Take the SMR handler and this function will be called only once.
     pub fn take_smr(&mut self) -> SMR {
+        assert!(self.smr.is_some());
         self.smr.take().unwrap()
     }
 
