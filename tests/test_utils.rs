@@ -157,15 +157,15 @@ impl Crypto for BlsCrypto {
     }
 }
 
-impl BlsCrypto {
-    fn new(addr: Address) -> Self {
-        BlsCrypto(addr)
-    }
-}
+// impl BlsCrypto {
+//     fn new(addr: Address) -> Self {
+//         BlsCrypto(addr)
+//     }
+// }
 
 struct Msg<T: Codec> {
-    content:  OverlordMsg<T>,
-    approach: Approach,
+    pub content:  OverlordMsg<T>,
+    pub approach: Approach,
 }
 
 fn gen_hash() -> Hash {
