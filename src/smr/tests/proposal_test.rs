@@ -225,7 +225,7 @@ fn test_proposal_trigger() {
     // The output should be prevote vote to the proposal hash which is lock.
     let hash = gen_hash();
     let lock_hash = gen_hash();
-    let lock = Lock::new(0, lock_hash.clone());
+    let lock = Lock::new(1, lock_hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(2, Step::Propose, lock_hash.clone(), Some(lock)),
         SMRTrigger::new(hash, TriggerType::Proposal, Some(0)),

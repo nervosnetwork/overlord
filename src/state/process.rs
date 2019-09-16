@@ -137,11 +137,7 @@ where
     /// trigger SMR to goto new epoch.
     async fn goto_new_epoch(&mut self, status: Status) -> ConsensusResult<()> {
         let new_epoch_id = status.epoch_id;
-        let get_last_flag = if new_epoch_id != self.epoch_id + 1 {
-            true
-        } else {
-            false
-        };
+        let get_last_flag = new_epoch_id != self.epoch_id + 1;
 
         // Update epoch ID and authority list.
         self.epoch_id = new_epoch_id;
