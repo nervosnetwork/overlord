@@ -499,7 +499,10 @@ where
         // prevote vote exsits. It should be noted that when self is the leader, the process
         // after checking the vote is the same as the handle signed vote.
         if !self.is_leader {
-            if let Ok(qc) = self.votes.get_qc(self.epoch_id, self.round, VoteType::Prevote) {
+            if let Ok(qc) = self
+                .votes
+                .get_qc(self.epoch_id, self.round, VoteType::Prevote)
+            {
                 self.state_machine.trigger(SMRTrigger {
                     trigger_type: qc.vote_type.into(),
                     source:       TriggerSource::State,
@@ -513,7 +516,7 @@ where
             let vote_type = VoteType::Precommit;
             self.votes.set_qc(qc.clone());
             self.broadcast(OverlordMsg::AggregatedVote(qc)).await?;
-            
+
             info!(
                 "Overlord: state trigger SMR {:?} QC epoch ID {}, round {}",
                 vote_type, self.epoch_id, self.round
