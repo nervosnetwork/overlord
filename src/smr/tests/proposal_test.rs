@@ -119,10 +119,7 @@ fn test_proposal_trigger() {
     // This is an incorrect situation, the process cannot pass self check.
     let hash = Hash::new();
     let lock_hash = gen_hash();
-    let lock = Lock {
-        round: 0,
-        hash:  lock_hash,
-    };
+    let lock = Lock::new(0, lock_hash);
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Propose, hash.clone(), Some(lock)),
         SMRTrigger::new(hash.clone(), TriggerType::Proposal, None),
@@ -137,10 +134,7 @@ fn test_proposal_trigger() {
     // This is an incorrect situation, the process cannot pass self check.
     let hash = Hash::new();
     let lock_hash = gen_hash();
-    let lock = Lock {
-        round: 0,
-        hash:  lock_hash,
-    };
+    let lock = Lock::new(0, lock_hash);
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Propose, hash.clone(), Some(lock)),
         SMRTrigger::new(hash.clone(), TriggerType::Proposal, Some(0)),
@@ -155,10 +149,7 @@ fn test_proposal_trigger() {
     // This is an incorrect situation, the process cannot pass self check.
     let hash = Hash::new();
     let lock_hash = gen_hash();
-    let lock = Lock {
-        round: 0,
-        hash:  lock_hash,
-    };
+    let lock = Lock::new(0, lock_hash);
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Propose, hash.clone(), Some(lock)),
         SMRTrigger::new(hash.clone(), TriggerType::Proposal, None),
@@ -173,10 +164,7 @@ fn test_proposal_trigger() {
     // This is an incorrect situation, the process cannot pass self check.
     let hash = Hash::new();
     let lock_hash = gen_hash();
-    let lock = Lock {
-        round: 0,
-        hash:  lock_hash.clone(),
-    };
+    let lock = Lock::new(0, lock_hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Propose, hash, Some(lock)),
         SMRTrigger::new(lock_hash.clone(), TriggerType::Proposal, None),
@@ -191,10 +179,7 @@ fn test_proposal_trigger() {
     // The output should be prevote vote to the self lock hash.
     let hash = Hash::new();
     let lock_hash = gen_hash();
-    let lock = Lock {
-        round: 0,
-        hash:  lock_hash.clone(),
-    };
+    let lock = Lock::new(0, lock_hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Propose, lock_hash.clone(), Some(lock)),
         SMRTrigger::new(hash, TriggerType::Proposal, None),
@@ -209,10 +194,7 @@ fn test_proposal_trigger() {
     // The output should be prevote vote to the self lock hash.
     let hash = gen_hash();
     let lock_hash = gen_hash();
-    let lock = Lock {
-        round: 0,
-        hash:  lock_hash.clone(),
-    };
+    let lock = Lock::new(0, lock_hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Propose, lock_hash.clone(), Some(lock)),
         SMRTrigger::new(hash, TriggerType::Proposal, None),
@@ -227,10 +209,7 @@ fn test_proposal_trigger() {
     // This is an incorrect situation, the process will return proposal err.
     let hash = Hash::new();
     let lock_hash = gen_hash();
-    let lock = Lock {
-        round: 0,
-        hash:  lock_hash.clone(),
-    };
+    let lock = Lock::new(0, lock_hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Propose, lock_hash.clone(), Some(lock)),
         SMRTrigger::new(hash, TriggerType::Proposal, Some(0)),
@@ -246,10 +225,7 @@ fn test_proposal_trigger() {
     // The output should be prevote vote to the proposal hash which is lock.
     let hash = gen_hash();
     let lock_hash = gen_hash();
-    let lock = Lock {
-        round: 1,
-        hash:  lock_hash.clone(),
-    };
+    let lock = Lock::new(0, lock_hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(2, Step::Propose, lock_hash.clone(), Some(lock)),
         SMRTrigger::new(hash, TriggerType::Proposal, Some(0)),
@@ -265,10 +241,7 @@ fn test_proposal_trigger() {
     // The output should be prevote vote to the proposal hash which is lock.
     let hash = gen_hash();
     let lock_hash = gen_hash();
-    let lock = Lock {
-        round: 1,
-        hash:  lock_hash.clone(),
-    };
+    let lock = Lock::new(1, lock_hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(3, Step::Propose, lock_hash.clone(), Some(lock)),
         SMRTrigger::new(hash.clone(), TriggerType::Proposal, Some(2)),
@@ -283,10 +256,7 @@ fn test_proposal_trigger() {
     //      proposal lock round and proposal is equal to self lock round and proposal.
     // The output should be prevote vote to the self lock hash.
     let lock_hash = gen_hash();
-    let lock = Lock {
-        round: 1,
-        hash:  lock_hash.clone(),
-    };
+    let lock = Lock::new(1, lock_hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(2, Step::Propose, lock_hash.clone(), Some(lock)),
         SMRTrigger::new(lock_hash.clone(), TriggerType::Proposal, Some(1)),
@@ -304,10 +274,7 @@ fn test_proposal_trigger() {
     // correctness err.
     let hash = gen_hash();
     let lock_hash = gen_hash();
-    let lock = Lock {
-        round: 1,
-        hash:  lock_hash.clone(),
-    };
+    let lock = Lock::new(1, lock_hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(2, Step::Propose, lock_hash.clone(), Some(lock)),
         SMRTrigger::new(hash, TriggerType::Proposal, Some(1)),

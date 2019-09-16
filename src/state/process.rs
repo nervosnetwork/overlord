@@ -137,20 +137,27 @@ where
     /// trigger SMR to goto new epoch.
     async fn goto_new_epoch(&mut self, status: Status) -> ConsensusResult<()> {
         let new_epoch_id = status.epoch_id;
-        if new_epoch_id != self.epoch_id + 1 {
-            let mut tmp = self
-                .function
-                .get_authority_list(vec![CTX], new_epoch_id - 1)
-                .await
-                .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
-            self.authority.update(&mut tmp, false);
-        }
+        let get_last_flag = if new_epoch_id != self.epoch_id + 1 {
+            true
+        } else {
+            false
+        };
 
         // Update epoch ID and authority list.
         self.epoch_id = new_epoch_id;
         self.round = INIT_ROUND;
         let mut auth_list = status.authority_list;
         self.authority.update(&mut auth_list, true);
+
+        // If the status' epoch ID is much higher than the current,
+        if get_last_flag {
+            let mut tmp = self
+                .function
+                .get_authority_list(vec![CTX], new_epoch_id - 1)
+                .await
+                .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
+            self.authority.set_last_list(&mut tmp);
+        }
 
         if let Some(interval) = status.interval {
             self.epoch_interval = interval;
@@ -171,12 +178,7 @@ where
             self.re_check_qcs(qcs)?;
         }
 
-        self.state_machine.trigger(SMRTrigger {
-            trigger_type: TriggerType::NewEpoch(new_epoch_id),
-            source:       TriggerSource::State,
-            hash:         Hash::new(),
-            round:        None,
-        })?;
+        self.state_machine.new_epoch(new_epoch_id)?;
         Ok(())
     }
 
