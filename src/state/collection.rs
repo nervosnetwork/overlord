@@ -496,10 +496,7 @@ mod test {
     }
 
     fn gen_aggregated_vote(epoch_id: u64, round: u64, vote_type: VoteType) -> AggregatedVote {
-        let signature = AggregatedSignature {
-            signature:      gen_signature(),
-            address_bitmap: gen_address(),
-        };
+        let signature = gen_aggr_signature();
 
         AggregatedVote {
             signature,

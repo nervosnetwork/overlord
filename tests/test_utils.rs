@@ -102,7 +102,8 @@ impl Consensus<Pill> for ConsensusHelper<Pill> {
             approach: Approach::Broadcast,
         };
 
-        Ok(self.msg_tx.send(message).unwrap())
+        self.msg_tx.send(message).unwrap();
+        Ok(())
     }
 
     async fn transmit_to_relayer(
@@ -116,7 +117,8 @@ impl Consensus<Pill> for ConsensusHelper<Pill> {
             approach: Approach::Directly(addr),
         };
 
-        Ok(self.msg_tx.send(message).unwrap())
+        self.msg_tx.send(message).unwrap();
+        Ok(())
     }
 }
 
