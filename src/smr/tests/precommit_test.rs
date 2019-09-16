@@ -41,10 +41,7 @@ fn test_precommit_trigger() {
     //      self proposal is not empty and with a lock, precommit is not nil.
     // The output should be precommit vote to the precommit hash.
     let hash = gen_hash();
-    let lock = Lock {
-        round: 0u64,
-        hash:  hash.clone(),
-    };
+    let lock = Lock::new(0, hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(0, Step::Precommit, hash.clone(), Some(lock)),
         SMRTrigger::new(hash.clone(), TriggerType::PrecommitQC, Some(0)),
@@ -58,7 +55,7 @@ fn test_precommit_trigger() {
     // The output should be new round info with a lock.
     let hash = gen_hash();
     let lock = Lock {
-        round: 0u64,
+        round: 0,
         hash:  hash.clone(),
     };
     test_cases.push(StateMachineTestCase::new(
@@ -77,10 +74,7 @@ fn test_precommit_trigger() {
     //      self proposal is not empty and with a lock, precommit is nil.
     // This is an incorrect situation, the process can not pass self check.
     let hash = gen_hash();
-    let lock = Lock {
-        round: 0u64,
-        hash:  hash.clone(),
-    };
+    let lock = Lock::new(0, hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(0, Step::Precommit, Hash::new(), Some(lock)),
         SMRTrigger::new(Hash::new(), TriggerType::PrecommitQC, Some(0)),
@@ -93,10 +87,7 @@ fn test_precommit_trigger() {
     //      self proposal is not empty and with a lock, precommit is not nil.
     // This is an incorrect situation, the process can not pass self check.
     let hash = gen_hash();
-    let lock = Lock {
-        round: 0u64,
-        hash:  hash.clone(),
-    };
+    let lock = Lock::new(0, hash.clone());
     let hash_new = gen_hash();
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(0, Step::Precommit, Hash::new(), Some(lock)),
@@ -138,10 +129,7 @@ fn test_precommit_trigger() {
     //      the precommit round is not equal to self round.
     // This is an incorrect situation, the process will return round diff err.
     let hash = gen_hash();
-    let lock = Lock {
-        round: 0u64,
-        hash:  hash.clone(),
-    };
+    let lock = Lock::new(0, hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(0, Step::Precommit, hash.clone(), Some(lock)),
         SMRTrigger::new(hash.clone(), TriggerType::PrecommitQC, Some(1)),
@@ -154,10 +142,7 @@ fn test_precommit_trigger() {
     //      the precommit round is not equal to self round.
     // This is an incorrect situation, the process will return round diff err.
     let hash = gen_hash();
-    let lock = Lock {
-        round: 0u64,
-        hash:  hash.clone(),
-    };
+    let lock = Lock::new(0, hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Precommit, hash.clone(), Some(lock)),
         SMRTrigger::new(hash.clone(), TriggerType::PrecommitQC, Some(0)),
@@ -172,10 +157,7 @@ fn test_precommit_trigger() {
     // This is extremely dangerous because it can lead to fork. The process will return
     // correctness err.
     let hash = gen_hash();
-    let lock = Lock {
-        round: 0u64,
-        hash:  hash.clone(),
-    };
+    let lock = Lock::new(0, hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(0, Step::Precommit, hash.clone(), Some(lock)),
         SMRTrigger::new(gen_hash(), TriggerType::PrecommitQC, Some(0)),

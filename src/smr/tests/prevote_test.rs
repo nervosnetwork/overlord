@@ -97,10 +97,7 @@ fn test_prevote_trigger() {
     // The output should be prevote vote to the nil hash.
     let hash = Hash::new();
     let lock_hash = gen_hash();
-    let lock = Lock {
-        round: 0,
-        hash:  lock_hash.clone(),
-    };
+    let lock = Lock::new(0, lock_hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Prevote, lock_hash.clone(), Some(lock)),
         SMRTrigger::new(hash.clone(), TriggerType::PrevoteQC, Some(1)),
@@ -114,10 +111,7 @@ fn test_prevote_trigger() {
     // The output should be prevote vote to the prevote hash and lock it.
     let hash = gen_hash();
     let lock_hash = gen_hash();
-    let lock = Lock {
-        round: 0,
-        hash:  lock_hash.clone(),
-    };
+    let lock = Lock::new(0, lock_hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Prevote, lock_hash.clone(), Some(lock)),
         SMRTrigger::new(hash.clone(), TriggerType::PrevoteQC, Some(1)),

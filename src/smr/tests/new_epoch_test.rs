@@ -46,10 +46,7 @@ fn test_new_epoch() {
     //      In propose step, self proposal is empty but with a lock, goto new epoch.
     // This is an incorrect situation, the process cannot pass self check.
     let hash = gen_hash();
-    let lock = Lock {
-        round: 0u64,
-        hash:  hash.clone(),
-    };
+    let lock = Lock::new(0u64, hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(0, Step::Propose, Hash::new(), Some(lock)),
         SMRTrigger::new(Hash::new(), TriggerType::NewEpoch(1), None),
@@ -114,10 +111,7 @@ fn test_new_epoch() {
     //      In prevote step, self proposal is not empty and not lock, goto new epoch.
     // The output should be new round info.
     let hash = gen_hash();
-    let lock = Lock {
-        round: 0u64,
-        hash:  hash.clone(),
-    };
+    let lock = Lock::new(0u64, hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Prevote, hash, Some(lock)),
         SMRTrigger::new(Hash::new(), TriggerType::NewEpoch(1), None),

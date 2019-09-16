@@ -22,10 +22,6 @@ impl TimerConfig {
         }
     }
 
-    pub fn set_total_duration(&mut self, duration: u64) {
-        self.interval.set(duration);
-    }
-
     pub fn get_timeout(&self, event: SMREvent) -> ConsensusResult<Duration> {
         match event.clone() {
             SMREvent::NewRoundInfo { .. } => Ok(self.get_propose_timeout()),

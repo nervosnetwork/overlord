@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 ///
 pub mod smr_types;
 ///

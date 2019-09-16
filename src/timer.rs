@@ -1,13 +1,13 @@
-#![allow(dead_code)]
-
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use std::{future::Future, pin::Pin};
 
+use derive_more::Display;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::{Stream, StreamExt};
 use futures::{FutureExt, SinkExt};
 use futures_timer::{Delay, TimerHandle};
+use log::{debug, info};
 
 use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
 use crate::smr::{Event, SMR};
@@ -99,10 +99,13 @@ impl Timer {
         };
 
         let interval = self.config.get_timeout(event.clone())?;
+        info!("Overlord: timer set {:?} timer", event);
         let smr_timer = TimeoutInfo::new(interval, event, self.sender.clone());
+
         tokio::spawn(async move {
             smr_timer.await;
         });
+
         Ok(())
     }
 
@@ -114,6 +117,7 @@ impl Timer {
             _ => return Err(ConsensusError::TimerErr("No commit timer".to_string())),
         };
 
+        debug!("Overlord: timer {:?} time out", event);
         self.smr.trigger(SMRTrigger {
             source: TriggerSource::Timer,
             hash: Hash::new(),
@@ -125,7 +129,8 @@ impl Timer {
 
 /// Timeout info which is a future consists of a `futures-timer Delay`, timeout info and a sender.
 /// When the timeout expires, future will send timeout info by sender.
-#[derive(Debug)]
+#[derive(Debug, Display)]
+#[display(fmt = "{:?}", info)]
 struct TimeoutInfo {
     timeout: Delay,
     info:    SMREvent,
