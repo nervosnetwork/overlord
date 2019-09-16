@@ -3,6 +3,7 @@ use std::task::{Context, Poll};
 
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::Stream;
+use log::{debug, error, info};
 
 use crate::error::ConsensusError;
 use crate::smr::smr_types::{Lock, SMREvent, SMRTrigger, Step, TriggerSource, TriggerType};
@@ -78,6 +79,8 @@ impl StateMachine {
     /// Handle a new epoch trigger. If new epoch ID is higher than current, goto a new epoch and
     /// throw a new round info event.
     fn handle_new_epoch(&mut self, epoch_id: u64, source: TriggerSource) -> ConsensusResult<()> {
+        info!("Overlord: SMR triggered by new epoch {}", epoch_id);
+
         if source != TriggerSource::State {
             return Err(ConsensusError::Other(
                 "Rich status source error".to_string(),
@@ -85,6 +88,7 @@ impl StateMachine {
         } else if epoch_id <= self.epoch_id {
             return Err(ConsensusError::Other("Delayed status".to_string()));
         }
+
         self.check()?;
         self.goto_new_epoch(epoch_id);
 
@@ -107,6 +111,8 @@ impl StateMachine {
         lock_round: Option<u64>,
         _source: TriggerSource,
     ) -> ConsensusResult<()> {
+        info!("Overlord: SMR triggered by a proposal");
+
         if self.step > Step::Propose {
             return Ok(());
         }
@@ -117,6 +123,7 @@ impl StateMachine {
         }
 
         // update PoLC
+        debug!("Overlord: SMR handle proposal with a lock");
         if let Some(lock_round) = lock_round {
             if let Some(lock) = self.lock.clone() {
                 if lock_round > lock.round {
@@ -148,6 +155,8 @@ impl StateMachine {
         prevote_round: Option<u64>,
         source: TriggerSource,
     ) -> ConsensusResult<()> {
+        info!("Overlord: SMR triggered by prevote QC");
+
         if self.step > Step::Prevote {
             return Ok(());
         }
@@ -188,6 +197,8 @@ impl StateMachine {
         precommit_round: Option<u64>,
         _source: TriggerSource,
     ) -> ConsensusResult<()> {
+        info!("Overlord: SMR triggered by precommit QC");
+
         self.check()?;
         let precommit_round = precommit_round
             .ok_or_else(|| ConsensusError::PrevoteErr("No vote round".to_string()))?;
@@ -209,6 +220,7 @@ impl StateMachine {
         } else {
             if let Some(lock) = self.lock.clone() {
                 if lock.hash != precommit_hash {
+                    error!("Overlord: SMR may be fork");
                     return Err(ConsensusError::CorrectnessErr("Fork".to_string()));
                 }
             }
@@ -221,6 +233,7 @@ impl StateMachine {
     }
 
     fn throw_event(&mut self, event: SMREvent) -> ConsensusResult<()> {
+        info!("Overlord: SMR throw {:?} event", event);
         self.event
             .0
             .unbounded_send(event.clone())
@@ -234,6 +247,7 @@ impl StateMachine {
 
     /// Goto a new epoch and clear everything.
     fn goto_new_epoch(&mut self, epoch_id: u64) {
+        info!("Overlord: SMR goto new epoch: {}", epoch_id);
         self.epoch_id = epoch_id;
         self.round = 0;
         self.goto_step(Step::Propose);
@@ -243,9 +257,11 @@ impl StateMachine {
 
     /// Keep the lock, if any, when go to the next round.
     fn goto_next_round(&mut self) {
+        info!("Overlord: SMR goto next round {}", self.round + 1);
         self.round += 1;
         self.proposal_hash.clear();
         self.goto_step(Step::Propose);
+
         if self.lock.is_some() {
             self.proposal_hash = self.lock.clone().unwrap().hash;
         }
@@ -254,6 +270,7 @@ impl StateMachine {
     /// Goto the given step.
     #[inline]
     fn goto_step(&mut self, step: Step) {
+        debug!("Overlord: SMR goto step {:?}", step);
         self.step = step;
     }
 
@@ -261,7 +278,9 @@ impl StateMachine {
     /// the hash is empty, remove it. Otherwise, set lock round and hash as the given round and
     /// hash.
     fn update_polc(&mut self, hash: Hash, round: u64) {
+        debug!("Overlord: SMR update PoLC at round {}", round);
         self.set_proposal(hash.clone());
+
         if hash.is_empty() {
             self.remove_polc();
         } else {
@@ -298,6 +317,8 @@ impl StateMachine {
     /// 4. If the step is propose, proposal hash must be empty unless lock is some.
     #[inline(always)]
     fn check(&mut self) -> ConsensusResult<()> {
+        debug!("Overlord: SMR do self check");
+
         // Whenever self proposal is empty but self lock is some, is not correct.
         if self.proposal_hash.is_empty() && self.lock.is_some() {
             return Err(ConsensusError::SelfCheckErr(format!(
