@@ -496,8 +496,7 @@ where
         // have been cached in the vote collector. So it should check whether there is votes
         // or quorum certificates exsits or not. If self node is not the leader, check if
         // there is prevoteQC exits. If self node is the leader, check if there is signed
-        // prevote vote exsits. It should be noted that when self is the leader, the process
-        // after checking the vote is the same as the handle signed vote.
+        // prevote vote exsits.
         if !self.is_leader {
             if let Ok(qc) = self
                 .votes
