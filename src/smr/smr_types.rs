@@ -143,7 +143,8 @@ impl From<u8> for TriggerType {
 /// While trigger type is `NewEpoch`:
 ///     * `hash`: A empty hash,
 ///     * `round`: This must be `None`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Display, PartialEq, Eq)]
+#[display(fmt = "{:?} trigger from {:?}", trigger_type, source)]
 pub struct SMRTrigger {
     /// SMR trigger type.
     pub trigger_type: TriggerType,
