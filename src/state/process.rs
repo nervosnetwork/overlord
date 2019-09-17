@@ -61,7 +61,7 @@ where
     F: Consensus<T> + 'static,
     C: Crypto,
 {
-    ///
+    /// Create a new state struct.
     pub fn new(smr: SMR, addr: Address, interval: u64, consensus: F, crypto: C) -> Self {
         State {
             epoch_id:             INIT_EPOCH_ID,
@@ -85,7 +85,7 @@ where
         }
     }
 
-    ///
+    /// Run state module.
     pub async fn run(
         &mut self,
         mut rx: UnboundedReceiver<OverlordMsg<T>>,
@@ -558,7 +558,6 @@ where
         // and the vote round is higher than the current round, cache it until that round
         // and precess it.
         if epoch_id > self.epoch_id || (epoch_id == self.epoch_id && round > self.round) {
-            // TODO: cache future vote
             debug!("Overlord: state receive a future signed vote");
             return Ok(());
         }
@@ -721,12 +720,12 @@ where
         Ok(())
     }
 
-    /// On handling the signed prevote vote, some signed votes and quorum certificates might have
+    /// On handling the signed vote, some signed votes and quorum certificates might have
     /// been cached in the vote collector. So it should check whether there is votes or quorum
     /// certificates exsits or not. If self node is not the leader, check if there is prevoteQC
     /// exits. If self node is the leader, check if there is signed prevote vote exsits. It
-    /// should be noted that when self is the leader, the process after checking the vote is the
-    /// same as the handle signed vote.
+    /// should be noted that when self is the leader, and the vote type is prevote, the process
+    /// should be the same as the handle signed vote.
     async fn vote_process(&mut self, vote_type: VoteType) -> ConsensusResult<()> {
         if !self.is_leader {
             if let Ok(qc) = self
