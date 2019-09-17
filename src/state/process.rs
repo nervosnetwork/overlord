@@ -404,6 +404,12 @@ where
             "Overlord: state receive prevote vote event epoch ID {}, round {}",
             self.epoch_id, self.round
         );
+        
+        let hash = if hash.is_empty() {
+            Hash::default()
+        } else {
+            hash
+        };
 
         let prevote = Vote {
             epoch_id:   self.epoch_id,
@@ -474,6 +480,12 @@ where
             "Overlord: state received precommit vote event epoch ID {}, round {}",
             self.epoch_id, self.round
         );
+
+        let hash = if hash.is_empty() {
+            Hash::default()
+        } else {
+            hash
+        };
 
         let precommit = Vote {
             epoch_id:   self.epoch_id,
