@@ -26,6 +26,7 @@ pub use self::overlord::Overlord;
 pub use self::overlord::OverlordHandler;
 
 use std::error::Error;
+use std::fmt::Debug;
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -92,7 +93,7 @@ pub trait Consensus<T: Codec>: Send + Sync {
 }
 
 /// Trait for doing serialize and deserialize.
-pub trait Codec: Clone + Send {
+pub trait Codec: Clone + Debug + Send {
     /// Serialize self into bytes.
     fn encode(&self) -> Result<Bytes, Box<dyn Error + Send>>;
 

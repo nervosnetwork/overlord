@@ -61,7 +61,7 @@ where
     F: Consensus<T> + 'static,
     C: Crypto,
 {
-    ///
+    /// Create a new state struct.
     pub fn new(smr: SMR, addr: Address, interval: u64, consensus: F, crypto: C) -> Self {
         State {
             epoch_id:             INIT_EPOCH_ID,
@@ -85,7 +85,7 @@ where
         }
     }
 
-    ///
+    /// Run state module.
     pub async fn run(
         &mut self,
         mut rx: UnboundedReceiver<OverlordMsg<T>>,
@@ -188,6 +188,7 @@ where
         lock_round: Option<u64>,
         lock_proposal: Option<Hash>,
     ) -> ConsensusResult<()> {
+        info!("Overlord: state goto new round {}", round);
         self.round = round;
         self.is_leader = false;
 
@@ -295,6 +296,7 @@ where
             "Overlod: state receive a signed proposal epoch ID {}, round {}",
             epoch_id, round
         );
+
         // If the proposal epoch ID is lower than the current epoch ID - 1, or the proposal epoch ID
         // is equal to the current epoch ID and the proposal round is lower than the current round,
         // ignore it directly.
@@ -389,9 +391,11 @@ where
         let epoch_id = self.epoch_id;
         let tx_signal = Arc::clone(&self.full_transcation);
         let function = Arc::clone(&self.function);
+
         tokio::spawn(async move {
             let _ = check_current_epoch(function, tx_signal, epoch_id, hash).await;
         });
+
         Ok(())
     }
 
@@ -417,6 +421,8 @@ where
         } else {
             self.transmit(OverlordMsg::SignedVote(signed_vote)).await?;
         }
+
+        self.vote_process(VoteType::Prevote).await?;
         Ok(())
     }
 
@@ -442,6 +448,8 @@ where
         } else {
             self.transmit(OverlordMsg::SignedVote(signed_vote)).await?;
         }
+
+        self.vote_process(VoteType::Precommit).await?;
         Ok(())
     }
 
@@ -550,7 +558,6 @@ where
         // and the vote round is higher than the current round, cache it until that round
         // and precess it.
         if epoch_id > self.epoch_id || (epoch_id == self.epoch_id && round > self.round) {
-            // TODO: cache future vote
             debug!("Overlord: state receive a future signed vote");
             return Ok(());
         }
@@ -562,21 +569,8 @@ where
 
         // Check whether there is a hash that vote weight is above the threshold. If no hash
         // achieved this, return directly.
-        let vote_map = self
-            .votes
-            .get_vote_map(epoch_id, round, vote_type.clone())?;
-        let mut epoch_hash = None;
-        let threshold = self.authority.get_vote_weight_sum(true)? * 2;
-        for (hash, set) in vote_map.iter() {
-            let mut acc = 0u8;
-            for addr in set.iter() {
-                acc += self.authority.get_vote_weight(addr)?;
-            }
-            if u64::from(acc) * 3 > threshold {
-                epoch_hash = Some(hash.to_owned());
-                break;
-            }
-        }
+        let epoch_hash = self.counting_vote(vote_type.clone())?;
+
         if epoch_hash.is_none() {
             trace!("Overlord: state counting of vote and no one above threshold");
             return Ok(());
@@ -590,37 +584,7 @@ where
         // Build the quorum certificate needs to aggregate signatures into an aggregate
         // signature besides the address bitmap.
         let epoch_hash = epoch_hash.unwrap();
-        let votes = self
-            .votes
-            .get_votes(epoch_id, round, vote_type.clone(), &epoch_hash)?;
-
-        trace!("Overlord: state build aggregated signature");
-        let mut signatures = Vec::new();
-        let mut set = Vec::new();
-        for vote in votes.iter() {
-            signatures.push(vote.signature.clone());
-            set.push(vote.vote.voter.clone());
-        }
-        let set = set.iter().cloned().collect::<HashSet<Address>>();
-        let mut bit_map = BitVec::from_elem(self.authority.current_len(), false);
-        for (index, addr) in self.authority.get_addres_ref().iter().enumerate() {
-            if set.contains(addr) {
-                bit_map.set(index, true);
-            }
-        }
-
-        let aggregated_signature = AggregatedSignature {
-            signature:      self.aggregate_signatures(signatures)?,
-            address_bitmap: Bytes::from(bit_map.to_bytes()),
-        };
-        let qc = AggregatedVote {
-            signature:  aggregated_signature,
-            vote_type:  vote_type.clone(),
-            epoch_id:   self.epoch_id,
-            round:      self.round,
-            epoch_hash: epoch_hash.clone(),
-            leader:     self.address.clone(),
-        };
+        let qc = self.generate_qc(epoch_hash.clone(), vote_type.clone())?;
 
         trace!(
             "Overlord: state set QC epoch ID {}, round {}",
@@ -754,6 +718,113 @@ where
             round:        Some(round),
         })?;
         Ok(())
+    }
+
+    /// On handling the signed vote, some signed votes and quorum certificates might have
+    /// been cached in the vote collector. So it should check whether there is votes or quorum
+    /// certificates exsits or not. If self node is not the leader, check if there is prevoteQC
+    /// exits. If self node is the leader, check if there is signed prevote vote exsits. It
+    /// should be noted that when self is the leader, and the vote type is prevote, the process
+    /// should be the same as the handle signed vote.
+    async fn vote_process(&mut self, vote_type: VoteType) -> ConsensusResult<()> {
+        if !self.is_leader {
+            if let Ok(qc) = self
+                .votes
+                .get_qc(self.epoch_id, self.round, vote_type.clone())
+            {
+                self.state_machine.trigger(SMRTrigger {
+                    trigger_type: qc.vote_type.into(),
+                    source:       TriggerSource::State,
+                    hash:         qc.epoch_hash,
+                    round:        Some(self.round),
+                })?;
+                return Ok(());
+            }
+        } else if let Some(mut epoch_hash) = self.counting_vote(vote_type.clone())? {
+            let qc = self.generate_qc(epoch_hash.clone(), vote_type.clone())?;
+            self.votes.set_qc(qc.clone());
+            self.broadcast(OverlordMsg::AggregatedVote(qc)).await?;
+
+            let set = self.full_transcation.lock();
+
+            if vote_type == VoteType::Prevote {
+                epoch_hash = if set.contains(&epoch_hash) {
+                    epoch_hash
+                } else {
+                    Hash::new()
+                };
+            }
+
+            info!(
+                "Overlord: state trigger SMR {:?} QC epoch ID {}, round {}",
+                vote_type, self.epoch_id, self.round
+            );
+
+            self.state_machine.trigger(SMRTrigger {
+                trigger_type: vote_type.into(),
+                source:       TriggerSource::State,
+                hash:         epoch_hash,
+                round:        Some(self.round),
+            })?;
+        }
+        Ok(())
+    }
+
+    fn counting_vote(&mut self, vote_type: VoteType) -> ConsensusResult<Option<Hash>> {
+        let vote_map = self
+            .votes
+            .get_vote_map(self.epoch_id, self.round, vote_type.clone())?;
+        let threshold = self.authority.get_vote_weight_sum(true)? * 2;
+
+        for (hash, set) in vote_map.iter() {
+            let mut acc = 0u8;
+            for addr in set.iter() {
+                acc += self.authority.get_vote_weight(addr)?;
+            }
+            if u64::from(acc) * 3 > threshold {
+                return Ok(Some(hash.to_owned()));
+            }
+        }
+        Ok(None)
+    }
+
+    fn generate_qc(
+        &mut self,
+        epoch_hash: Hash,
+        vote_type: VoteType,
+    ) -> ConsensusResult<AggregatedVote> {
+        let votes =
+            self.votes
+                .get_votes(self.epoch_id, self.round, vote_type.clone(), &epoch_hash)?;
+
+        trace!("Overlord: state build aggregated signature");
+        let mut signatures = Vec::new();
+        let mut set = Vec::new();
+        for vote in votes.iter() {
+            signatures.push(vote.signature.clone());
+            set.push(vote.vote.voter.clone());
+        }
+        let set = set.iter().cloned().collect::<HashSet<Address>>();
+        let mut bit_map = BitVec::from_elem(self.authority.current_len(), false);
+        for (index, addr) in self.authority.get_addres_ref().iter().enumerate() {
+            if set.contains(addr) {
+                bit_map.set(index, true);
+            }
+        }
+
+        let aggregated_signature = AggregatedSignature {
+            signature:      self.aggregate_signatures(signatures)?,
+            address_bitmap: Bytes::from(bit_map.to_bytes()),
+        };
+        let qc = AggregatedVote {
+            signature: aggregated_signature,
+            vote_type,
+            epoch_id: self.epoch_id,
+            round: self.round,
+            epoch_hash,
+            leader: self.address.clone(),
+        };
+        Ok(qc)
     }
 
     fn re_check_proposals(&mut self, proposals: Vec<SignedProposal<T>>) -> ConsensusResult<()> {

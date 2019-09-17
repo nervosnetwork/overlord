@@ -44,6 +44,7 @@ impl SMRProvider {
         self.smr.take().unwrap()
     }
 
+    /// Run SMR module in runtime environment.
     pub fn run(mut self) {
         tokio::spawn(async move {
             loop {
@@ -60,6 +61,7 @@ pub struct SMR {
 }
 
 impl SMR {
+    /// Create a new SMR.
     pub fn new(sender: UnboundedSender<SMRTrigger>) -> Self {
         SMR { tx: sender }
     }

@@ -3,7 +3,7 @@ use derive_more::Display;
 use crate::types::Hash;
 
 /// SMR steps. The default step is commit step because SMR needs rich status to start a new epoch.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Step {
     /// Prepose step, in this step:
     /// Firstly, each node calculate the new proposer, then:
@@ -12,6 +12,7 @@ pub enum Step {
     /// Replica:
     ///     wait for a proposal and check it.
     /// Then goto prevote step.
+    #[display(fmt = "Prepose step")]
     Propose = 0,
     /// Prevote step, in this step:
     /// Leader:
@@ -23,6 +24,7 @@ pub enum Step {
     ///     2. wait for aggregated vote,
     ///     3. check the aggregated vote.
     /// Then goto precommit step.
+    #[display(fmt = "Prevote step")]
     Prevote = 1,
     /// Precommit step, in this step:
     /// Leader:
@@ -35,9 +37,11 @@ pub enum Step {
     ///     3. check the aggregated vote.
     /// If there is no consensus in the precommit step, goto propose step and start a new round
     /// cycle. Otherwise, goto commit step.
+    #[display(fmt = "Precommit step")]
     Precommit = 2,
     /// Commit step, in this step each node commit the epoch and wait for the rich status. After
     /// receiving the it, all nodes will goto propose step and start a new epoch consensus.
+    #[display(fmt = "Commit step")]
     Commit = 3,
 }
 
@@ -99,11 +103,13 @@ pub enum TriggerType {
 }
 
 /// SMR trigger sources.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Display, PartialEq, Eq)]
 pub enum TriggerSource {
     /// SMR triggered by state.
+    #[display(fmt = "State")]
     State = 0,
     /// SMR triggered by timer.
+    #[display(fmt = "Timer")]
     Timer = 1,
 }
 
@@ -143,7 +149,8 @@ impl From<u8> for TriggerType {
 /// While trigger type is `NewEpoch`:
 ///     * `hash`: A empty hash,
 ///     * `round`: This must be `None`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Display, PartialEq, Eq)]
+#[display(fmt = "{:?} trigger from {:?}", trigger_type, source)]
 pub struct SMRTrigger {
     /// SMR trigger type.
     pub trigger_type: TriggerType,

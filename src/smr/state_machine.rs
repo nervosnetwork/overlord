@@ -1,6 +1,7 @@
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use derive_more::Display;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::Stream;
 use log::{debug, error, info};
@@ -11,7 +12,9 @@ use crate::{smr::Event, types::Hash};
 use crate::{ConsensusResult, INIT_EPOCH_ID, INIT_ROUND};
 
 /// A smallest implementation of an atomic overlord state machine. It
-#[derive(Debug)]
+#[derive(Debug, Display)]
+#[rustfmt::skip]
+#[display(fmt = "State machine epoch ID {}, round {}, step {:?}", epoch_id, round, step)]
 pub struct StateMachine {
     epoch_id:      u64,
     round:         u64,
@@ -59,6 +62,7 @@ impl Stream for StateMachine {
 }
 
 impl StateMachine {
+    /// Create a new state machine.
     pub fn new(trigger_receiver: UnboundedReceiver<SMRTrigger>) -> (Self, Event, Event) {
         let (tx_1, rx_1) = unbounded();
         let (tx_2, rx_2) = unbounded();

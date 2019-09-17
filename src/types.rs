@@ -1,6 +1,7 @@
 use std::cmp::{Ord, Ordering, PartialOrd};
 
 use bytes::Bytes;
+use derive_more::Display;
 
 use crate::smr::smr_types::TriggerType;
 use crate::Codec;
@@ -17,11 +18,13 @@ pub type Signature = Bytes;
 /// to aggregate vote. The others node only vote for a proposal and receive QCs. To simplify the
 /// process, the leader and the relayer will be a same node which means leader will alse do what
 /// relayer node do.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Display, PartialEq, Eq)]
 pub enum Role {
     /// The node is a leader.
+    #[display(fmt = "Leader")]
     Leader,
     /// The node is not a leader.
+    #[display(fmt = "Replica")]
     Replica,
 }
 
@@ -46,11 +49,13 @@ impl From<u8> for Role {
 
 /// Vote or QC types. Prevote and precommit QC will promise the rightness and the final consistency
 /// of overlord consensus protocol.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Display, PartialEq, Eq, Hash)]
 pub enum VoteType {
     /// Prevote vote or QC.
+    #[display(fmt = "Prevote")]
     Prevote,
     /// Precommit Vote or QC.
+    #[display(fmt = "Precommit")]
     Precommit,
 }
 
@@ -83,20 +88,25 @@ impl From<u8> for VoteType {
 }
 
 /// Overlord messages.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Display, PartialEq, Eq)]
 pub enum OverlordMsg<T: Codec> {
     /// Signed proposal message.
+    #[display(fmt = "Signed Proposal")]
     SignedProposal(SignedProposal<T>),
     /// Signed vote message.
+    #[display(fmt = "Signed Vote")]
     SignedVote(SignedVote),
     /// Aggregated vote message.
+    #[display(fmt = "Aggregated Vote")]
     AggregatedVote(AggregatedVote),
     /// Rich status message.
+    #[display(fmt = "Rich Status")]
     RichStatus(Status),
 }
 
 /// A signed proposal.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Display, PartialEq, Eq)]
+#[display(fmt = "Signed Proposal {:?}", proposal)]
 pub struct SignedProposal<T: Codec> {
     /// Signature of the proposal.
     pub signature: Bytes,
@@ -105,7 +115,8 @@ pub struct SignedProposal<T: Codec> {
 }
 
 /// A proposal
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Display, PartialEq, Eq)]
+#[display(fmt = "Proposal epoch ID {}, round {}", epoch_id, round)]
 pub struct Proposal<T: Codec> {
     /// Epoch ID of the proposal.
     pub epoch_id: u64,
@@ -131,7 +142,8 @@ pub struct PoLC {
 }
 
 /// A signed vote.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Display, PartialEq, Eq, Hash)]
+#[display(fmt = "Signed vote {:?}", vote)]
 pub struct SignedVote {
     /// Signature of the vote.
     pub signature: Bytes,
@@ -171,7 +183,13 @@ pub struct AggregatedSignature {
 }
 
 /// An aggregated vote.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Display, PartialEq, Eq)]
+#[display(
+    fmt = "{:?} aggregated vote epoch ID {}, round {}",
+    vote_type,
+    epoch_id,
+    round
+)]
 pub struct AggregatedVote {
     /// Aggregated signature of the vote.
     pub signature: AggregatedSignature,
@@ -205,7 +223,8 @@ impl AggregatedVote {
 }
 
 /// A vote.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Display, PartialEq, Eq, Hash)]
+#[display(fmt = "{:?} vote epoch ID {}, round {}", vote_type, epoch_id, round)]
 pub struct Vote {
     /// Epoch ID of the vote.
     pub epoch_id: u64,
@@ -220,7 +239,8 @@ pub struct Vote {
 }
 
 /// A commit.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Display, PartialEq, Eq)]
+#[display(fmt = "Commit epoch ID {}", epoch_id)]
 pub struct Commit<T: Codec> {
     /// Epoch ID of the commit.
     pub epoch_id: u64,
@@ -244,7 +264,8 @@ pub struct Proof {
 }
 
 /// A rich status.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Display, PartialEq, Eq)]
+#[display(fmt = "Rich status epoch ID {}", epoch_id)]
 pub struct Status {
     /// New epoch ID.
     pub epoch_id: u64,
