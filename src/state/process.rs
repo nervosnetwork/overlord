@@ -428,50 +428,7 @@ where
             self.transmit(OverlordMsg::SignedVote(signed_vote)).await?;
         }
 
-        // On handling the signed prevote vote, some signed votes and quorum certificates might have
-        // been cached in the vote collector. So it should check whether there is votes or quorum
-        // certificates exsits or not. If self node is not the leader, check if there is prevoteQC
-        // exits. If self node is the leader, check if there is signed prevote vote exsits. It
-        // should be noted that when self is the leader, the process after checking the vote is the
-        // same as the handle signed vote.
-        if !self.is_leader {
-            if let Ok(qc) = self
-                .votes
-                .get_qc(self.epoch_id, self.round, VoteType::Prevote)
-            {
-                self.state_machine.trigger(SMRTrigger {
-                    trigger_type: qc.vote_type.into(),
-                    source:       TriggerSource::State,
-                    hash:         qc.epoch_hash,
-                    round:        Some(self.round),
-                })?;
-                return Ok(());
-            }
-        } else if let Some(epoch_hash) = self.counting_vote(VoteType::Prevote)? {
-            let qc = self.generate_qc(epoch_hash.clone(), VoteType::Prevote)?;
-            let vote_type = VoteType::Prevote;
-            self.votes.set_qc(qc.clone());
-            self.broadcast(OverlordMsg::AggregatedVote(qc)).await?;
-
-            let set = self.full_transcation.lock();
-            let epoch_hash = if set.contains(&epoch_hash) {
-                epoch_hash
-            } else {
-                Hash::new()
-            };
-
-            info!(
-                "Overlord: state trigger SMR {:?} QC epoch ID {}, round {}",
-                vote_type, self.epoch_id, self.round
-            );
-
-            self.state_machine.trigger(SMRTrigger {
-                trigger_type: vote_type.into(),
-                source:       TriggerSource::State,
-                hash:         epoch_hash,
-                round:        Some(self.round),
-            })?;
-        }
+        self.vote_process(VoteType::Prevote).await?;
         Ok(())
     }
 
@@ -504,42 +461,7 @@ where
             self.transmit(OverlordMsg::SignedVote(signed_vote)).await?;
         }
 
-        // On handling the signed precommit vote, some signed votes and quorum certificates might
-        // have been cached in the vote collector. So it should check whether there is votes
-        // or quorum certificates exsits or not. If self node is not the leader, check if
-        // there is prevoteQC exits. If self node is the leader, check if there is signed
-        // prevote vote exsits.
-        if !self.is_leader {
-            if let Ok(qc) = self
-                .votes
-                .get_qc(self.epoch_id, self.round, VoteType::Prevote)
-            {
-                self.state_machine.trigger(SMRTrigger {
-                    trigger_type: qc.vote_type.into(),
-                    source:       TriggerSource::State,
-                    hash:         qc.epoch_hash,
-                    round:        Some(self.round),
-                })?;
-                return Ok(());
-            }
-        } else if let Some(epoch_hash) = self.counting_vote(VoteType::Precommit)? {
-            let qc = self.generate_qc(epoch_hash.clone(), VoteType::Precommit)?;
-            let vote_type = VoteType::Precommit;
-            self.votes.set_qc(qc.clone());
-            self.broadcast(OverlordMsg::AggregatedVote(qc)).await?;
-
-            info!(
-                "Overlord: state trigger SMR {:?} QC epoch ID {}, round {}",
-                vote_type, self.epoch_id, self.round
-            );
-
-            self.state_machine.trigger(SMRTrigger {
-                trigger_type: vote_type.into(),
-                source:       TriggerSource::State,
-                hash:         epoch_hash,
-                round:        Some(self.round),
-            })?;
-        }
+        self.vote_process(VoteType::Precommit).await?;
         Ok(())
     }
 
@@ -808,6 +730,56 @@ where
             hash:         epoch_hash,
             round:        Some(round),
         })?;
+        Ok(())
+    }
+
+    /// On handling the signed prevote vote, some signed votes and quorum certificates might have
+    /// been cached in the vote collector. So it should check whether there is votes or quorum
+    /// certificates exsits or not. If self node is not the leader, check if there is prevoteQC
+    /// exits. If self node is the leader, check if there is signed prevote vote exsits. It
+    /// should be noted that when self is the leader, the process after checking the vote is the
+    /// same as the handle signed vote.
+    async fn vote_process(&mut self, vote_type: VoteType) -> ConsensusResult<()> {
+        if !self.is_leader {
+            if let Ok(qc) = self
+                .votes
+                .get_qc(self.epoch_id, self.round, vote_type.clone())
+            {
+                self.state_machine.trigger(SMRTrigger {
+                    trigger_type: qc.vote_type.into(),
+                    source:       TriggerSource::State,
+                    hash:         qc.epoch_hash,
+                    round:        Some(self.round),
+                })?;
+                return Ok(());
+            }
+        } else if let Some(mut epoch_hash) = self.counting_vote(vote_type.clone())? {
+            let qc = self.generate_qc(epoch_hash.clone(), vote_type.clone())?;
+            self.votes.set_qc(qc.clone());
+            self.broadcast(OverlordMsg::AggregatedVote(qc)).await?;
+
+            let set = self.full_transcation.lock();
+
+            if vote_type == VoteType::Prevote {
+                epoch_hash = if set.contains(&epoch_hash) {
+                    epoch_hash
+                } else {
+                    Hash::new()
+                };
+            }
+
+            info!(
+                "Overlord: state trigger SMR {:?} QC epoch ID {}, round {}",
+                vote_type, self.epoch_id, self.round
+            );
+
+            self.state_machine.trigger(SMRTrigger {
+                trigger_type: vote_type.into(),
+                source:       TriggerSource::State,
+                hash:         epoch_hash,
+                round:        Some(self.round),
+            })?;
+        }
         Ok(())
     }
 
