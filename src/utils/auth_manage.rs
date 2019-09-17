@@ -368,6 +368,25 @@ mod test {
         assert_eq!(res.unwrap(), true);
     }
 
+    #[test]
+    fn test_bitmap() {
+        let len = random::<u8>() as usize;
+        let bitmap = (0..len).map(|_| random::<bool>()).collect::<Vec<_>>();
+        let mut bv = BitVec::from_elem(len, false);
+        for (index, is_vote) in bitmap.iter().enumerate() {
+            if *is_vote {
+                bv.set(index, true);
+            }
+        }
+
+        let tmp = Bytes::from(bv.to_bytes());
+        let output = BitVec::from_bytes(tmp.as_ref());
+
+        for item in output.iter().zip(bitmap.iter()) {
+            assert_eq!(item.0, *item.1);
+        }
+    }
+
     #[bench]
     fn bench_update(b: &mut Bencher) {
         let mut auth_list = gen_auth_list(10);

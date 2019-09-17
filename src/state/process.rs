@@ -4,6 +4,7 @@ use std::{ops::BitXor, sync::Arc};
 
 use bit_vec::BitVec;
 use bytes::Bytes;
+use derive_more::Display;
 use futures::{channel::mpsc::UnboundedReceiver, select, StreamExt};
 use futures_timer::Delay;
 use log::{debug, error, info, trace};
@@ -23,9 +24,11 @@ use crate::{Codec, Consensus, ConsensusResult, Crypto, INIT_EPOCH_ID, INIT_ROUND
 /// **TODO: context libiary**
 const CTX: u8 = 0;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Display, PartialEq, Eq)]
 enum MsgType {
+    #[display(fmt = "Signed Proposal message")]
     SignedProposal,
+    #[display(fmt = "Signed Vote message")]
     SignedVote,
 }
 
@@ -34,6 +37,7 @@ enum MsgType {
 /// `hash_with_epoch` field saves hash and its corresponding epoch with the current epoch ID and
 /// round. The `votes` field saves all signed votes and quorum certificates which epoch ID is higher
 /// than `current_epoch - 1`.
+#[derive(Debug)]
 pub struct State<T: Codec, F: Consensus<T>, C: Crypto> {
     epoch_id:             u64,
     round:                u64,
@@ -100,7 +104,8 @@ where
         }
     }
 
-    async fn handle_msg(&mut self, msg: Option<OverlordMsg<T>>) -> ConsensusResult<()> {
+    /// A function to handle message from the network. Public this in the crate to do unit tests.
+    pub(crate) async fn handle_msg(&mut self, msg: Option<OverlordMsg<T>>) -> ConsensusResult<()> {
         match msg.ok_or_else(|| ConsensusError::Other("Message sender dropped".to_string()))? {
             OverlordMsg::SignedProposal(sp) => self.handle_signed_proposal(sp).await,
             OverlordMsg::AggregatedVote(av) => self.handle_aggregated_vote(av).await,
@@ -109,7 +114,8 @@ where
         }
     }
 
-    async fn handle_event(&mut self, event: Option<SMREvent>) -> ConsensusResult<()> {
+    /// A function to handle event from the SMR. Public this function in the crate to do unit tests.
+    pub(crate) async fn handle_event(&mut self, event: Option<SMREvent>) -> ConsensusResult<()> {
         match event.ok_or_else(|| ConsensusError::Other("Event sender dropped".to_string()))? {
             SMREvent::NewRoundInfo {
                 round,
@@ -1096,6 +1102,33 @@ where
             .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
         Ok(())
     }
+
+    #[cfg(test)]
+    pub fn set_condition(&mut self, epoch_id: u64, round: u64) {
+        self.epoch_id = epoch_id;
+        self.round = round;
+    }
+
+    // #[cfg(test)]
+    // pub fn set_authority(&mut self, mut authority: Vec<Node>) {
+    //     self.authority.update(&mut authority, false);
+    // }
+
+    #[cfg(test)]
+    pub fn set_proposal_collector(&mut self, collector: ProposalCollector<T>) {
+        self.proposals = collector;
+    }
+
+    #[cfg(test)]
+    pub fn set_vote_collector(&mut self, collector: VoteCollector) {
+        self.votes = collector;
+    }
+
+    #[cfg(test)]
+    pub fn set_full_transaction(&mut self, hash: Hash) {
+        let mut set = self.full_transcation.lock();
+        set.insert(hash);
+    }
 }
 
 async fn check_current_epoch<U: Consensus<S>, S: Codec>(
@@ -1112,30 +1145,4 @@ async fn check_current_epoch<U: Consensus<S>, S: Codec>(
     set.insert(hash);
     // TODO: write Wal
     Ok(())
-}
-
-#[cfg(test)]
-mod test {
-    use bit_vec::BitVec;
-    use bytes::Bytes;
-    use rand::random;
-
-    #[test]
-    fn test_bitmap() {
-        let len = random::<u8>() as usize;
-        let bitmap = (0..len).map(|_| random::<bool>()).collect::<Vec<_>>();
-        let mut bv = BitVec::from_elem(len, false);
-        for (index, is_vote) in bitmap.iter().enumerate() {
-            if *is_vote {
-                bv.set(index, true);
-            }
-        }
-
-        let tmp = Bytes::from(bv.to_bytes());
-        let output = BitVec::from_bytes(tmp.as_ref());
-
-        for item in output.iter().zip(bitmap.iter()) {
-            assert_eq!(item.0, *item.1);
-        }
-    }
 }

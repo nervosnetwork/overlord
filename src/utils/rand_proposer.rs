@@ -18,3 +18,18 @@ pub fn get_proposer_index(seed: u64, weights: &[u64], weight_sum: u64) -> usize 
     }
     0
 }
+#[cfg(test)]
+mod test {
+    use crate::utils::rand_proposer::get_proposer_index;
+
+    #[test]
+    fn test_rand_proposer() {
+        let weights = vec![1u64, 1u64, 1u64, 1u64];
+        let ans = vec![3, 2, 0, 0, 3, 1, 2, 2, 0];
+
+        for seed in 1..10 {
+            let res = get_proposer_index(seed as u64, &weights, 4);
+            assert_eq!(res, ans[(seed - 1) as usize]);
+        }
+    }
+}
