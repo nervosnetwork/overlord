@@ -111,6 +111,10 @@ where
             OverlordMsg::AggregatedVote(av) => self.handle_aggregated_vote(av).await,
             OverlordMsg::SignedVote(sv) => self.handle_signed_vote(sv).await,
             OverlordMsg::RichStatus(rs) => self.goto_new_epoch(rs).await,
+
+            // This is for unit tests.
+            #[cfg(test)]
+            OverlordMsg::Commit(_) => return Ok(()),
         }
     }
 
@@ -472,7 +476,7 @@ where
             .get(&hash)
             .ok_or_else(|| {
                 ConsensusError::Other(format!(
-                    "Lose the whole epoch epoch ID {}, round {}",
+                    "Lose whole epoch epoch ID {}, round {}",
                     self.epoch_id, self.round
                 ))
             })?
@@ -1128,6 +1132,11 @@ where
     pub fn set_full_transaction(&mut self, hash: Hash) {
         let mut set = self.full_transcation.lock();
         set.insert(hash);
+    }
+
+    #[cfg(test)]
+    pub fn set_hash_with_epoch(&mut self, hash_with_epoch: HashMap<Hash, T>) {
+        self.hash_with_epoch = hash_with_epoch;
     }
 }
 

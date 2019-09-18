@@ -1,14 +1,18 @@
+use std::collections::HashMap;
+
 use crossbeam_channel::unbounded;
 use futures::channel::mpsc::unbounded as fut_unbounded;
 use futures::StreamExt;
 use tokio::runtime::Runtime;
 
 use crate::smr::smr_types::{SMREvent, SMRTrigger};
+use crate::state::collection::VoteCollector;
 use crate::state::process::State;
 use crate::state::tests::test_utils::{BlsCrypto, ConsensusHelper, Pill};
-use crate::state::tests::{epoch_hash, gen_signed_vote, update_state, Condition};
-use crate::types::{Address, Hash, OverlordMsg, VoteType};
+use crate::types::{Address, OverlordMsg, VoteType};
 use crate::{smr::SMR, Codec};
+
+use super::*;
 
 struct EventTestCase<T: Codec> {
     condition:  Condition<T>,
@@ -45,11 +49,10 @@ fn handle_event_test(
 ) {
     let (smr_tx, mut smr_rx) = fut_unbounded();
     let (msg_tx, msg_rx) = unbounded();
-    let (commit_tx, _commit_rx) = unbounded();
 
     let smr = SMR::new(smr_tx);
     let address = Address::from(vec![0u8]);
-    let helper = ConsensusHelper::new(msg_tx, commit_tx);
+    let helper = ConsensusHelper::new(msg_tx);
     let crypto = BlsCrypto::new(Address::from(vec![0u8]));
 
     let mut state = State::new(smr, address, 3000, helper, crypto);
@@ -59,7 +62,7 @@ fn handle_event_test(
     let rt = Runtime::new().unwrap();
 
     rt.block_on(async {
-        let _ = state.handle_event(Some(input)).await;
+        state.handle_event(Some(input)).await.unwrap();
         assert_eq!(msg_rx.recv().unwrap(), output_msg);
 
         if let Some(tmp) = output_smr {
@@ -81,8 +84,10 @@ fn test_handle_event() {
     let mut index = 1;
     let mut test_cases = Vec::new();
 
-    let input = SMREvent::PrevoteVote(Hash::from(vec![1, 2, 3, 4, 5]));
-    let condition = Condition::<Pill>::new(1, 0, None, None, true);
+    // Test case 01:
+    // Test state handle prevote vote event.
+    let input = SMREvent::PrevoteVote(epoch_hash());
+    let condition = Condition::<Pill>::new(1, 0, None, None, None, true);
     let output_msg = gen_signed_vote(1, 0, VoteType::Prevote, epoch_hash());
     test_cases.push(EventTestCase::new(
         condition,
@@ -91,10 +96,47 @@ fn test_handle_event() {
         None,
     ));
 
+    // Test case 02:
+    // Test state handle precommit vote event.
+    let input = SMREvent::PrecommitVote(epoch_hash());
+    let condition = Condition::<Pill>::new(1, 0, None, None, None, true);
+    let output_msg = gen_signed_vote(1, 0, VoteType::Precommit, epoch_hash());
+    test_cases.push(EventTestCase::new(
+        condition,
+        input,
+        OverlordMsg::SignedVote(output_msg),
+        None,
+    ));
+
+    // Test case 03:
+    // Test state handle commit event.
+    let mut hash_with_epoch = HashMap::new();
+    hash_with_epoch.insert(epoch_hash(), Pill::new(1u64));
+    let mut votes = VoteCollector::new();
+    let signature = gen_signature();
+    votes.set_qc(gen_aggregated_vote(
+        1,
+        0,
+        signature.clone(),
+        VoteType::Precommit,
+        epoch_hash(),
+        Address::from(vec![0u8]),
+    ));
+    let input = SMREvent::Commit(epoch_hash());
+    let condition = Condition::<Pill>::new(1, 0, None, Some(votes), Some(hash_with_epoch), true);
+    let output_msg = gen_commit(1, 0, signature);
+    test_cases.push(EventTestCase::new(
+        condition,
+        input,
+        OverlordMsg::Commit(output_msg),
+        None,
+    ));
+
     for case in test_cases.into_iter() {
-        println!("Handle event test {}/16", index);
-        index += 1;
+        println!("Handle event test {}/3", index);
         let (condition, input, output_msg, output_smr) = case.flat();
         handle_event_test(condition, input, output_msg, output_smr);
+        index += 1;
     }
+    println!("State handle event test success");
 }

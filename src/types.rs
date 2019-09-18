@@ -102,6 +102,10 @@ pub enum OverlordMsg<T: Codec> {
     /// Rich status message.
     #[display(fmt = "Rich Status")]
     RichStatus(Status),
+
+    /// This is only for easier testing.
+    #[cfg(test)]
+    Commit(Commit<T>),
 }
 
 /// A signed proposal.
@@ -177,19 +181,15 @@ impl SignedVote {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AggregatedSignature {
     /// Aggregated signature.
-    pub signature: Bytes,
+    pub signature: Signature,
     /// Voter address bit map.
     pub address_bitmap: Bytes,
 }
 
 /// An aggregated vote.
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
-#[display(
-    fmt = "{:?} aggregated vote epoch ID {}, round {}",
-    vote_type,
-    epoch_id,
-    round
-)]
+#[rustfmt::skip]
+#[display(fmt = "{:?} aggregated vote epoch ID {}, round {}", vote_type, epoch_id, round)]
 pub struct AggregatedVote {
     /// Aggregated signature of the vote.
     pub signature: AggregatedSignature,
@@ -201,7 +201,7 @@ pub struct AggregatedVote {
     pub round: u64,
     /// Proposal hash of the vote.
     pub epoch_hash: Hash,
-    ///
+    /// The leader that aggregate the signed votes.
     pub leader: Address,
 }
 

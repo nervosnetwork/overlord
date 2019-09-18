@@ -37,8 +37,7 @@ impl Pill {
 }
 
 pub struct ConsensusHelper<T: Codec> {
-    msg_tx:    Sender<OverlordMsg<T>>,
-    commit_tx: Sender<Commit<T>>,
+    tx:        Sender<OverlordMsg<T>>,
     auth_list: Vec<Node>,
 }
 
@@ -69,7 +68,7 @@ impl Consensus<Pill> for ConsensusHelper<Pill> {
         epoch_id: u64,
         commit: Commit<Pill>,
     ) -> Result<Status, Box<dyn Error + Send>> {
-        self.commit_tx.send(commit).unwrap();
+        self.tx.send(OverlordMsg::Commit(commit)).unwrap();
         let status = Status {
             epoch_id:       epoch_id + 1,
             interval:       None,
@@ -91,7 +90,7 @@ impl Consensus<Pill> for ConsensusHelper<Pill> {
         _ctx: Vec<u8>,
         msg: OverlordMsg<Pill>,
     ) -> Result<(), Box<dyn Error + Send>> {
-        self.msg_tx.send(msg).unwrap();
+        self.tx.send(msg).unwrap();
         Ok(())
     }
 
@@ -101,19 +100,15 @@ impl Consensus<Pill> for ConsensusHelper<Pill> {
         _addr: Address,
         msg: OverlordMsg<Pill>,
     ) -> Result<(), Box<dyn Error + Send>> {
-        self.msg_tx.send(msg).unwrap();
+        self.tx.send(msg).unwrap();
         Ok(())
     }
 }
 
 impl<T: Codec> ConsensusHelper<T> {
-    pub fn new(msg_tx: Sender<OverlordMsg<T>>, commit_tx: Sender<Commit<T>>) -> Self {
+    pub fn new(tx: Sender<OverlordMsg<T>>) -> Self {
         let auth_list = gen_auth_list();
-        ConsensusHelper {
-            msg_tx,
-            commit_tx,
-            auth_list,
-        }
+        ConsensusHelper { tx, auth_list }
     }
 }
 

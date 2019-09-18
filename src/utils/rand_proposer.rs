@@ -20,7 +20,7 @@ pub fn get_proposer_index(seed: u64, weights: &[u64], weight_sum: u64) -> usize 
 }
 #[cfg(test)]
 mod test {
-    use crate::utils::rand_proposer::get_proposer_index;
+    use super::get_proposer_index;
 
     #[test]
     fn test_rand_proposer() {
