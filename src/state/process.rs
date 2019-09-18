@@ -114,7 +114,7 @@ where
 
             // This is for unit tests.
             #[cfg(test)]
-            OverlordMsg::Commit(_) => return Ok(()),
+            OverlordMsg::Commit(_) => Ok(()),
         }
     }
 
