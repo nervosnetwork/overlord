@@ -40,8 +40,7 @@ where
         OverlordHandler::new(self.sender.take().unwrap())
     }
 
-    /// Run overlord consensus process. The `interval` is the epoch interval as millisecond. Use the
-    /// unbounded receiver created by the `new()` function as the third argument.
+    /// Run overlord consensus process. The `interval` is the epoch interval as millisecond.
     pub fn run(mut self, interval: u64) {
         let (mut smr_provider, evt_1, evt_2) = SMRProvider::new();
         let smr = smr_provider.take_smr();
