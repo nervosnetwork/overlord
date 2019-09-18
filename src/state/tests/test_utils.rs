@@ -11,6 +11,8 @@ use crate::types::{
 };
 use crate::{Codec, Consensus, Crypto};
 
+use super::gen_auth_list;
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Pill {
     epoch_id: u64,
@@ -126,10 +128,10 @@ impl Crypto for BlsCrypto {
 
     fn verify_signature(
         &self,
-        _signature: Signature,
+        signature: Signature,
         _hash: Hash,
     ) -> Result<Address, Box<dyn Error + Send>> {
-        Ok(self.0.clone())
+        Ok(signature)
     }
 
     fn aggregate_signatures(
@@ -153,11 +155,4 @@ impl BlsCrypto {
     pub fn new(address: Address) -> Self {
         BlsCrypto(address)
     }
-}
-
-fn gen_auth_list() -> Vec<Node> {
-    let tmp = vec![0, 1, 2, 3];
-    tmp.iter()
-        .map(|i| Node::new(Address::from(vec![*i as u8])))
-        .collect::<Vec<_>>()
 }

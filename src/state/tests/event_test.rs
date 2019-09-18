@@ -113,7 +113,7 @@ fn test_handle_event() {
     let mut hash_with_epoch = HashMap::new();
     hash_with_epoch.insert(epoch_hash(), Pill::new(1u64));
     let mut votes = VoteCollector::new();
-    let signature = gen_signature();
+    let signature = gen_signature(255);
     votes.set_qc(gen_aggregated_vote(
         1,
         0,

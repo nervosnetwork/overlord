@@ -1,4 +1,5 @@
 mod event_test;
+mod message_test;
 mod test_utils;
 
 use std::collections::HashMap;
@@ -11,8 +12,8 @@ use crate::state::collection::{ProposalCollector, VoteCollector};
 use crate::state::process::State;
 use crate::state::tests::test_utils::{BlsCrypto, ConsensusHelper, Pill};
 use crate::types::{
-    Address, AggregatedSignature, AggregatedVote, Commit, Hash, Proof, Signature, SignedVote, Vote,
-    VoteType,
+    Address, AggregatedSignature, AggregatedVote, Commit, Hash, Node, PoLC, Proof, Proposal,
+    Signature, SignedProposal, SignedVote, Vote, VoteType,
 };
 use crate::Codec;
 
@@ -50,8 +51,34 @@ fn gen_hash() -> Hash {
     Hash::from((0..5).map(|_| random::<u8>()).collect::<Vec<_>>())
 }
 
-fn gen_signature() -> Signature {
-    Signature::from((0..32).map(|_| random::<u8>()).collect::<Vec<_>>())
+fn epoch_hash() -> Hash {
+    Hash::from(vec![1, 2, 3, 4, 5])
+}
+
+fn gen_signature(i: u8) -> Signature {
+    Signature::from(vec![i])
+}
+
+fn gen_signed_proposal(
+    epoch_id: u64,
+    round: u64,
+    lock: Option<PoLC>,
+    proposer: u8,
+) -> SignedProposal<Pill> {
+    let signature = gen_signature(proposer);
+    let proposal = Proposal {
+        epoch_id,
+        round,
+        content: Pill::new(epoch_id),
+        epoch_hash: epoch_hash(),
+        lock,
+        proposer: Address::from(vec![proposer]),
+    };
+
+    SignedProposal {
+        signature,
+        proposal,
+    }
 }
 
 fn gen_aggregated_vote(
@@ -76,10 +103,6 @@ fn gen_aggregated_vote(
         epoch_hash,
         leader,
     }
-}
-
-fn epoch_hash() -> Hash {
-    Hash::from(vec![1, 2, 3, 4, 5])
 }
 
 fn gen_signed_vote(epoch_id: u64, round: u64, vote_type: VoteType, hash: Hash) -> SignedVote {
@@ -114,6 +137,16 @@ fn gen_commit(epoch_id: u64, round: u64, signature: Signature) -> Commit<Pill> {
         content,
         proof,
     }
+}
+
+fn gen_auth_list() -> Vec<Node> {
+    let tmp = vec![0, 1, 2, 3];
+    let mut res = tmp
+        .iter()
+        .map(|i| Node::new(Address::from(vec![*i as u8])))
+        .collect::<Vec<_>>();
+    res.sort();
+    res
 }
 
 fn update_state(

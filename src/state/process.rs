@@ -21,6 +21,9 @@ use crate::types::{
 use crate::{error::ConsensusError, utils::auth_manage::AuthorityManage};
 use crate::{Codec, Consensus, ConsensusResult, Crypto, INIT_EPOCH_ID, INIT_ROUND};
 
+#[cfg(test)]
+use crate::types::Node;
+
 /// **TODO: context libiary**
 const CTX: u8 = 0;
 
@@ -1036,7 +1039,7 @@ where
         debug!("Overlord: state verify a proposer");
         self.verify_address(address, is_current)?;
         if address
-            == &self
+            != &self
                 .authority
                 .get_proposer(self.epoch_id + round, is_current)?
         {
@@ -1113,10 +1116,10 @@ where
         self.round = round;
     }
 
-    // #[cfg(test)]
-    // pub fn set_authority(&mut self, mut authority: Vec<Node>) {
-    //     self.authority.update(&mut authority, false);
-    // }
+    #[cfg(test)]
+    pub fn set_authority(&mut self, mut authority: Vec<Node>) {
+        self.authority.update(&mut authority, false);
+    }
 
     #[cfg(test)]
     pub fn set_proposal_collector(&mut self, collector: ProposalCollector<T>) {
