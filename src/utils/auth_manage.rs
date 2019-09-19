@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use bit_vec::BitVec;
 use bytes::Bytes;
+use derive_more::Display;
 
 use crate::error::ConsensusError;
 use crate::types::{Address, Node};
@@ -12,7 +13,8 @@ use crate::ConsensusResult;
 /// manage The last epoch authority manage which is optional is used to check the correctness of
 /// last epoch's message. The last epoch's authority manage should be `Some` unless current epoch is
 /// `0` or `1`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[display(fmt = "Authority List {:?}", current)]
+#[derive(Clone, Debug, Display, PartialEq, Eq)]
 pub struct AuthorityManage {
     current: EpochAuthorityManage,
     last:    Option<EpochAuthorityManage>,
@@ -123,7 +125,8 @@ impl AuthorityManage {
 /// `Vec<Node>`. It transforms the information in `Node` struct into a more suitable data structure
 /// according to its usage scene. The vote weight need look up by address frequently, therefore,
 /// address with vote weight saved in a `HashMap`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[display(fmt = "{:?}", address)]
+#[derive(Clone, Debug, Display, PartialEq, Eq)]
 struct EpochAuthorityManage {
     address:            Vec<Address>,
     propose_weights:    Vec<u64>,
@@ -366,6 +369,25 @@ mod test {
         let bit_map = gen_bitmap(4, vec![0, 1, 2, 3]);
         let res = authority.is_above_threshold(Bytes::from(bit_map.to_bytes()), true);
         assert_eq!(res.unwrap(), true);
+    }
+
+    #[test]
+    fn test_bitmap() {
+        let len = random::<u8>() as usize;
+        let bitmap = (0..len).map(|_| random::<bool>()).collect::<Vec<_>>();
+        let mut bv = BitVec::from_elem(len, false);
+        for (index, is_vote) in bitmap.iter().enumerate() {
+            if *is_vote {
+                bv.set(index, true);
+            }
+        }
+
+        let tmp = Bytes::from(bv.to_bytes());
+        let output = BitVec::from_bytes(tmp.as_ref());
+
+        for item in output.iter().zip(bitmap.iter()) {
+            assert_eq!(item.0, *item.1);
+        }
     }
 
     #[bench]

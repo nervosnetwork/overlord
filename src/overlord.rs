@@ -13,6 +13,7 @@ pub struct Overlord<T: Codec, F: Consensus<T>, C: Crypto> {
     address:   Option<Address>,
     consensus: Option<F>,
     crypto:    Option<C>,
+    state_rx:  Option<UnboundedReceiver<OverlordMsg<T>>>,
 }
 
 impl<T, F, C> Overlord<T, F, C>
@@ -22,19 +23,15 @@ where
     C: Crypto + Send + Sync + 'static,
 {
     /// Create a new overlord and return an overlord instance with an unbounded receiver.
-    pub fn new(
-        address: Address,
-        consensus: F,
-        crypto: C,
-    ) -> (Self, UnboundedReceiver<OverlordMsg<T>>) {
+    pub fn new(address: Address, consensus: F, crypto: C) -> Self {
         let (tx, rx) = unbounded();
-        let overlord = Overlord {
+        Overlord {
             sender:    Some(tx),
             address:   Some(address),
             consensus: Some(consensus),
             crypto:    Some(crypto),
-        };
-        (overlord, rx)
+            state_rx:  Some(rx),
+        }
     }
 
     /// Take the overlord handler from the overlord instance.
@@ -43,12 +40,12 @@ where
         OverlordHandler::new(self.sender.take().unwrap())
     }
 
-    /// Run overlord consensus process. The `interval` is the epoch interval as millisecond. Use the
-    /// unbounded receiver created by the `new()` function as the third argument.
-    pub fn run(mut self, interval: u64, rx: UnboundedReceiver<OverlordMsg<T>>) {
+    /// Run overlord consensus process. The `interval` is the epoch interval as millisecond.
+    pub fn run(mut self, interval: u64) {
         let (mut smr_provider, evt_1, evt_2) = SMRProvider::new();
         let smr = smr_provider.take_smr();
         let mut timer = Timer::new(evt_2, smr.clone(), interval);
+        let state_rx = self.state_rx.take().unwrap();
         let mut state = State::new(
             smr,
             self.address.take().unwrap(),
@@ -61,6 +58,7 @@ where
         assert!(self.address.is_none());
         assert!(self.consensus.is_none());
         assert!(self.crypto.is_none());
+        assert!(self.state_rx.is_none());
 
         // Run SMR.
         smr_provider.run();
@@ -74,7 +72,7 @@ where
 
         // Run state.
         tokio::spawn(async move {
-            let _ = state.run(rx, evt_1).await;
+            let _ = state.run(state_rx, evt_1).await;
         });
     }
 }
@@ -89,7 +87,7 @@ impl<T: Codec> OverlordHandler<T> {
     }
 
     /// Send overlord message to the instance. Return `Err()` when the message channel is closed.
-    pub fn send_msg(&mut self, msg: OverlordMsg<T>) -> ConsensusResult<()> {
+    pub fn send_msg(&self, msg: OverlordMsg<T>) -> ConsensusResult<()> {
         self.0
             .unbounded_send(msg)
             .map_err(|e| ConsensusError::Other(format!("Send message error {:?}", e)))
