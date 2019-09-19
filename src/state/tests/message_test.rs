@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use creep::Context;
 use crossbeam_channel::unbounded;
 use futures::channel::mpsc::unbounded as fut_unbounded;
 use futures::StreamExt;
@@ -70,7 +71,7 @@ fn handle_msg_test(
     let rt = Runtime::new().unwrap();
 
     rt.block_on(async {
-        let res = state.handle_msg(Some(input)).await;
+        let res = state.handle_msg(Some((Context::new(), input))).await;
         if let Some(err) = err_value {
             assert_eq!(res.err().unwrap(), err);
             return;

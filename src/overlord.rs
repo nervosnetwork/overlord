@@ -1,3 +1,4 @@
+use creep::Context;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::StreamExt;
 
@@ -9,11 +10,11 @@ use crate::{Codec, Consensus, ConsensusResult, Crypto};
 
 /// An overlord consensus instance.
 pub struct Overlord<T: Codec, F: Consensus<T>, C: Crypto> {
-    sender:    Option<UnboundedSender<OverlordMsg<T>>>,
+    sender:    Option<UnboundedSender<(Context, OverlordMsg<T>)>>,
+    state_rx:  Option<UnboundedReceiver<(Context, OverlordMsg<T>)>>,
     address:   Option<Address>,
     consensus: Option<F>,
     crypto:    Option<C>,
-    state_rx:  Option<UnboundedReceiver<OverlordMsg<T>>>,
 }
 
 impl<T, F, C> Overlord<T, F, C>
@@ -27,10 +28,10 @@ where
         let (tx, rx) = unbounded();
         Overlord {
             sender:    Some(tx),
+            state_rx:  Some(rx),
             address:   Some(address),
             consensus: Some(consensus),
             crypto:    Some(crypto),
-            state_rx:  Some(rx),
         }
     }
 
@@ -79,17 +80,17 @@ where
 
 /// An overlord handler to send messages to an overlord instance.
 #[derive(Clone, Debug)]
-pub struct OverlordHandler<T: Codec>(UnboundedSender<OverlordMsg<T>>);
+pub struct OverlordHandler<T: Codec>(UnboundedSender<(Context, OverlordMsg<T>)>);
 
 impl<T: Codec> OverlordHandler<T> {
-    fn new(tx: UnboundedSender<OverlordMsg<T>>) -> Self {
+    fn new(tx: UnboundedSender<(Context, OverlordMsg<T>)>) -> Self {
         OverlordHandler(tx)
     }
 
     /// Send overlord message to the instance. Return `Err()` when the message channel is closed.
-    pub fn send_msg(&self, msg: OverlordMsg<T>) -> ConsensusResult<()> {
+    pub fn send_msg(&self, ctx: Context, msg: OverlordMsg<T>) -> ConsensusResult<()> {
         self.0
-            .unbounded_send(msg)
+            .unbounded_send((ctx, msg))
             .map_err(|e| ConsensusError::Other(format!("Send message error {:?}", e)))
     }
 }

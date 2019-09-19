@@ -17,6 +17,7 @@ Overlord consensus procotol.
 async-trait = "0.1"
 bit-vec = "0.6"
 bytes = "0.4"
+creep = { git = "https://github.com/zeroqn/creep.git" }
 derive_more = "0.15"
 futures-preview = { version = "0.3.0-alpha.18", features = [ "async-await", "nightly" ] }
 futures-timer = "0.3"
