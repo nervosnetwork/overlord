@@ -24,6 +24,7 @@ mod wal;
 
 pub use self::overlord::Overlord;
 pub use self::overlord::OverlordHandler;
+pub use creep::Context;
 
 use std::error::Error;
 use std::fmt::Debug;
@@ -48,7 +49,7 @@ pub trait Consensus<T: Codec>: Send + Sync {
     /// Get an epoch of the given epoch ID and return the epoch with its hash.
     async fn get_epoch(
         &self,
-        _ctx: Vec<u8>,
+        ctx: Context,
         epoch_id: u64,
     ) -> Result<(T, Hash), Box<dyn Error + Send>>;
 
@@ -56,7 +57,7 @@ pub trait Consensus<T: Codec>: Send + Sync {
     /// data persistence.
     async fn check_epoch(
         &self,
-        _ctx: Vec<u8>,
+        ctx: Context,
         epoch_id: u64,
         hash: Hash,
     ) -> Result<T, Box<dyn Error + Send>>;
@@ -64,7 +65,7 @@ pub trait Consensus<T: Codec>: Send + Sync {
     /// Commit a given epoch to execute and return the rich status.
     async fn commit(
         &self,
-        _ctx: Vec<u8>,
+        ctx: Context,
         epoch_id: u64,
         commit: Commit<T>,
     ) -> Result<Status, Box<dyn Error + Send>>;
@@ -72,21 +73,21 @@ pub trait Consensus<T: Codec>: Send + Sync {
     /// Get an authority list of the given epoch ID.
     async fn get_authority_list(
         &self,
-        _ctx: Vec<u8>,
+        ctx: Context,
         epoch_id: u64,
     ) -> Result<Vec<Node>, Box<dyn Error + Send>>;
 
     /// Broadcast a message to other replicas.
     async fn broadcast_to_other(
         &self,
-        _ctx: Vec<u8>,
+        ctx: Context,
         msg: OverlordMsg<T>,
     ) -> Result<(), Box<dyn Error + Send>>;
 
     /// Transmit a message to the Relayer, the third argument is the relayer's address.
     async fn transmit_to_relayer(
         &self,
-        _ctx: Vec<u8>,
+        ctx: Context,
         addr: Address,
         msg: OverlordMsg<T>,
     ) -> Result<(), Box<dyn Error + Send>>;

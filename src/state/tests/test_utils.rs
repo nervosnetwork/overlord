@@ -3,6 +3,7 @@ use std::error::Error;
 use async_trait::async_trait;
 use bincode::{deserialize, serialize};
 use bytes::Bytes;
+use creep::Context;
 use crossbeam_channel::Sender;
 use serde::{Deserialize, Serialize};
 
@@ -47,7 +48,7 @@ pub struct ConsensusHelper<T: Codec> {
 impl Consensus<Pill> for ConsensusHelper<Pill> {
     async fn get_epoch(
         &self,
-        _ctx: Vec<u8>,
+        _ctx: Context,
         epoch_id: u64,
     ) -> Result<(Pill, Hash), Box<dyn Error + Send>> {
         let epoch = Pill::new(epoch_id);
@@ -57,7 +58,7 @@ impl Consensus<Pill> for ConsensusHelper<Pill> {
 
     async fn check_epoch(
         &self,
-        _ctx: Vec<u8>,
+        _ctx: Context,
         epoch_id: u64,
         _hash: Hash,
     ) -> Result<Pill, Box<dyn Error + Send>> {
@@ -66,7 +67,7 @@ impl Consensus<Pill> for ConsensusHelper<Pill> {
 
     async fn commit(
         &self,
-        _ctx: Vec<u8>,
+        _ctx: Context,
         epoch_id: u64,
         commit: Commit<Pill>,
     ) -> Result<Status, Box<dyn Error + Send>> {
@@ -81,7 +82,7 @@ impl Consensus<Pill> for ConsensusHelper<Pill> {
 
     async fn get_authority_list(
         &self,
-        _ctx: Vec<u8>,
+        _ctx: Context,
         _epoch_id: u64,
     ) -> Result<Vec<Node>, Box<dyn Error + Send>> {
         Ok(self.auth_list.clone())
@@ -89,7 +90,7 @@ impl Consensus<Pill> for ConsensusHelper<Pill> {
 
     async fn broadcast_to_other(
         &self,
-        _ctx: Vec<u8>,
+        _ctx: Context,
         msg: OverlordMsg<Pill>,
     ) -> Result<(), Box<dyn Error + Send>> {
         self.tx.send(msg).unwrap();
@@ -98,7 +99,7 @@ impl Consensus<Pill> for ConsensusHelper<Pill> {
 
     async fn transmit_to_relayer(
         &self,
-        _ctx: Vec<u8>,
+        _ctx: Context,
         _addr: Address,
         msg: OverlordMsg<Pill>,
     ) -> Result<(), Box<dyn Error + Send>> {

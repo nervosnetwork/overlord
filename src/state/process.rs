@@ -4,6 +4,7 @@ use std::{ops::BitXor, sync::Arc};
 
 use bit_vec::BitVec;
 use bytes::Bytes;
+use creep::Context;
 use derive_more::Display;
 use futures::{channel::mpsc::UnboundedReceiver, select, StreamExt};
 use futures_timer::Delay;
@@ -23,9 +24,6 @@ use crate::{Codec, Consensus, ConsensusResult, Crypto, INIT_EPOCH_ID, INIT_ROUND
 
 #[cfg(test)]
 use crate::types::Node;
-
-/// **TODO: context libiary**
-const CTX: u8 = 0;
 
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
 enum MsgType {
@@ -95,7 +93,7 @@ where
     /// Run state module.
     pub async fn run(
         &mut self,
-        mut rx: UnboundedReceiver<OverlordMsg<T>>,
+        mut rx: UnboundedReceiver<(Context, OverlordMsg<T>)>,
         mut event: Event,
     ) -> ConsensusResult<()> {
         info!("Overlord: state start running");
@@ -108,12 +106,17 @@ where
     }
 
     /// A function to handle message from the network. Public this in the crate to do unit tests.
-    pub(crate) async fn handle_msg(&mut self, msg: Option<OverlordMsg<T>>) -> ConsensusResult<()> {
-        match msg.ok_or_else(|| ConsensusError::Other("Message sender dropped".to_string()))? {
-            OverlordMsg::SignedProposal(sp) => self.handle_signed_proposal(sp).await,
-            OverlordMsg::AggregatedVote(av) => self.handle_aggregated_vote(av).await,
-            OverlordMsg::SignedVote(sv) => self.handle_signed_vote(sv).await,
-            OverlordMsg::RichStatus(rs) => self.goto_new_epoch(rs).await,
+    pub(crate) async fn handle_msg(
+        &mut self,
+        msg: Option<(Context, OverlordMsg<T>)>,
+    ) -> ConsensusResult<()> {
+        let msg = msg.ok_or_else(|| ConsensusError::Other("Message sender dropped".to_string()))?;
+        let (ctx, raw) = (msg.0, msg.1);
+        match raw {
+            OverlordMsg::SignedProposal(sp) => self.handle_signed_proposal(ctx.clone(), sp).await,
+            OverlordMsg::AggregatedVote(av) => self.handle_aggregated_vote(ctx.clone(), av).await,
+            OverlordMsg::SignedVote(sv) => self.handle_signed_vote(ctx.clone(), sv).await,
+            OverlordMsg::RichStatus(rs) => self.goto_new_epoch(ctx.clone(), rs).await,
 
             // This is for unit tests.
             #[cfg(test)]
@@ -148,7 +151,7 @@ where
     /// interval. Since it is possible to have received and cached the current epoch's proposals,
     /// votes and quorum certificates before, these should be re-checked as goto new epoch. Finally,
     /// trigger SMR to goto new epoch.
-    async fn goto_new_epoch(&mut self, status: Status) -> ConsensusResult<()> {
+    async fn goto_new_epoch(&mut self, ctx: Context, status: Status) -> ConsensusResult<()> {
         let new_epoch_id = status.epoch_id;
         let get_last_flag = new_epoch_id != self.epoch_id + 1;
 
@@ -162,7 +165,7 @@ where
         if get_last_flag {
             let mut tmp = self
                 .function
-                .get_authority_list(vec![CTX], new_epoch_id - 1)
+                .get_authority_list(ctx, new_epoch_id - 1)
                 .await
                 .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
             self.authority.set_last_list(&mut tmp);
@@ -222,7 +225,9 @@ where
         // has, then handle it.
         if !self.is_proposer()? {
             if let Ok(signed_proposal) = self.proposals.get(self.epoch_id, self.round) {
-                return self.handle_signed_proposal(signed_proposal).await;
+                return self
+                    .handle_signed_proposal(Context::new(), signed_proposal)
+                    .await;
             }
             return Ok(());
         }
@@ -240,12 +245,13 @@ where
         // done by doing this. These things consititute a Proposal. Then sign it and broadcast it to
         // other nodes.
         self.is_leader = true;
+        let ctx = Context::new();
         let (epoch, hash, polc) = if lock_round.is_none() {
-            let (new_epoch, new_hash) = self
-                .function
-                .get_epoch(vec![CTX], self.epoch_id)
-                .await
-                .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
+            let (new_epoch, new_hash) =
+                self.function
+                    .get_epoch(ctx.clone(), self.epoch_id)
+                    .await
+                    .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
             (new_epoch, new_hash, None)
         } else {
             let round = lock_round.clone().unwrap();
@@ -276,8 +282,11 @@ where
         };
 
         // **TODO: parallelism**
-        self.broadcast(OverlordMsg::SignedProposal(self.sign_proposal(proposal)?))
-            .await?;
+        self.broadcast(
+            Context::new(),
+            OverlordMsg::SignedProposal(self.sign_proposal(proposal)?),
+        )
+        .await?;
 
         self.state_machine.trigger(SMRTrigger {
             trigger_type: TriggerType::Proposal,
@@ -290,7 +299,7 @@ where
         let tx_signal = Arc::clone(&self.full_transcation);
         let function = Arc::clone(&self.function);
         tokio::spawn(async move {
-            let _ = check_current_epoch(function, tx_signal, epoch_id, hash).await;
+            let _ = check_current_epoch(ctx.clone(), function, tx_signal, epoch_id, hash).await;
         });
 
         Ok(())
@@ -300,6 +309,7 @@ where
     /// Others will be ignored or storaged in the proposal collector.
     async fn handle_signed_proposal(
         &mut self,
+        ctx: Context,
         signed_proposal: SignedProposal<T>,
     ) -> ConsensusResult<()> {
         let epoch_id = signed_proposal.proposal.epoch_id;
@@ -348,6 +358,7 @@ where
                 }
 
                 self.retransmit_vote(
+                    ctx.clone(),
                     last_round,
                     last_proposal,
                     VoteType::Prevote,
@@ -406,7 +417,7 @@ where
         let function = Arc::clone(&self.function);
 
         tokio::spawn(async move {
-            let _ = check_current_epoch(function, tx_signal, epoch_id, hash).await;
+            let _ = check_current_epoch(ctx, function, tx_signal, epoch_id, hash).await;
         });
 
         Ok(())
@@ -432,7 +443,8 @@ where
             self.votes
                 .insert_vote(signed_vote.get_hash(), signed_vote, self.address.clone());
         } else {
-            self.transmit(OverlordMsg::SignedVote(signed_vote)).await?;
+            self.transmit(Context::new(), OverlordMsg::SignedVote(signed_vote))
+                .await?;
         }
 
         self.vote_process(VoteType::Prevote).await?;
@@ -459,7 +471,8 @@ where
             self.votes
                 .insert_vote(signed_vote.get_hash(), signed_vote, self.address.clone());
         } else {
-            self.transmit(OverlordMsg::SignedVote(signed_vote)).await?;
+            self.transmit(Context::new(), OverlordMsg::SignedVote(signed_vote))
+                .await?;
         }
 
         self.vote_process(VoteType::Precommit).await?;
@@ -507,9 +520,10 @@ where
         self.last_commit_proposal = Some(hash);
         // **TODO: write Wal**
 
+        let ctx = Context::new();
         let status = self
             .function
-            .commit(vec![CTX], epoch, commit)
+            .commit(ctx.clone(), epoch, commit)
             .await
             .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
 
@@ -519,7 +533,7 @@ where
                 .map_err(|err| ConsensusError::Other(format!("Overlord delay error {:?}", err)))?;
         }
 
-        self.goto_new_epoch(status).await?;
+        self.goto_new_epoch(ctx, status).await?;
         Ok(())
     }
 
@@ -530,7 +544,11 @@ where
     /// will be done by the leader. For the higher votes, check the signature and save them in
     /// the vote collector. Whenevet the current vote is received, a statistic is made to check
     /// if the sum of the voting weights corresponding to the hash exceeds the threshold.
-    async fn handle_signed_vote(&mut self, signed_vote: SignedVote) -> ConsensusResult<()> {
+    async fn handle_signed_vote(
+        &mut self,
+        ctx: Context,
+        signed_vote: SignedVote,
+    ) -> ConsensusResult<()> {
         let epoch_id = signed_vote.get_epoch();
         let round = signed_vote.get_round();
         let vote_type = if signed_vote.is_prevote() {
@@ -606,7 +624,7 @@ where
         );
 
         self.votes.set_qc(qc.clone());
-        self.broadcast(OverlordMsg::AggregatedVote(qc)).await?;
+        self.broadcast(ctx, OverlordMsg::AggregatedVote(qc)).await?;
 
         let set = self.full_transcation.lock();
         let epoch_hash = if set.contains(&epoch_hash) {
@@ -644,6 +662,7 @@ where
     /// 4. Other cases, return `Ok(())` directly.
     async fn handle_aggregated_vote(
         &mut self,
+        ctx: Context,
         aggregated_vote: AggregatedVote,
     ) -> ConsensusResult<()> {
         let epoch_id = aggregated_vote.get_epoch();
@@ -696,6 +715,7 @@ where
                 }
 
                 self.retransmit_vote(
+                    ctx,
                     last_round,
                     last_proposal,
                     VoteType::Precommit,
@@ -756,7 +776,8 @@ where
         } else if let Some(mut epoch_hash) = self.counting_vote(vote_type.clone())? {
             let qc = self.generate_qc(epoch_hash.clone(), vote_type.clone())?;
             self.votes.set_qc(qc.clone());
-            self.broadcast(OverlordMsg::AggregatedVote(qc)).await?;
+            self.broadcast(Context::new(), OverlordMsg::AggregatedVote(qc))
+                .await?;
 
             let set = self.full_transcation.lock();
 
@@ -1056,14 +1077,14 @@ where
         Ok(())
     }
 
-    async fn transmit(&self, msg: OverlordMsg<T>) -> ConsensusResult<()> {
+    async fn transmit(&self, ctx: Context, msg: OverlordMsg<T>) -> ConsensusResult<()> {
         info!(
             "Overlord: state transmit a message to leader epoch ID {}, round {}",
             self.epoch_id, self.round
         );
 
         self.function
-            .transmit_to_relayer(vec![CTX], self.leader_address.clone(), msg)
+            .transmit_to_relayer(ctx, self.leader_address.clone(), msg)
             .await
             .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
         Ok(())
@@ -1071,6 +1092,7 @@ where
 
     async fn retransmit_vote(
         &self,
+        ctx: Context,
         last_round: u64,
         hash: Hash,
         v_type: VoteType,
@@ -1088,7 +1110,7 @@ where
 
         self.function
             .transmit_to_relayer(
-                vec![CTX],
+                ctx,
                 leader_address,
                 OverlordMsg::SignedVote(self.sign_vote(vote)?),
             )
@@ -1097,14 +1119,14 @@ where
         Ok(())
     }
 
-    async fn broadcast(&self, msg: OverlordMsg<T>) -> ConsensusResult<()> {
+    async fn broadcast(&self, ctx: Context, msg: OverlordMsg<T>) -> ConsensusResult<()> {
         info!(
             "Overlord: state broadcast a message to others epoch ID {}, round {}",
             self.epoch_id, self.round
         );
 
         self.function
-            .broadcast_to_other(vec![CTX], msg)
+            .broadcast_to_other(ctx, msg)
             .await
             .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
         Ok(())
@@ -1144,13 +1166,14 @@ where
 }
 
 async fn check_current_epoch<U: Consensus<S>, S: Codec>(
+    ctx: Context,
     function: Arc<U>,
     tx_signal: Arc<Mutex<HashSet<Hash>>>,
     epoch_id: u64,
     hash: Hash,
 ) -> ConsensusResult<()> {
     let _transcation = function
-        .check_epoch(vec![CTX], epoch_id, hash.clone())
+        .check_epoch(ctx, epoch_id, hash.clone())
         .await
         .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
     let mut set = tx_signal.lock();
