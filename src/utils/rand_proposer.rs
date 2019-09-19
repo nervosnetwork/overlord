@@ -18,6 +18,7 @@ pub fn get_proposer_index(seed: u64, weights: &[u64], weight_sum: u64) -> usize 
     }
     0
 }
+
 #[cfg(test)]
 mod test {
     use super::get_proposer_index;
