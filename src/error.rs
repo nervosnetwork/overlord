@@ -1,5 +1,6 @@
 #[cfg(test)]
 use std::cmp::{Eq, PartialEq};
+use std::error::Error;
 
 use derive_more::Display;
 
@@ -66,6 +67,8 @@ pub enum ConsensusError {
     #[display(fmt = "Other error {}", _0)]
     Other(String),
 }
+
+impl Error for ConsensusError {}
 
 #[cfg(test)]
 impl PartialEq for ConsensusError {

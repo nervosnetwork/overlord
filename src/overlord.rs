@@ -87,7 +87,7 @@ impl<T: Codec> OverlordHandler<T> {
     }
 
     /// Send overlord message to the instance. Return `Err()` when the message channel is closed.
-    pub fn send_msg(&mut self, msg: OverlordMsg<T>) -> ConsensusResult<()> {
+    pub fn send_msg(&self, msg: OverlordMsg<T>) -> ConsensusResult<()> {
         self.0
             .unbounded_send(msg)
             .map_err(|e| ConsensusError::Other(format!("Send message error {:?}", e)))
