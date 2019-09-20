@@ -1181,7 +1181,7 @@ async fn check_current_epoch<U: Consensus<T, S>, T: Codec, S: Codec>(
     epoch: T,
 ) -> ConsensusResult<()> {
     let _transcation = function
-        .check_epoch(ctx, epoch_id, epoch)
+        .check_epoch(ctx, epoch_id, hash.clone(), epoch)
         .await
         .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
     let mut set = tx_signal.lock();

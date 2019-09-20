@@ -59,6 +59,7 @@ pub trait Consensus<T: Codec, S: Codec>: Send + Sync {
         &self,
         ctx: Context,
         epoch_id: u64,
+        hash: Hash,
         epoch: T,
     ) -> Result<S, Box<dyn Error + Send>>;
 

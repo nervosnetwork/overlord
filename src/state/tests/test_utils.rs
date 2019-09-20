@@ -60,6 +60,7 @@ impl Consensus<Pill, Pill> for ConsensusHelper<Pill> {
         &self,
         _ctx: Context,
         epoch_id: u64,
+        _hash: Hash,
         _epoch: Pill,
     ) -> Result<Pill, Box<dyn Error + Send>> {
         Ok(Pill::new(epoch_id))
