@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::marker::PhantomData;
 use std::time::{Duration, Instant};
 use std::{ops::BitXor, sync::Arc};
 
@@ -39,7 +40,7 @@ enum MsgType {
 /// round. The `votes` field saves all signed votes and quorum certificates which epoch ID is higher
 /// than `current_epoch - 1`.
 #[derive(Debug)]
-pub struct State<T: Codec, F: Consensus<T>, C: Crypto> {
+pub struct State<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto> {
     epoch_id:             u64,
     round:                u64,
     state_machine:        SMR,
@@ -57,13 +58,15 @@ pub struct State<T: Codec, F: Consensus<T>, C: Crypto> {
     epoch_interval:       u64,
 
     function: Arc<F>,
+    pin_txs:  PhantomData<S>,
     util:     C,
 }
 
-impl<T, F, C> State<T, F, C>
+impl<T, S, F, C> State<T, S, F, C>
 where
     T: Codec,
-    F: Consensus<T> + 'static,
+    S: Codec,
+    F: Consensus<T, S> + 'static,
     C: Crypto,
 {
     /// Create a new state struct.
@@ -86,6 +89,7 @@ where
             epoch_interval:       interval,
 
             function: Arc::new(consensus),
+            pin_txs:  PhantomData,
             util:     crypto,
         }
     }
@@ -1165,7 +1169,7 @@ where
     }
 }
 
-async fn check_current_epoch<U: Consensus<S>, S: Codec>(
+async fn check_current_epoch<U: Consensus<T, S>, T: Codec, S: Codec>(
     ctx: Context,
     function: Arc<U>,
     tx_signal: Arc<Mutex<HashSet<Hash>>>,
