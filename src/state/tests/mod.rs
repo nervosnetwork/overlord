@@ -151,7 +151,7 @@ fn gen_auth_list() -> Vec<Node> {
 
 fn update_state(
     info: &mut Condition<Pill>,
-    state: &mut State<Pill, ConsensusHelper<Pill>, BlsCrypto>,
+    state: &mut State<Pill, Pill, ConsensusHelper<Pill>, BlsCrypto>,
 ) {
     state.set_condition(info.epoch_id, info.round);
 

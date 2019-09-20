@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use creep::Context;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::StreamExt;
@@ -9,18 +11,20 @@ use crate::{smr::SMRProvider, timer::Timer};
 use crate::{Codec, Consensus, ConsensusResult, Crypto};
 
 /// An overlord consensus instance.
-pub struct Overlord<T: Codec, F: Consensus<T>, C: Crypto> {
+pub struct Overlord<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto> {
     sender:    Option<UnboundedSender<(Context, OverlordMsg<T>)>>,
     state_rx:  Option<UnboundedReceiver<(Context, OverlordMsg<T>)>>,
     address:   Option<Address>,
     consensus: Option<F>,
     crypto:    Option<C>,
+    pin_txs:   PhantomData<S>,
 }
 
-impl<T, F, C> Overlord<T, F, C>
+impl<T, S, F, C> Overlord<T, S, F, C>
 where
     T: Codec + Send + Sync + 'static,
-    F: Consensus<T> + 'static,
+    S: Codec + Send + Sync + 'static,
+    F: Consensus<T, S> + 'static,
     C: Crypto + Send + Sync + 'static,
 {
     /// Create a new overlord and return an overlord instance with an unbounded receiver.
@@ -32,6 +36,7 @@ where
             address:   Some(address),
             consensus: Some(consensus),
             crypto:    Some(crypto),
+            pin_txs:   PhantomData,
         }
     }
 
