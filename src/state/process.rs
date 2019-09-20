@@ -64,7 +64,7 @@ pub struct State<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto> {
 
 impl<T, S, F, C> State<T, S, F, C>
 where
-    T: Codec,
+    T: Codec + 'static,
     S: Codec,
     F: Consensus<T, S> + 'static,
     C: Crypto,
@@ -279,7 +279,7 @@ where
         let proposal = Proposal {
             epoch_id:   self.epoch_id,
             round:      self.round,
-            content:    epoch,
+            content:    epoch.clone(),
             epoch_hash: hash.clone(),
             lock:       polc,
             proposer:   self.address.clone(),
@@ -303,7 +303,8 @@ where
         let tx_signal = Arc::clone(&self.full_transcation);
         let function = Arc::clone(&self.function);
         tokio::spawn(async move {
-            let _ = check_current_epoch(ctx.clone(), function, tx_signal, epoch_id, hash).await;
+            let _ =
+                check_current_epoch(ctx.clone(), function, tx_signal, epoch_id, hash, epoch).await;
         });
 
         Ok(())
@@ -407,6 +408,8 @@ where
         );
 
         let hash = proposal.epoch_hash.clone();
+        let epoch = proposal.content.clone();
+
         self.hash_with_epoch.insert(hash.clone(), proposal.content);
         self.state_machine.trigger(SMRTrigger {
             trigger_type: TriggerType::Proposal,
@@ -421,7 +424,7 @@ where
         let function = Arc::clone(&self.function);
 
         tokio::spawn(async move {
-            let _ = check_current_epoch(ctx, function, tx_signal, epoch_id, hash).await;
+            let _ = check_current_epoch(ctx, function, tx_signal, epoch_id, hash, epoch).await;
         });
 
         Ok(())
@@ -1175,9 +1178,10 @@ async fn check_current_epoch<U: Consensus<T, S>, T: Codec, S: Codec>(
     tx_signal: Arc<Mutex<HashSet<Hash>>>,
     epoch_id: u64,
     hash: Hash,
+    epoch: T,
 ) -> ConsensusResult<()> {
     let _transcation = function
-        .check_epoch(ctx, epoch_id, hash.clone())
+        .check_epoch(ctx, epoch_id, hash.clone(), epoch)
         .await
         .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
     let mut set = tx_signal.lock();
