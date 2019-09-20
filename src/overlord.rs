@@ -17,7 +17,7 @@ pub struct Overlord<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto> {
     address:   Option<Address>,
     consensus: Option<F>,
     crypto:    Option<C>,
-    pin_tx:    PhantomData<S>,
+    pin_txs:    PhantomData<S>,
 }
 
 impl<T, S, F, C> Overlord<T, S, F, C>
@@ -36,7 +36,7 @@ where
             address:   Some(address),
             consensus: Some(consensus),
             crypto:    Some(crypto),
-            pin_tx:    PhantomData,
+            pin_txs:   PhantomData,
         }
     }
 
