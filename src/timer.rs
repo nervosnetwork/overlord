@@ -92,13 +92,26 @@ impl Timer {
     }
 
     fn set_timer(&mut self, event: SMREvent) -> ConsensusResult<()> {
+        let mut is_propose_timer = false;
         match event.clone() {
-            SMREvent::NewRoundInfo { round, .. } => self.round = round,
+            SMREvent::NewRoundInfo { round, .. } => {
+                self.round = round;
+                is_propose_timer = true;
+            }
             SMREvent::Commit(_) => return Ok(()),
             _ => (),
         };
 
-        let interval = self.config.get_timeout(event.clone())?;
+        let mut interval = self.config.get_timeout(event.clone())?;
+
+        if is_propose_timer {
+            let mut coef = self.round as u32;
+            if coef > 10 {
+                coef = 10;
+            }
+            interval *= 2u32.pow(coef);
+        }
+
         info!("Overlord: timer set {:?} timer", event);
         let smr_timer = TimeoutInfo::new(interval, event, self.sender.clone());
 
