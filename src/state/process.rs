@@ -542,6 +542,8 @@ where
             .await
             .map_err(|err| ConsensusError::Other(format!("commit error {:?}", err)))?;
 
+        error!("commit finish");
+
         let now = Instant::now();
         if Instant::now() < self.epoch_start + Duration::from_millis(self.epoch_interval) {
             Delay::new_at(self.epoch_start + Duration::from_millis(self.epoch_interval))
@@ -549,7 +551,7 @@ where
                 .map_err(|err| ConsensusError::Other(format!("Overlord delay error {:?}", err)))?;
         }
 
-        log::error!("{:?}", Instant::now() - now);
+        error!("{:?}", Instant::now() - now);
 
         self.goto_new_epoch(ctx, status).await?;
         Ok(())
