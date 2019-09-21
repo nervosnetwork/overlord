@@ -3,6 +3,7 @@ use std::marker::PhantomData;
 use creep::Context;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::StreamExt;
+use parking_lot::RwLock;
 
 use crate::error::ConsensusError;
 use crate::state::process::State;
@@ -12,11 +13,11 @@ use crate::{Codec, Consensus, ConsensusResult, Crypto};
 
 /// An overlord consensus instance.
 pub struct Overlord<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto> {
-    sender:    Option<UnboundedSender<(Context, OverlordMsg<T>)>>,
-    state_rx:  Option<UnboundedReceiver<(Context, OverlordMsg<T>)>>,
-    address:   Option<Address>,
-    consensus: Option<F>,
-    crypto:    Option<C>,
+    sender:    RwLock<Option<UnboundedSender<(Context, OverlordMsg<T>)>>>,
+    state_rx:  RwLock<Option<UnboundedReceiver<(Context, OverlordMsg<T>)>>>,
+    address:   RwLock<Option<Address>>,
+    consensus: RwLock<Option<F>>,
+    crypto:    RwLock<Option<C>>,
     pin_txs:   PhantomData<S>,
 }
 
@@ -31,40 +32,48 @@ where
     pub fn new(address: Address, consensus: F, crypto: C) -> Self {
         let (tx, rx) = unbounded();
         Overlord {
-            sender:    Some(tx),
-            state_rx:  Some(rx),
-            address:   Some(address),
-            consensus: Some(consensus),
-            crypto:    Some(crypto),
+            sender:    RwLock::new(Some(tx)),
+            state_rx:  RwLock::new(Some(rx)),
+            address:   RwLock::new(Some(address)),
+            consensus: RwLock::new(Some(consensus)),
+            crypto:    RwLock::new(Some(crypto)),
             pin_txs:   PhantomData,
         }
     }
 
     /// Take the overlord handler from the overlord instance.
-    pub fn take_handler(&mut self) -> OverlordHandler<T> {
-        assert!(self.sender.is_some());
-        OverlordHandler::new(self.sender.take().unwrap())
+    pub fn take_handler(&self) -> OverlordHandler<T> {
+        let mut sender = self.sender.write();
+        assert!(sender.is_some());
+        OverlordHandler::new(sender.take().unwrap())
     }
 
     /// Run overlord consensus process. The `interval` is the epoch interval as millisecond.
-    pub async fn run(mut self, interval: u64) -> ConsensusResult<()> {
+    pub async fn run(self, interval: u64) -> ConsensusResult<()> {
         let (mut smr_provider, evt_1, evt_2) = SMRProvider::new();
         let smr = smr_provider.take_smr();
         let mut timer = Timer::new(evt_2, smr.clone(), interval);
-        let state_rx = self.state_rx.take().unwrap();
+
+        let mut state_rx = self.state_rx.write();
+        let mut address = self.address.write();
+        let mut consensus = self.consensus.write();
+        let mut crypto = self.crypto.write();
+        let sender = self.sender.read();
+
+        let rx = state_rx.take().unwrap();
         let mut state = State::new(
             smr,
-            self.address.take().unwrap(),
+            address.take().unwrap(),
             interval,
-            self.consensus.take().unwrap(),
-            self.crypto.take().unwrap(),
+            consensus.take().unwrap(),
+            crypto.take().unwrap(),
         );
 
-        assert!(self.sender.is_none());
-        assert!(self.address.is_none());
-        assert!(self.consensus.is_none());
-        assert!(self.crypto.is_none());
-        assert!(self.state_rx.is_none());
+        assert!(sender.is_none());
+        assert!(address.is_none());
+        assert!(consensus.is_none());
+        assert!(crypto.is_none());
+        assert!(state_rx.is_none());
 
         // Run SMR.
         smr_provider.run();
@@ -77,7 +86,7 @@ where
         });
 
         // Run state.
-        state.run(state_rx, evt_1).await
+        state.run(rx, evt_1).await
     }
 }
 
