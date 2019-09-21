@@ -115,7 +115,10 @@ impl StateMachine {
         lock_round: Option<u64>,
         _source: TriggerSource,
     ) -> ConsensusResult<()> {
-        info!("Overlord: SMR triggered by a proposal hash {:?}", proposal_hash);
+        info!(
+            "Overlord: SMR triggered by a proposal hash {:?}",
+            proposal_hash
+        );
 
         if self.step > Step::Propose {
             return Ok(());
@@ -159,7 +162,10 @@ impl StateMachine {
         prevote_round: Option<u64>,
         source: TriggerSource,
     ) -> ConsensusResult<()> {
-        info!("Overlord: SMR triggered by prevote QC hash {:?}", prevote_hash);
+        info!(
+            "Overlord: SMR triggered by prevote QC hash {:?}",
+            prevote_hash
+        );
 
         if self.step > Step::Prevote {
             return Ok(());
@@ -201,7 +207,14 @@ impl StateMachine {
         precommit_round: Option<u64>,
         _source: TriggerSource,
     ) -> ConsensusResult<()> {
-        info!("Overlord: SMR triggered by precommit QC hash {:?}", precommit_hash);
+        info!(
+            "Overlord: SMR triggered by precommit QC hash {:?}",
+            precommit_hash
+        );
+
+        if self.step > Step::Precommit {
+            return Ok(());
+        }
 
         self.check()?;
         let precommit_round = precommit_round
