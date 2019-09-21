@@ -48,7 +48,9 @@ impl SMRProvider {
     pub fn run(mut self) {
         tokio::spawn(async move {
             loop {
+                println!("aaaaaa");
                 let _ = self.state_machine.next().await;
+                println!("bbbbbb");
             }
         });
     }
