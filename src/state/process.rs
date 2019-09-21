@@ -278,6 +278,8 @@ where
             (epoch.to_owned(), hash, Some(polc))
         };
 
+        self.hash_with_epoch.insert(hash.clone(), epoch.clone());
+
         let proposal = Proposal {
             epoch_id:   self.epoch_id,
             round:      self.round,
