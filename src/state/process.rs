@@ -171,7 +171,7 @@ where
                 .function
                 .get_authority_list(ctx, new_epoch_id - 1)
                 .await
-                .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
+                .map_err(|err| ConsensusError::Other(format!("get authority list error {:?}", err)))?;
             self.authority.set_last_list(&mut tmp);
         }
 
@@ -255,7 +255,7 @@ where
                 self.function
                     .get_epoch(ctx.clone(), self.epoch_id)
                     .await
-                    .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
+                    .map_err(|err| ConsensusError::Other(format!("get epoch error {:?}", err)))?;
             (new_epoch, new_hash, None)
         } else {
             let round = lock_round.clone().unwrap();
@@ -532,7 +532,7 @@ where
             .function
             .commit(ctx.clone(), epoch, commit)
             .await
-            .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
+            .map_err(|err| ConsensusError::Other(format!("commit error {:?}", err)))?;
 
         if Instant::now() < self.epoch_start + Duration::from_millis(self.epoch_interval) {
             Delay::new_at(self.epoch_start + Duration::from_millis(self.epoch_interval))
@@ -1100,7 +1100,7 @@ where
         self.function
             .transmit_to_relayer(ctx, self.leader_address.clone(), msg)
             .await
-            .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
+            .map_err(|err| ConsensusError::Other(format!("transmit error {:?}", err)))?;
         Ok(())
     }
 
@@ -1129,7 +1129,7 @@ where
                 OverlordMsg::SignedVote(self.sign_vote(vote)?),
             )
             .await
-            .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
+            .map_err(|err| ConsensusError::Other(format!("transmit error {:?}", err)))?;
         Ok(())
     }
 
@@ -1142,7 +1142,7 @@ where
         self.function
             .broadcast_to_other(ctx, msg)
             .await
-            .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
+            .map_err(|err| ConsensusError::Other(format!("broadcast error {:?}", err)))?;
         Ok(())
     }
 
@@ -1190,7 +1190,7 @@ async fn check_current_epoch<U: Consensus<T, S>, T: Codec, S: Codec>(
     let _transcation = function
         .check_epoch(ctx, epoch_id, hash.clone(), epoch)
         .await
-        .map_err(|err| ConsensusError::Other(format!("{:?}", err)))?;
+        .map_err(|err| ConsensusError::Other(format!("Check current epoch {:?}", err)))?;
     let mut set = tx_signal.lock();
     set.insert(hash);
     // TODO: write Wal
