@@ -171,7 +171,9 @@ where
                 .function
                 .get_authority_list(ctx, new_epoch_id - 1)
                 .await
-                .map_err(|err| ConsensusError::Other(format!("get authority list error {:?}", err)))?;
+                .map_err(|err| {
+                    ConsensusError::Other(format!("get authority list error {:?}", err))
+                })?;
             self.authority.set_last_list(&mut tmp);
         }
 
