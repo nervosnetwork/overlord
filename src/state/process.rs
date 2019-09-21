@@ -162,6 +162,7 @@ where
         // Update epoch ID and authority list.
         self.epoch_id = new_epoch_id;
         self.round = INIT_ROUND;
+        self.epoch_start = Instant::now();
         let mut auth_list = status.authority_list;
         self.authority.update(&mut auth_list, true);
 
@@ -545,13 +546,11 @@ where
         error!("commit finish");
 
         let now = Instant::now();
-        // if Instant::now() < self.epoch_start + Duration::from_millis(self.epoch_interval) {
-        //     Delay::new_at(self.epoch_start + Duration::from_millis(self.epoch_interval))
-        //         .await
-        //         .map_err(|err| ConsensusError::Other(format!("Overlord delay error {:?}", err)))?;
-        // }
-
-        Delay::new(Duration::from_secs(3)).await.unwrap();
+        if Instant::now() < self.epoch_start + Duration::from_millis(self.epoch_interval) {
+            Delay::new_at(self.epoch_start + Duration::from_millis(self.epoch_interval))
+                .await
+                .map_err(|err| ConsensusError::Other(format!("Overlord delay error {:?}", err)))?;
+        }
 
         error!("{:?}", Instant::now() - now);
 
