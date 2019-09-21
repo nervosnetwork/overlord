@@ -545,11 +545,13 @@ where
         error!("commit finish");
 
         let now = Instant::now();
-        if Instant::now() < self.epoch_start + Duration::from_millis(self.epoch_interval) {
-            Delay::new_at(self.epoch_start + Duration::from_millis(self.epoch_interval))
-                .await
-                .map_err(|err| ConsensusError::Other(format!("Overlord delay error {:?}", err)))?;
-        }
+        // if Instant::now() < self.epoch_start + Duration::from_millis(self.epoch_interval) {
+        //     Delay::new_at(self.epoch_start + Duration::from_millis(self.epoch_interval))
+        //         .await
+        //         .map_err(|err| ConsensusError::Other(format!("Overlord delay error {:?}", err)))?;
+        // }
+
+        Delay::new(Duration::from_secs(3)).await.unwrap();
 
         error!("{:?}", Instant::now() - now);
 
