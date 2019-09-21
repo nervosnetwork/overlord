@@ -839,13 +839,16 @@ where
                 .get_votes(self.epoch_id, self.round, vote_type.clone(), &epoch_hash)?;
 
         trace!("Overlord: state build aggregated signature");
-        let mut signatures = Vec::new();
-        let mut set = Vec::new();
-        for vote in votes.iter() {
-            signatures.push(vote.signature.clone());
-            set.push(vote.vote.voter.clone());
+
+        let len = votes.len();
+        let mut signatures = Vec::with_capacity(len);
+        let mut voters = Vec::with_capacity(len);
+        for vote in votes.into_iter() {
+            signatures.push(vote.signature);
+            voters.push(vote.vote.voter);
         }
-        let set = set.iter().cloned().collect::<HashSet<Address>>();
+
+        let set = voters.iter().cloned().collect::<HashSet<_>>();
         let mut bit_map = BitVec::from_elem(self.authority.current_len(), false);
         for (index, addr) in self.authority.get_addres_ref().iter().enumerate() {
             if set.contains(addr) {
@@ -854,7 +857,7 @@ where
         }
 
         let aggregated_signature = AggregatedSignature {
-            signature:      self.aggregate_signatures(signatures)?,
+            signature:      self.aggregate_signatures(signatures, voters)?,
             address_bitmap: Bytes::from(bit_map.to_bytes()),
         };
         let qc = AggregatedVote {
@@ -998,11 +1001,15 @@ where
         Ok(SignedVote { signature, vote })
     }
 
-    fn aggregate_signatures(&self, signatures: Vec<Signature>) -> ConsensusResult<Signature> {
+    fn aggregate_signatures(
+        &self,
+        signatures: Vec<Signature>,
+        voters: Vec<Address>,
+    ) -> ConsensusResult<Signature> {
         debug!("Overlord: state aggregate signatures");
         let signature = self
             .util
-            .aggregate_signatures(signatures)
+            .aggregate_signatures(signatures, voters)
             .map_err(|err| ConsensusError::CryptoErr(format!("{:?}", err)))?;
         Ok(signature)
     }

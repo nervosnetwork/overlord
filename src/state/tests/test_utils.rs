@@ -138,7 +138,8 @@ impl Crypto for BlsCrypto {
 
     fn aggregate_signatures(
         &self,
-        _msgsignatures: Vec<Signature>,
+        _signatures: Vec<Signature>,
+        _voters: Vec<Address>,
     ) -> Result<Signature, Box<dyn Error + Send>> {
         use super::gen_hash;
 
