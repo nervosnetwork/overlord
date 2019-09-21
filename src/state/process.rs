@@ -302,7 +302,7 @@ where
         let epoch_id = self.epoch_id;
         let tx_signal = Arc::clone(&self.full_transcation);
         let function = Arc::clone(&self.function);
-        tokio::spawn(async move {
+        runtime::spawn(async move {
             let _ =
                 check_current_epoch(ctx.clone(), function, tx_signal, epoch_id, hash, epoch).await;
         });
@@ -423,7 +423,7 @@ where
         let tx_signal = Arc::clone(&self.full_transcation);
         let function = Arc::clone(&self.function);
 
-        tokio::spawn(async move {
+        runtime::spawn(async move {
             let _ = check_current_epoch(ctx, function, tx_signal, epoch_id, hash, epoch).await;
         });
 

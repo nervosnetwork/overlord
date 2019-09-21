@@ -102,7 +102,7 @@ impl Timer {
         info!("Overlord: timer set {:?} timer", event);
         let smr_timer = TimeoutInfo::new(interval, event, self.sender.clone());
 
-        tokio::spawn(async move {
+        runtime::spawn(async move {
             smr_timer.await;
         });
 
@@ -147,7 +147,7 @@ impl Future for TimeoutInfo {
         match self.timeout.poll_unpin(cx) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(_) => {
-                tokio::spawn(async move {
+                runtime::spawn(async move {
                     let _ = tx.send(msg).await;
                 });
                 Poll::Ready(())

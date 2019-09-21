@@ -70,7 +70,7 @@ where
         smr_provider.run();
 
         // Run timer.
-        tokio::spawn(async move {
+        runtime::spawn(async move {
             loop {
                 timer.next().await;
             }

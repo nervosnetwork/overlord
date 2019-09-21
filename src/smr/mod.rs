@@ -46,7 +46,7 @@ impl SMRProvider {
 
     /// Run SMR module in runtime environment.
     pub fn run(mut self) {
-        tokio::spawn(async move {
+        runtime::spawn(async move {
             loop {
                 println!("aaaaaa");
                 let _ = self.state_machine.next().await;
