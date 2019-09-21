@@ -47,7 +47,7 @@ where
     }
 
     /// Run overlord consensus process. The `interval` is the epoch interval as millisecond.
-    pub async fn run(mut self, interval: u64) {
+    pub async fn run(mut self, interval: u64) -> ConsensusResult<()> {
         let (mut smr_provider, evt_1, evt_2) = SMRProvider::new();
         let smr = smr_provider.take_smr();
         let mut timer = Timer::new(evt_2, smr.clone(), interval);
@@ -77,9 +77,7 @@ where
         });
 
         // Run state.
-        tokio::spawn(async move {
-            let _ = state.run(state_rx, evt_1).await;
-        });
+        state.run(state_rx, evt_1).await
     }
 }
 
