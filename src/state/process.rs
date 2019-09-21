@@ -420,6 +420,8 @@ where
             round:        lock_round,
         })?;
 
+        log::warn!("{:?}", self.hash_with_epoch);
+
         info!("Overlord: state check the whole epoch");
         let epoch_id = self.epoch_id;
         let tx_signal = Arc::clone(&self.full_transcation);
@@ -493,6 +495,8 @@ where
             "Overlord: state receive commit event epoch ID {}, round {}",
             self.epoch_id, self.round
         );
+
+        log::warn!("{:?}", self.hash_with_epoch);
 
         trace!("Overlord: state get origin epoch");
         let epoch = self.epoch_id;
