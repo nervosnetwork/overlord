@@ -115,6 +115,7 @@ pub trait Crypto: Clone + Send {
     fn aggregate_signatures(
         &self,
         signatures: Vec<Signature>,
+        voters: Vec<Address>,
     ) -> Result<Signature, Box<dyn Error + Send>>;
 
     /// Verify a signature and return the recovered address.
