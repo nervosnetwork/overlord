@@ -307,8 +307,15 @@ where
             source:       TriggerSource::State,
             hash:         hash.clone(),
             round:        lock_round,
-            epoch_id:     self.round,
+            epoch_id:     self.epoch_id,
         })?;
+
+        info!(
+            "Overlord: state tigger SMR epoch ID {}, round {}, type {:?}",
+            self.epoch_id,
+            self.round,
+            TriggerType::Proposal
+        );
 
         let epoch_id = self.epoch_id;
         let tx_signal = Arc::clone(&self.full_transcation);
@@ -429,6 +436,13 @@ where
             round:        lock_round,
             epoch_id:     self.epoch_id,
         })?;
+
+        info!(
+            "Overlord: state tigger SMR epoch ID {}, round {}, type {:?}",
+            self.epoch_id,
+            self.round,
+            TriggerType::Proposal
+        );
 
         info!("Overlord: state check the whole epoch");
         let epoch_id = self.epoch_id;
@@ -657,12 +671,18 @@ where
             vote_type, self.epoch_id, self.round
         );
         self.state_machine.trigger(SMRTrigger {
-            trigger_type: vote_type.into(),
+            trigger_type: vote_type.clone().into(),
             source:       TriggerSource::State,
             hash:         epoch_hash,
             round:        Some(round),
             epoch_id:     self.epoch_id,
         })?;
+
+        info!(
+            "Overlord: state tigger SMR epoch ID {}, round {}, type {:?}",
+            self.epoch_id, self.round, vote_type,
+        );
+
         Ok(())
     }
 
@@ -765,12 +785,18 @@ where
         );
 
         self.state_machine.trigger(SMRTrigger {
-            trigger_type: qc_type.into(),
+            trigger_type: qc_type.clone().into(),
             source:       TriggerSource::State,
             hash:         epoch_hash,
             round:        Some(round),
             epoch_id:     self.epoch_id,
         })?;
+
+        info!(
+            "Overlord: state tigger SMR epoch ID {}, round {}, type {:?}",
+            self.epoch_id, self.round, qc_type,
+        );
+
         Ok(())
     }
 
@@ -787,12 +813,18 @@ where
                 .get_qc(self.epoch_id, self.round, vote_type.clone())
             {
                 self.state_machine.trigger(SMRTrigger {
-                    trigger_type: qc.vote_type.into(),
+                    trigger_type: qc.vote_type.clone().into(),
                     source:       TriggerSource::State,
                     hash:         qc.epoch_hash,
                     round:        Some(self.round),
                     epoch_id:     self.epoch_id,
                 })?;
+
+                info!(
+                    "Overlord: state tigger SMR epoch ID {}, round {}, type {:?}",
+                    self.epoch_id, self.round, qc.vote_type,
+                );
+
                 return Ok(());
             }
         } else if let Some(mut epoch_hash) = self.counting_vote(vote_type.clone())? {
@@ -817,12 +849,17 @@ where
             );
 
             self.state_machine.trigger(SMRTrigger {
-                trigger_type: vote_type.into(),
+                trigger_type: vote_type.clone().into(),
                 source:       TriggerSource::State,
                 hash:         epoch_hash,
                 round:        Some(self.round),
                 epoch_id:     self.epoch_id,
             })?;
+
+            info!(
+                "Overlord: state tigger SMR epoch ID {}, round {}, type {:?}",
+                self.epoch_id, self.round, vote_type,
+            );
         }
         Ok(())
     }

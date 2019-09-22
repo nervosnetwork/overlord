@@ -163,7 +163,12 @@ impl From<u8> for TriggerType {
 /// For each sources, while filling the `SMRTrigger`, the `epoch_id` field take the current epoch ID
 /// directly.
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
-#[display(fmt = "{:?} trigger from {:?}", trigger_type, source)]
+#[display(
+    fmt = "{:?} trigger from {:?}, epoch ID {}",
+    trigger_type,
+    source,
+    epoch_id
+)]
 pub struct SMRTrigger {
     /// SMR trigger type.
     pub trigger_type: TriggerType,
