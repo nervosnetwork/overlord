@@ -544,7 +544,6 @@ where
             .await
             .map_err(|err| ConsensusError::Other(format!("commit error {:?}", err)))?;
 
-        let now = Instant::now();
         if Instant::now() < self.epoch_start + Duration::from_millis(self.epoch_interval) {
             Delay::new_at(self.epoch_start + Duration::from_millis(self.epoch_interval))
                 .await
