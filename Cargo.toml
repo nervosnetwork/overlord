@@ -27,6 +27,7 @@ rand_core = "0.5"
 rand_pcg = "0.2"
 rlp = "0.4"
 runtime = "0.3.0-alpha.7"
+runtime-tokio = "0.3.0-alpha.6"
 tokio = "0.2.0-alpha.4"
 
 [dev-dependencies]

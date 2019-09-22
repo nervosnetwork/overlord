@@ -11,13 +11,15 @@ use crate::types::{Address, OverlordMsg};
 use crate::{smr::SMRProvider, timer::Timer};
 use crate::{Codec, Consensus, ConsensusResult, Crypto};
 
+type Pile<T> = RwLock<Option<T>>;
+
 /// An overlord consensus instance.
 pub struct Overlord<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto> {
-    sender:    RwLock<Option<UnboundedSender<(Context, OverlordMsg<T>)>>>,
-    state_rx:  RwLock<Option<UnboundedReceiver<(Context, OverlordMsg<T>)>>>,
-    address:   RwLock<Option<Address>>,
-    consensus: RwLock<Option<F>>,
-    crypto:    RwLock<Option<C>>,
+    sender:    Pile<UnboundedSender<(Context, OverlordMsg<T>)>>,
+    state_rx:  Pile<UnboundedReceiver<(Context, OverlordMsg<T>)>>,
+    address:   Pile<Address>,
+    consensus: Pile<F>,
+    crypto:    Pile<C>,
     pin_txs:   PhantomData<S>,
 }
 
@@ -86,7 +88,9 @@ where
         });
 
         // Run state.
-        state.run(rx, evt_1).await
+        state.run(rx, evt_1).await?;
+
+        Ok(())
     }
 }
 

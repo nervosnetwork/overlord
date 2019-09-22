@@ -59,6 +59,7 @@ pub enum SMREvent {
     /// for timer: set a propose step timer. If `round == 0`, set an extra total epoch timer.
     #[display(fmt = "New round {} event", round)]
     NewRoundInfo {
+        epoch_id:      u64,
         round:         u64,
         lock_round:    Option<u64>,
         lock_proposal: Option<Hash>,
@@ -67,12 +68,20 @@ pub enum SMREvent {
     /// for state: transmit a prevote vote,
     /// for timer: set a prevote step timer.
     #[display(fmt = "Prevote event")]
-    PrevoteVote(Hash),
+    PrevoteVote {
+        epoch_id:   u64,
+        round:      u64,
+        epoch_hash: Hash,
+    },
     /// Precommit event,
     /// for state: transmit a precommit vote,
     /// for timer: set a precommit step timer.
     #[display(fmt = "Precommit event")]
-    PrecommitVote(Hash),
+    PrecommitVote {
+        epoch_id:   u64,
+        round:      u64,
+        epoch_hash: Hash,
+    },
     /// Commit event,
     /// for state: do commit,
     /// for timer: do nothing.
@@ -160,6 +169,9 @@ pub struct SMRTrigger {
     pub hash: Hash,
     /// SMR trigger round, the meaning shown above.
     pub round: Option<u64>,
+    /// **NOTICE**: This field is only for timer to signed timer's epoch ID. Therefore, the SMR can
+    /// filter out the outdated timers.
+    pub epoch_id: u64,
 }
 
 /// An inner lock struct.

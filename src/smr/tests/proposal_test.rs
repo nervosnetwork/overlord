@@ -4,8 +4,8 @@ use crate::{error::ConsensusError, types::Hash};
 
 /// Test state machine handle proposal trigger.
 /// There are a total of *4 × 4 + 3 = 19* test cases.
-#[test]
-fn test_proposal_trigger() {
+#[runtime::test]
+async fn test_proposal_trigger() {
     let mut index = 1;
     let mut test_cases: Vec<StateMachineTestCase> = Vec::new();
 
@@ -16,8 +16,12 @@ fn test_proposal_trigger() {
     let hash = gen_hash();
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(0, Step::Propose, Hash::new(), None),
-        SMRTrigger::new(hash.clone(), TriggerType::Proposal, None),
-        SMREvent::PrevoteVote(hash),
+        SMRTrigger::new(hash.clone(), TriggerType::Proposal, None, 0),
+        SMREvent::PrevoteVote {
+            epoch_id:   0u64,
+            round:      0u64,
+            epoch_hash: hash,
+        },
         None,
         None,
     ));
@@ -29,8 +33,12 @@ fn test_proposal_trigger() {
     let hash = Hash::new();
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(0, Step::Propose, Hash::new(), None),
-        SMRTrigger::new(hash.clone(), TriggerType::Proposal, None),
-        SMREvent::PrevoteVote(hash),
+        SMRTrigger::new(hash.clone(), TriggerType::Proposal, None, 0),
+        SMREvent::PrevoteVote {
+            epoch_id:   0u64,
+            round:      0u64,
+            epoch_hash: hash,
+        },
         None,
         None,
     ));
@@ -42,8 +50,12 @@ fn test_proposal_trigger() {
     let hash = Hash::new();
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Propose, Hash::new(), None),
-        SMRTrigger::new(hash.clone(), TriggerType::Proposal, Some(0)),
-        SMREvent::PrevoteVote(hash),
+        SMRTrigger::new(hash.clone(), TriggerType::Proposal, Some(0), 0),
+        SMREvent::PrevoteVote {
+            epoch_id:   0u64,
+            round:      1u64,
+            epoch_hash: hash,
+        },
         Some(ConsensusError::ProposalErr("Invalid lock".to_string())),
         None,
     ));
@@ -55,8 +67,12 @@ fn test_proposal_trigger() {
     let hash = gen_hash();
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Propose, Hash::new(), None),
-        SMRTrigger::new(hash.clone(), TriggerType::Proposal, Some(0)),
-        SMREvent::PrevoteVote(hash),
+        SMRTrigger::new(hash.clone(), TriggerType::Proposal, Some(0), 0),
+        SMREvent::PrevoteVote {
+            epoch_id:   0u64,
+            round:      1u64,
+            epoch_hash: hash,
+        },
         None,
         None,
     ));
@@ -68,8 +84,12 @@ fn test_proposal_trigger() {
     let hash = gen_hash();
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Propose, hash.clone(), None),
-        SMRTrigger::new(hash.clone(), TriggerType::Proposal, Some(0)),
-        SMREvent::PrevoteVote(hash),
+        SMRTrigger::new(hash.clone(), TriggerType::Proposal, Some(0), 0),
+        SMREvent::PrevoteVote {
+            epoch_id:   0u64,
+            round:      1u64,
+            epoch_hash: hash,
+        },
         Some(ConsensusError::SelfCheckErr("".to_string())),
         None,
     ));
@@ -81,8 +101,12 @@ fn test_proposal_trigger() {
     let hash = gen_hash();
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Propose, hash.clone(), None),
-        SMRTrigger::new(hash.clone(), TriggerType::Proposal, None),
-        SMREvent::PrevoteVote(hash),
+        SMRTrigger::new(hash.clone(), TriggerType::Proposal, None, 0),
+        SMREvent::PrevoteVote {
+            epoch_id:   0u64,
+            round:      1u64,
+            epoch_hash: hash,
+        },
         Some(ConsensusError::SelfCheckErr("".to_string())),
         None,
     ));
@@ -94,8 +118,12 @@ fn test_proposal_trigger() {
     let hash = gen_hash();
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Propose, hash.clone(), None),
-        SMRTrigger::new(Hash::new(), TriggerType::Proposal, Some(0)),
-        SMREvent::PrevoteVote(hash),
+        SMRTrigger::new(Hash::new(), TriggerType::Proposal, Some(0), 0),
+        SMREvent::PrevoteVote {
+            epoch_id:   0u64,
+            round:      1u64,
+            epoch_hash: hash,
+        },
         Some(ConsensusError::SelfCheckErr("".to_string())),
         None,
     ));
@@ -107,8 +135,12 @@ fn test_proposal_trigger() {
     let hash = gen_hash();
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Propose, hash.clone(), None),
-        SMRTrigger::new(Hash::new(), TriggerType::Proposal, None),
-        SMREvent::PrevoteVote(hash),
+        SMRTrigger::new(Hash::new(), TriggerType::Proposal, None, 0),
+        SMREvent::PrevoteVote {
+            epoch_id:   0u64,
+            round:      1u64,
+            epoch_hash: hash,
+        },
         Some(ConsensusError::SelfCheckErr("".to_string())),
         None,
     ));
@@ -122,8 +154,12 @@ fn test_proposal_trigger() {
     let lock = Lock::new(0, lock_hash);
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Propose, hash.clone(), Some(lock)),
-        SMRTrigger::new(hash.clone(), TriggerType::Proposal, None),
-        SMREvent::PrevoteVote(hash),
+        SMRTrigger::new(hash.clone(), TriggerType::Proposal, None, 0),
+        SMREvent::PrevoteVote {
+            epoch_id:   0u64,
+            round:      1u64,
+            epoch_hash: hash,
+        },
         Some(ConsensusError::SelfCheckErr("".to_string())),
         None,
     ));
@@ -137,8 +173,12 @@ fn test_proposal_trigger() {
     let lock = Lock::new(0, lock_hash);
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Propose, hash.clone(), Some(lock)),
-        SMRTrigger::new(hash.clone(), TriggerType::Proposal, Some(0)),
-        SMREvent::PrevoteVote(hash),
+        SMRTrigger::new(hash.clone(), TriggerType::Proposal, Some(0), 0),
+        SMREvent::PrevoteVote {
+            epoch_id:   0u64,
+            round:      1u64,
+            epoch_hash: hash,
+        },
         Some(ConsensusError::SelfCheckErr("".to_string())),
         None,
     ));
@@ -152,8 +192,12 @@ fn test_proposal_trigger() {
     let lock = Lock::new(0, lock_hash);
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Propose, hash.clone(), Some(lock)),
-        SMRTrigger::new(hash.clone(), TriggerType::Proposal, None),
-        SMREvent::PrevoteVote(hash),
+        SMRTrigger::new(hash.clone(), TriggerType::Proposal, None, 0),
+        SMREvent::PrevoteVote {
+            epoch_id:   0u64,
+            round:      1u64,
+            epoch_hash: hash,
+        },
         Some(ConsensusError::SelfCheckErr("".to_string())),
         None,
     ));
@@ -167,8 +211,12 @@ fn test_proposal_trigger() {
     let lock = Lock::new(0, lock_hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Propose, hash, Some(lock)),
-        SMRTrigger::new(lock_hash.clone(), TriggerType::Proposal, None),
-        SMREvent::PrevoteVote(lock_hash),
+        SMRTrigger::new(lock_hash.clone(), TriggerType::Proposal, None, 0),
+        SMREvent::PrevoteVote {
+            epoch_id:   0u64,
+            round:      1u64,
+            epoch_hash: lock_hash,
+        },
         Some(ConsensusError::SelfCheckErr("".to_string())),
         None,
     ));
@@ -182,8 +230,12 @@ fn test_proposal_trigger() {
     let lock = Lock::new(0, lock_hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Propose, lock_hash.clone(), Some(lock)),
-        SMRTrigger::new(hash, TriggerType::Proposal, None),
-        SMREvent::PrevoteVote(lock_hash.clone()),
+        SMRTrigger::new(hash, TriggerType::Proposal, None, 0),
+        SMREvent::PrevoteVote {
+            epoch_id:   0u64,
+            round:      1u64,
+            epoch_hash: lock_hash.clone(),
+        },
         None,
         Some((0, lock_hash)),
     ));
@@ -197,8 +249,12 @@ fn test_proposal_trigger() {
     let lock = Lock::new(0, lock_hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Propose, lock_hash.clone(), Some(lock)),
-        SMRTrigger::new(hash, TriggerType::Proposal, None),
-        SMREvent::PrevoteVote(lock_hash.clone()),
+        SMRTrigger::new(hash, TriggerType::Proposal, None, 0),
+        SMREvent::PrevoteVote {
+            epoch_id:   0u64,
+            round:      1u64,
+            epoch_hash: lock_hash.clone(),
+        },
         None,
         Some((0, lock_hash)),
     ));
@@ -212,8 +268,12 @@ fn test_proposal_trigger() {
     let lock = Lock::new(0, lock_hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Propose, lock_hash.clone(), Some(lock)),
-        SMRTrigger::new(hash, TriggerType::Proposal, Some(0)),
-        SMREvent::PrevoteVote(lock_hash.clone()),
+        SMRTrigger::new(hash, TriggerType::Proposal, Some(0), 0),
+        SMREvent::PrevoteVote {
+            epoch_id:   0u64,
+            round:      1u64,
+            epoch_hash: lock_hash.clone(),
+        },
         Some(ConsensusError::ProposalErr("Invalid lock".to_string())),
         Some((0, lock_hash)),
     ));
@@ -228,8 +288,12 @@ fn test_proposal_trigger() {
     let lock = Lock::new(1, lock_hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(2, Step::Propose, lock_hash.clone(), Some(lock)),
-        SMRTrigger::new(hash, TriggerType::Proposal, Some(0)),
-        SMREvent::PrevoteVote(lock_hash.clone()),
+        SMRTrigger::new(hash, TriggerType::Proposal, Some(0), 0),
+        SMREvent::PrevoteVote {
+            epoch_id:   0u64,
+            round:      2u64,
+            epoch_hash: lock_hash.clone(),
+        },
         None,
         Some((1, lock_hash)),
     ));
@@ -244,8 +308,12 @@ fn test_proposal_trigger() {
     let lock = Lock::new(1, lock_hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(3, Step::Propose, lock_hash.clone(), Some(lock)),
-        SMRTrigger::new(hash.clone(), TriggerType::Proposal, Some(2)),
-        SMREvent::PrevoteVote(hash),
+        SMRTrigger::new(hash.clone(), TriggerType::Proposal, Some(2), 0),
+        SMREvent::PrevoteVote {
+            epoch_id:   0u64,
+            round:      3u64,
+            epoch_hash: hash,
+        },
         None,
         None,
     ));
@@ -259,8 +327,12 @@ fn test_proposal_trigger() {
     let lock = Lock::new(1, lock_hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(2, Step::Propose, lock_hash.clone(), Some(lock)),
-        SMRTrigger::new(lock_hash.clone(), TriggerType::Proposal, Some(1)),
-        SMREvent::PrevoteVote(lock_hash.clone()),
+        SMRTrigger::new(lock_hash.clone(), TriggerType::Proposal, Some(1), 0),
+        SMREvent::PrevoteVote {
+            epoch_id:   0u64,
+            round:      2u64,
+            epoch_hash: lock_hash.clone(),
+        },
         None,
         Some((1, lock_hash)),
     ));
@@ -277,8 +349,12 @@ fn test_proposal_trigger() {
     let lock = Lock::new(1, lock_hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(2, Step::Propose, lock_hash.clone(), Some(lock)),
-        SMRTrigger::new(hash, TriggerType::Proposal, Some(1)),
-        SMREvent::PrevoteVote(lock_hash.clone()),
+        SMRTrigger::new(hash, TriggerType::Proposal, Some(1), 0),
+        SMREvent::PrevoteVote {
+            epoch_id:   0u64,
+            round:      2u64,
+            epoch_hash: lock_hash.clone(),
+        },
         Some(ConsensusError::CorrectnessErr("Fork".to_string())),
         Some((1, lock_hash)),
     ));
@@ -292,7 +368,8 @@ fn test_proposal_trigger() {
             case.output,
             case.err,
             case.should_lock,
-        );
+        )
+        .await;
     }
     println!("Proposal test success");
 }

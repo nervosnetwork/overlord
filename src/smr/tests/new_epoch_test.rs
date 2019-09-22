@@ -2,8 +2,8 @@ use crate::smr::smr_types::{Lock, SMREvent, SMRTrigger, Step, TriggerType};
 use crate::smr::tests::{gen_hash, trigger_test, InnerState, StateMachineTestCase};
 use crate::{error::ConsensusError, types::Hash};
 
-#[test]
-fn test_new_epoch() {
+#[runtime::test]
+async fn test_new_epoch() {
     let mut index = 1;
     let mut test_cases: Vec<StateMachineTestCase> = Vec::new();
 
@@ -12,8 +12,9 @@ fn test_new_epoch() {
     // The output should be new round info.
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(0, Step::Propose, Hash::new(), None),
-        SMRTrigger::new(Hash::new(), TriggerType::NewEpoch(1), None),
+        SMRTrigger::new(Hash::new(), TriggerType::NewEpoch(1), None, 0),
         SMREvent::NewRoundInfo {
+            epoch_id:      1u64,
             round:         0u64,
             lock_round:    None,
             lock_proposal: None,
@@ -32,8 +33,9 @@ fn test_new_epoch() {
     };
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Propose, hash, Some(lock)),
-        SMRTrigger::new(Hash::new(), TriggerType::NewEpoch(1), None),
+        SMRTrigger::new(Hash::new(), TriggerType::NewEpoch(1), None, 0),
         SMREvent::NewRoundInfo {
+            epoch_id:      1u64,
             round:         0u64,
             lock_round:    None,
             lock_proposal: None,
@@ -49,8 +51,9 @@ fn test_new_epoch() {
     let lock = Lock::new(0u64, hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(0, Step::Propose, Hash::new(), Some(lock)),
-        SMRTrigger::new(Hash::new(), TriggerType::NewEpoch(1), None),
+        SMRTrigger::new(Hash::new(), TriggerType::NewEpoch(1), None, 0),
         SMREvent::NewRoundInfo {
+            epoch_id:      1u64,
             round:         0u64,
             lock_round:    None,
             lock_proposal: None,
@@ -65,8 +68,9 @@ fn test_new_epoch() {
     let hash = gen_hash();
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(0, Step::Propose, hash, None),
-        SMRTrigger::new(Hash::new(), TriggerType::NewEpoch(1), None),
+        SMRTrigger::new(Hash::new(), TriggerType::NewEpoch(1), None, 0),
         SMREvent::NewRoundInfo {
+            epoch_id:      1u64,
             round:         0u64,
             lock_round:    None,
             lock_proposal: None,
@@ -81,8 +85,9 @@ fn test_new_epoch() {
     let hash = Hash::new();
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(0, Step::Prevote, hash, None),
-        SMRTrigger::new(Hash::new(), TriggerType::NewEpoch(1), None),
+        SMRTrigger::new(Hash::new(), TriggerType::NewEpoch(1), None, 0),
         SMREvent::NewRoundInfo {
+            epoch_id:      1u64,
             round:         0u64,
             lock_round:    None,
             lock_proposal: None,
@@ -97,8 +102,9 @@ fn test_new_epoch() {
     let hash = gen_hash();
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(0, Step::Prevote, hash, None),
-        SMRTrigger::new(Hash::new(), TriggerType::NewEpoch(1), None),
+        SMRTrigger::new(Hash::new(), TriggerType::NewEpoch(1), None, 0),
         SMREvent::NewRoundInfo {
+            epoch_id:      1u64,
             round:         0u64,
             lock_round:    None,
             lock_proposal: None,
@@ -114,8 +120,9 @@ fn test_new_epoch() {
     let lock = Lock::new(0u64, hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Prevote, hash, Some(lock)),
-        SMRTrigger::new(Hash::new(), TriggerType::NewEpoch(1), None),
+        SMRTrigger::new(Hash::new(), TriggerType::NewEpoch(1), None, 0),
         SMREvent::NewRoundInfo {
+            epoch_id:      1u64,
             round:         0u64,
             lock_round:    None,
             lock_proposal: None,
@@ -133,7 +140,8 @@ fn test_new_epoch() {
             case.output,
             case.err,
             case.should_lock,
-        );
+        )
+        .await;
     }
     println!("New epoch test success");
 }

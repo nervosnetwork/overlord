@@ -48,9 +48,7 @@ impl SMRProvider {
     pub fn run(mut self) {
         runtime::spawn(async move {
             loop {
-                println!("aaaaaa");
                 let _ = self.state_machine.next().await;
-                println!("bbbbbb");
             }
         });
     }
@@ -78,13 +76,15 @@ impl SMR {
 
     /// Trigger SMR to goto a new epoch.
     pub fn new_epoch(&mut self, epoch_id: u64) -> ConsensusResult<()> {
+        // TODO refactor
         let trigger = TriggerType::NewEpoch(epoch_id);
         self.tx
             .unbounded_send(SMRTrigger {
                 trigger_type: trigger.clone(),
-                source:       TriggerSource::State,
-                hash:         Hash::new(),
-                round:        None,
+                source: TriggerSource::State,
+                hash: Hash::new(),
+                round: None,
+                epoch_id,
             })
             .map_err(|_| ConsensusError::TriggerSMRErr(trigger.to_string()))
     }

@@ -135,12 +135,15 @@ where
                 round,
                 lock_round,
                 lock_proposal,
+                ..
             } => {
                 self.handle_new_round(round, lock_round, lock_proposal)
                     .await
             }
-            SMREvent::PrevoteVote(hash) => self.handle_prevote_vote(hash).await,
-            SMREvent::PrecommitVote(hash) => self.handle_precommit_vote(hash).await,
+            SMREvent::PrevoteVote { epoch_hash, .. } => self.handle_prevote_vote(epoch_hash).await,
+            SMREvent::PrecommitVote { epoch_hash, .. } => {
+                self.handle_precommit_vote(epoch_hash).await
+            }
             SMREvent::Commit(hash) => self.handle_commit(hash).await,
             _ => unreachable!(),
         }
@@ -302,6 +305,7 @@ where
             source:       TriggerSource::State,
             hash:         hash.clone(),
             round:        lock_round,
+            epoch_id:     self.round,
         })?;
 
         let epoch_id = self.epoch_id;
@@ -421,9 +425,8 @@ where
             source:       TriggerSource::State,
             hash:         hash.clone(),
             round:        lock_round,
+            epoch_id:     self.epoch_id,
         })?;
-
-        log::warn!("{:?}", self.hash_with_epoch);
 
         info!("Overlord: state check the whole epoch");
         let epoch_id = self.epoch_id;
@@ -499,8 +502,6 @@ where
             self.epoch_id, self.round
         );
 
-        log::warn!("{:?}", self.hash_with_epoch);
-
         trace!("Overlord: state get origin epoch");
         let epoch = self.epoch_id;
         let content = self
@@ -543,16 +544,12 @@ where
             .await
             .map_err(|err| ConsensusError::Other(format!("commit error {:?}", err)))?;
 
-        error!("commit finish");
-
         let now = Instant::now();
         if Instant::now() < self.epoch_start + Duration::from_millis(self.epoch_interval) {
             Delay::new_at(self.epoch_start + Duration::from_millis(self.epoch_interval))
                 .await
                 .map_err(|err| ConsensusError::Other(format!("Overlord delay error {:?}", err)))?;
         }
-
-        error!("{:?}", Instant::now() - now);
 
         self.goto_new_epoch(ctx, status).await?;
         Ok(())
@@ -663,6 +660,7 @@ where
             source:       TriggerSource::State,
             hash:         epoch_hash,
             round:        Some(round),
+            epoch_id:     self.epoch_id,
         })?;
         Ok(())
     }
@@ -770,6 +768,7 @@ where
             source:       TriggerSource::State,
             hash:         epoch_hash,
             round:        Some(round),
+            epoch_id:     self.epoch_id,
         })?;
         Ok(())
     }
@@ -791,6 +790,7 @@ where
                     source:       TriggerSource::State,
                     hash:         qc.epoch_hash,
                     round:        Some(self.round),
+                    epoch_id:     self.epoch_id,
                 })?;
                 return Ok(());
             }
@@ -820,6 +820,7 @@ where
                 source:       TriggerSource::State,
                 hash:         epoch_hash,
                 round:        Some(self.round),
+                epoch_id:     self.epoch_id,
             })?;
         }
         Ok(())

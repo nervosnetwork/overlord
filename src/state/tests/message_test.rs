@@ -4,7 +4,6 @@ use creep::Context;
 use crossbeam_channel::unbounded;
 use futures::channel::mpsc::unbounded as fut_unbounded;
 use futures::StreamExt;
-use tokio::runtime::Runtime;
 
 use crate::smr::smr_types::{SMRTrigger, TriggerSource, TriggerType};
 use crate::state::collection::ProposalCollector;
@@ -49,7 +48,7 @@ impl<T: Codec> MsgTestCase<T> {
     }
 }
 
-fn handle_msg_test(
+async fn handle_msg_test(
     mut condition: Condition<Pill>,
     input: OverlordMsg<Pill>,
     output: Option<SMRTrigger>,
@@ -68,31 +67,28 @@ fn handle_msg_test(
     update_state(&mut condition, &mut state);
     assert!(condition.proposal_collector.is_none());
     assert!(condition.vote_collector.is_none());
-    let rt = Runtime::new().unwrap();
 
-    rt.block_on(async {
-        let res = state.handle_msg(Some((Context::new(), input))).await;
-        if let Some(err) = err_value {
-            assert_eq!(res.err().unwrap(), err);
-            return;
-        }
+    let res = state.handle_msg(Some((Context::new(), input))).await;
+    if let Some(err) = err_value {
+        assert_eq!(res.err().unwrap(), err);
+        return;
+    }
 
-        if let Some(tmp) = output {
-            loop {
-                match smr_rx.next().await {
-                    Some(res) => {
-                        assert_eq!(res, tmp);
-                        return;
-                    }
-                    None => continue,
+    if let Some(tmp) = output {
+        loop {
+            match smr_rx.next().await {
+                Some(res) => {
+                    assert_eq!(res, tmp);
+                    return;
                 }
+                None => continue,
             }
         }
-    })
+    }
 }
 
-#[test]
-fn test_handle_msg() {
+#[runtime::test]
+async fn test_handle_msg() {
     let mut index = 1;
     let mut test_cases = Vec::new();
 
@@ -106,6 +102,7 @@ fn test_handle_msg() {
         source:       TriggerSource::State,
         hash:         epoch_hash(),
         round:        None,
+        epoch_id:     1u64,
     };
     test_cases.push(MsgTestCase::new(condition, input, Some(output), None));
 
@@ -134,6 +131,7 @@ fn test_handle_msg() {
         source:       TriggerSource::State,
         hash:         epoch_hash(),
         round:        Some(0u64),
+        epoch_id:     1u64,
     };
     test_cases.push(MsgTestCase::new(condition, input, Some(output), None));
 
@@ -154,13 +152,14 @@ fn test_handle_msg() {
         source:       TriggerSource::State,
         hash:         epoch_hash(),
         round:        Some(0u64),
+        epoch_id:     1u64,
     };
     test_cases.push(MsgTestCase::new(condition, input, Some(output), None));
 
     for case in test_cases.into_iter() {
         println!("Handle event test {}/3", index);
         let (condition, input, output, err) = case.flat();
-        handle_msg_test(condition, input, output, err);
+        handle_msg_test(condition, input, output, err).await;
         index += 1;
     }
     println!("State handle message test success");

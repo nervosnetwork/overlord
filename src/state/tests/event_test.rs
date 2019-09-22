@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use crossbeam_channel::unbounded;
 use futures::channel::mpsc::unbounded as fut_unbounded;
 use futures::StreamExt;
-use tokio::runtime::Runtime;
 
 use crate::smr::smr_types::{SMREvent, SMRTrigger};
 use crate::state::collection::VoteCollector;
@@ -41,7 +40,7 @@ impl<T: Codec> EventTestCase<T> {
     }
 }
 
-fn handle_event_test(
+async fn handle_event_test(
     mut condition: Condition<Pill>,
     input: SMREvent,
     output_msg: OverlordMsg<Pill>,
@@ -59,34 +58,35 @@ fn handle_event_test(
     update_state(&mut condition, &mut state);
     assert!(condition.proposal_collector.is_none());
     assert!(condition.vote_collector.is_none());
-    let rt = Runtime::new().unwrap();
 
-    rt.block_on(async {
-        state.handle_event(Some(input)).await.unwrap();
-        assert_eq!(msg_rx.recv().unwrap(), output_msg);
+    state.handle_event(Some(input)).await.unwrap();
+    assert_eq!(msg_rx.recv().unwrap(), output_msg);
 
-        if let Some(tmp) = output_smr {
-            loop {
-                match smr_rx.next().await {
-                    Some(res) => {
-                        assert_eq!(res, tmp);
-                        return;
-                    }
-                    None => continue,
+    if let Some(tmp) = output_smr {
+        loop {
+            match smr_rx.next().await {
+                Some(res) => {
+                    assert_eq!(res, tmp);
+                    return;
                 }
+                None => continue,
             }
         }
-    })
+    }
 }
 
-#[test]
-fn test_handle_event() {
+#[runtime::test]
+async fn test_handle_event() {
     let mut index = 1;
     let mut test_cases = Vec::new();
 
     // Test case 01:
     // Test state handle prevote vote event.
-    let input = SMREvent::PrevoteVote(epoch_hash());
+    let input = SMREvent::PrevoteVote {
+        epoch_id:   1u64,
+        round:      0u64,
+        epoch_hash: epoch_hash(),
+    };
     let condition = Condition::<Pill>::new(1, 0, None, None, None, true);
     let output_msg = gen_signed_vote(1, 0, VoteType::Prevote, epoch_hash());
     test_cases.push(EventTestCase::new(
@@ -98,7 +98,11 @@ fn test_handle_event() {
 
     // Test case 02:
     // Test state handle precommit vote event.
-    let input = SMREvent::PrecommitVote(epoch_hash());
+    let input = SMREvent::PrecommitVote {
+        epoch_id:   1u64,
+        round:      0u64,
+        epoch_hash: epoch_hash(),
+    };
     let condition = Condition::<Pill>::new(1, 0, None, None, None, true);
     let output_msg = gen_signed_vote(1, 0, VoteType::Precommit, epoch_hash());
     test_cases.push(EventTestCase::new(
@@ -135,7 +139,7 @@ fn test_handle_event() {
     for case in test_cases.into_iter() {
         println!("Handle event test {}/3", index);
         let (condition, input, output_msg, output_smr) = case.flat();
-        handle_event_test(condition, input, output_msg, output_smr);
+        handle_event_test(condition, input, output_msg, output_smr).await;
         index += 1;
     }
     println!("State handle event test success");
