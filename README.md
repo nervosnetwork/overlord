@@ -34,7 +34,7 @@ fn main() {
     let overlord = Overlord::new(address, OverlordEngine, OverlordCrypto);
     let handler = overlord.get_handler();
 
-    tokio::run(overlord.run().await);
+    tokio::run(overlord.run());
     handler.send_msg().unwrap();
 }
 ```
