@@ -52,8 +52,8 @@ impl Default for Step {
 }
 
 /// SMR event that state and timer monitor this.
-/// **NOTICE**: The `epoch_id` field is just for the timer. Timer will take this to signal the timer epoch ID.
-/// State will ignore this field on handling event.
+/// **NOTICE**: The `epoch_id` field is just for the timer. Timer will take this to signal the timer
+/// epoch ID. State will ignore this field on handling event.
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
 pub enum SMREvent {
     /// New round event,
