@@ -129,9 +129,16 @@ impl Timer {
         Ok(())
     }
 
+    /// **TODO**: refactor filter here.
+    #[rustfmt::skip]
     fn trigger(&mut self, event: SMREvent) -> ConsensusResult<()> {
         let (trigger_type, round, epoch_id) = match event {
-            SMREvent::NewRoundInfo { epoch_id, .. } => (TriggerType::Proposal, None, epoch_id),
+            SMREvent::NewRoundInfo { epoch_id, round, .. } => {
+                if round < self.round {
+                    return Ok(());
+                }
+                (TriggerType::Proposal, None, epoch_id)
+            }
 
             SMREvent::PrevoteVote {
                 epoch_id, round, ..
