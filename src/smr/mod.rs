@@ -11,6 +11,7 @@ use std::task::{Context, Poll};
 
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::{FusedStream, Stream, StreamExt};
+use log::error;
 
 use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
 use crate::smr::state_machine::StateMachine;
@@ -48,7 +49,10 @@ impl SMRProvider {
     pub fn run(mut self) {
         runtime::spawn(async move {
             loop {
-                let _ = self.state_machine.next().await;
+                let res = self.state_machine.next().await;
+                if res.is_some() {
+                    error!("Overlord: SMR error {:?}", res.unwrap());
+                }
             }
         });
     }

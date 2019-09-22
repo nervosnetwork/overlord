@@ -3,6 +3,7 @@ use std::marker::PhantomData;
 use creep::Context;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::StreamExt;
+use log::error;
 use parking_lot::RwLock;
 
 use crate::error::ConsensusError;
