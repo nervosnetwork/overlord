@@ -126,9 +126,10 @@ impl StateMachine {
         }
 
         log::warn!(
-            "self epoch ID {}, trigger epoch ID {}",
+            "self epoch ID {}, trigger epoch ID {}, from {:?}",
             self.epoch_id,
-            epoch_id
+            epoch_id,
+            source
         );
 
         if self.step > Step::Propose {
