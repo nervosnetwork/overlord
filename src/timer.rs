@@ -132,12 +132,15 @@ impl Timer {
     fn trigger(&mut self, event: SMREvent) -> ConsensusResult<()> {
         let (trigger_type, round, epoch_id) = match event {
             SMREvent::NewRoundInfo { epoch_id, .. } => (TriggerType::Proposal, None, epoch_id),
+
             SMREvent::PrevoteVote {
                 epoch_id, round, ..
             } => (TriggerType::PrevoteQC, Some(round), epoch_id),
+
             SMREvent::PrecommitVote {
                 epoch_id, round, ..
             } => (TriggerType::PrecommitQC, Some(round), epoch_id),
+
             _ => return Err(ConsensusError::TimerErr("No commit timer".to_string())),
         };
 

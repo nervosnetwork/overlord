@@ -118,14 +118,9 @@ impl StateMachine {
         &mut self,
         proposal_hash: Hash,
         lock_round: Option<u64>,
-        _source: TriggerSource,
+        source: TriggerSource,
         epoch_id: u64,
     ) -> ConsensusResult<()> {
-        info!(
-            "Overlord: SMR triggered by a proposal hash {:?}",
-            proposal_hash
-        );
-
         if self.epoch_id > epoch_id {
             return Ok(());
         }
@@ -133,6 +128,11 @@ impl StateMachine {
         if self.step > Step::Propose {
             return Ok(());
         }
+
+        info!(
+            "Overlord: SMR triggered by a proposal hash {:?}, from {:?}",
+            proposal_hash, source
+        );
 
         self.check()?;
         if proposal_hash.is_empty() && lock_round.is_some() {
@@ -177,22 +177,23 @@ impl StateMachine {
         source: TriggerSource,
         epoch_id: u64,
     ) -> ConsensusResult<()> {
-        info!(
-            "Overlord: SMR triggered by prevote QC hash {:?}",
-            prevote_hash
-        );
-
         if self.step > Step::Prevote {
             return Ok(());
         }
 
-        self.check()?;
         let prevote_round =
             prevote_round.ok_or_else(|| ConsensusError::PrevoteErr("No vote round".to_string()))?;
 
         if self.epoch_id > epoch_id || self.round > prevote_round {
             return Ok(());
         }
+
+        info!(
+            "Overlord: SMR triggered by prevote QC hash {:?} from {:?}",
+            prevote_hash, source
+        );
+
+        self.check()?;
 
         // A prevote QC from timer which means prevote timeout can not lead to unlock. Therefore,
         // only prevote QCs from state will update the PoLC. If the prevote QC is from timer, throw
@@ -228,25 +229,26 @@ impl StateMachine {
         &mut self,
         precommit_hash: Hash,
         precommit_round: Option<u64>,
-        _source: TriggerSource,
+        source: TriggerSource,
         epoch_id: u64,
     ) -> ConsensusResult<()> {
-        info!(
-            "Overlord: SMR triggered by precommit QC hash {:?}",
-            precommit_hash
-        );
-
         if self.step > Step::Precommit {
             return Ok(());
         }
 
-        self.check()?;
         let precommit_round = precommit_round
             .ok_or_else(|| ConsensusError::PrevoteErr("No vote round".to_string()))?;
 
         if self.epoch_id > epoch_id || self.round > precommit_round {
             return Ok(());
         }
+
+        info!(
+            "Overlord: SMR triggered by precommit QC hash {:?}, from {:?}",
+            precommit_hash, source
+        );
+
+        self.check()?;
 
         self.check_round(precommit_round)?;
         if precommit_hash.is_empty() {
