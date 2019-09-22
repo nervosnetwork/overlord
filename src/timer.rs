@@ -120,6 +120,8 @@ impl Timer {
         }
 
         info!("Overlord: timer set {:?} timer", event);
+        log::error!("{:?}", interval);   
+
         let smr_timer = TimeoutInfo::new(interval, event, self.sender.clone());
 
         runtime::spawn(async move {
@@ -151,7 +153,9 @@ impl Timer {
             _ => return Err(ConsensusError::TimerErr("No commit timer".to_string())),
         };
 
-        debug!("Overlord: timer {:?} time out", event);
+        // TODO should be debug!
+        log::error!("Overlord: timer {:?} time out", event);
+
         self.smr.trigger(SMRTrigger {
             source: TriggerSource::Timer,
             hash: Hash::new(),
