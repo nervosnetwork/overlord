@@ -56,26 +56,30 @@ where
         let smr = smr_provider.take_smr();
         let mut timer = Timer::new(evt_2, smr.clone(), interval);
 
-        let mut state_rx = self.state_rx.write();
-        let mut address = self.address.write();
-        let mut consensus = self.consensus.write();
-        let mut crypto = self.crypto.write();
-        let sender = self.sender.read();
+        let (rx, mut state) = {
+            let mut state_rx = self.state_rx.write();
+            let mut address = self.address.write();
+            let mut consensus = self.consensus.write();
+            let mut crypto = self.crypto.write();
+            let sender = self.sender.read();
 
-        let rx = state_rx.take().unwrap();
-        let mut state = State::new(
-            smr,
-            address.take().unwrap(),
-            interval,
-            consensus.take().unwrap(),
-            crypto.take().unwrap(),
-        );
+            let tmp_rx = state_rx.take().unwrap();
+            let tmp_state = State::new(
+                smr,
+                address.take().unwrap(),
+                interval,
+                consensus.take().unwrap(),
+                crypto.take().unwrap(),
+            );
 
-        assert!(sender.is_none());
-        assert!(address.is_none());
-        assert!(consensus.is_none());
-        assert!(crypto.is_none());
-        assert!(state_rx.is_none());
+            assert!(sender.is_none());
+            assert!(address.is_none());
+            assert!(consensus.is_none());
+            assert!(crypto.is_none());
+            assert!(state_rx.is_none());
+
+            (tmp_rx, tmp_state)
+        };
 
         // Run SMR.
         smr_provider.run();
