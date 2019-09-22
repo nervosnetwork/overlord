@@ -50,8 +50,8 @@ impl SMRProvider {
         runtime::spawn(async move {
             loop {
                 let res = self.state_machine.next().await;
-                if res.is_some() {
-                    error!("Overlord: SMR error {:?}", res.unwrap());
+                if let Some(err) = res {
+                    error!("Overlord: SMR error {:?}", err);
                 }
             }
         });

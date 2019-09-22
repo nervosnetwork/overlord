@@ -300,8 +300,6 @@ where
         )
         .await?;
 
-        error!("{:?}", Instant::now() - self.epoch_start);
-
         self.state_machine.trigger(SMRTrigger {
             trigger_type: TriggerType::Proposal,
             source:       TriggerSource::State,

@@ -120,7 +120,6 @@ impl Timer {
         }
 
         info!("Overlord: timer set {:?} timer", event);
-        log::error!("{:?}", interval);
 
         let smr_timer = TimeoutInfo::new(interval, event, self.sender.clone());
 
@@ -154,7 +153,7 @@ impl Timer {
         };
 
         // TODO should be debug!
-        log::error!("Overlord: timer {:?} time out", event);
+        debug!("Overlord: timer {:?} time out", event);
 
         self.smr.trigger(SMRTrigger {
             source: TriggerSource::Timer,
