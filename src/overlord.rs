@@ -43,15 +43,15 @@ where
         }
     }
 
-    /// Take the overlord handler from the overlord instance.
-    pub fn take_handler(&self) -> OverlordHandler<T> {
+    /// Get the overlord handler from the overlord instance.
+    pub fn get_handler(&self) -> OverlordHandler<T> {
         let mut sender = self.sender.write();
         assert!(sender.is_some());
         OverlordHandler::new(sender.take().unwrap())
     }
 
     /// Run overlord consensus process. The `interval` is the epoch interval as millisecond.
-    pub async fn run(self, interval: u64) -> ConsensusResult<()> {
+    pub async fn run(&self, interval: u64) -> ConsensusResult<()> {
         let (mut smr_provider, evt_1, evt_2) = SMRProvider::new();
         let smr = smr_provider.take_smr();
         let mut timer = Timer::new(evt_2, smr.clone(), interval);
