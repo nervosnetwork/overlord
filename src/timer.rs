@@ -120,7 +120,7 @@ impl Timer {
         }
 
         info!("Overlord: timer set {:?} timer", event);
-        log::error!("{:?}", interval);   
+        log::error!("{:?}", interval);
 
         let smr_timer = TimeoutInfo::new(interval, event, self.sender.clone());
 
@@ -197,8 +197,10 @@ impl Future for TimeoutInfo {
 
 impl TimeoutInfo {
     fn new(interval: Duration, event: SMREvent, tx: UnboundedSender<SMREvent>) -> Self {
-        let mut delay = Delay::new_handle(Instant::now(), TimerHandle::default());
-        delay.reset(interval);
+        // let mut delay = Delay::new_handle(Instant::now(), TimerHandle::default());
+        // delay.reset(interval);
+
+        let delay = Delay::new(interval);
 
         TimeoutInfo {
             timeout: delay,
