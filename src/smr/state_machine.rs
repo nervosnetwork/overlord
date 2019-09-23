@@ -44,10 +44,14 @@ impl Stream for StateMachine {
                 let trigger_type = msg.trigger_type.clone();
                 let res = match trigger_type {
                     TriggerType::NewEpoch(epoch_id) => self.handle_new_epoch(epoch_id, msg.source),
-                    TriggerType::Proposal => self.handle_proposal(msg.hash, msg.round, msg.source),
-                    TriggerType::PrevoteQC => self.handle_prevote(msg.hash, msg.round, msg.source),
+                    TriggerType::Proposal => {
+                        self.handle_proposal(msg.hash, msg.round, msg.source, msg.epoch_id)
+                    }
+                    TriggerType::PrevoteQC => {
+                        self.handle_prevote(msg.hash, msg.round, msg.source, msg.epoch_id)
+                    }
                     TriggerType::PrecommitQC => {
-                        self.handle_precommit(msg.hash, msg.round, msg.source)
+                        self.handle_precommit(msg.hash, msg.round, msg.source, msg.epoch_id)
                     }
                 };
 
@@ -98,6 +102,7 @@ impl StateMachine {
 
         // throw new round info event
         self.throw_event(SMREvent::NewRoundInfo {
+            epoch_id:      self.epoch_id,
             round:         0u64,
             lock_round:    None,
             lock_proposal: None,
@@ -113,13 +118,21 @@ impl StateMachine {
         &mut self,
         proposal_hash: Hash,
         lock_round: Option<u64>,
-        _source: TriggerSource,
+        source: TriggerSource,
+        epoch_id: u64,
     ) -> ConsensusResult<()> {
-        info!("Overlord: SMR triggered by a proposal");
+        if self.epoch_id > epoch_id {
+            return Ok(());
+        }
 
         if self.step > Step::Propose {
             return Ok(());
         }
+
+        info!(
+            "Overlord: SMR triggered by a proposal hash {:?}, from {:?}",
+            proposal_hash, source
+        );
 
         self.check()?;
         if proposal_hash.is_empty() && lock_round.is_some() {
@@ -144,7 +157,11 @@ impl StateMachine {
         }
 
         // throw prevote vote event
-        self.throw_event(SMREvent::PrevoteVote(self.proposal_hash.clone()))?;
+        self.throw_event(SMREvent::PrevoteVote {
+            epoch_id:   self.epoch_id,
+            round:      self.round,
+            epoch_hash: self.proposal_hash.clone(),
+        })?;
         self.goto_step(Step::Prevote);
         Ok(())
     }
@@ -158,16 +175,25 @@ impl StateMachine {
         prevote_hash: Hash,
         prevote_round: Option<u64>,
         source: TriggerSource,
+        epoch_id: u64,
     ) -> ConsensusResult<()> {
-        info!("Overlord: SMR triggered by prevote QC");
-
         if self.step > Step::Prevote {
             return Ok(());
         }
 
-        self.check()?;
         let prevote_round =
             prevote_round.ok_or_else(|| ConsensusError::PrevoteErr("No vote round".to_string()))?;
+
+        if self.epoch_id > epoch_id || self.round > prevote_round {
+            return Ok(());
+        }
+
+        info!(
+            "Overlord: SMR triggered by prevote QC hash {:?} from {:?}",
+            prevote_hash, source
+        );
+
+        self.check()?;
 
         // A prevote QC from timer which means prevote timeout can not lead to unlock. Therefore,
         // only prevote QCs from state will update the PoLC. If the prevote QC is from timer, throw
@@ -183,10 +209,17 @@ impl StateMachine {
             } else {
                 self.update_polc(prevote_hash.clone(), vote_round);
             }
+        } else if self.lock.is_none() {
+            // If the trigger source is timer and does not have a lock, clear the proposal hash.
+            self.proposal_hash.clear();
         }
 
         // throw precommit vote event
-        self.throw_event(SMREvent::PrecommitVote(self.proposal_hash.clone()))?;
+        self.throw_event(SMREvent::PrecommitVote {
+            epoch_id:   self.epoch_id,
+            round:      self.round,
+            epoch_hash: self.proposal_hash.clone(),
+        })?;
         self.goto_step(Step::Precommit);
         Ok(())
     }
@@ -199,13 +232,26 @@ impl StateMachine {
         &mut self,
         precommit_hash: Hash,
         precommit_round: Option<u64>,
-        _source: TriggerSource,
+        source: TriggerSource,
+        epoch_id: u64,
     ) -> ConsensusResult<()> {
-        info!("Overlord: SMR triggered by precommit QC");
+        if self.step > Step::Precommit {
+            return Ok(());
+        }
 
-        self.check()?;
         let precommit_round = precommit_round
             .ok_or_else(|| ConsensusError::PrevoteErr("No vote round".to_string()))?;
+
+        if self.epoch_id > epoch_id || self.round > precommit_round {
+            return Ok(());
+        }
+
+        info!(
+            "Overlord: SMR triggered by precommit QC hash {:?}, from {:?}",
+            precommit_hash, source
+        );
+
+        self.check()?;
 
         self.check_round(precommit_round)?;
         if precommit_hash.is_empty() {
@@ -216,6 +262,7 @@ impl StateMachine {
 
             // throw new round info event
             self.throw_event(SMREvent::NewRoundInfo {
+                epoch_id: self.epoch_id,
                 round: self.round + 1,
                 lock_round,
                 lock_proposal,

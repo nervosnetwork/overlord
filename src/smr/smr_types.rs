@@ -52,6 +52,8 @@ impl Default for Step {
 }
 
 /// SMR event that state and timer monitor this.
+/// **NOTICE**: The `epoch_id` field is just for the timer. Timer will take this to signal the timer
+/// epoch ID. State will ignore this field on handling event.
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
 pub enum SMREvent {
     /// New round event,
@@ -59,6 +61,7 @@ pub enum SMREvent {
     /// for timer: set a propose step timer. If `round == 0`, set an extra total epoch timer.
     #[display(fmt = "New round {} event", round)]
     NewRoundInfo {
+        epoch_id:      u64,
         round:         u64,
         lock_round:    Option<u64>,
         lock_proposal: Option<Hash>,
@@ -67,12 +70,20 @@ pub enum SMREvent {
     /// for state: transmit a prevote vote,
     /// for timer: set a prevote step timer.
     #[display(fmt = "Prevote event")]
-    PrevoteVote(Hash),
+    PrevoteVote {
+        epoch_id:   u64,
+        round:      u64,
+        epoch_hash: Hash,
+    },
     /// Precommit event,
     /// for state: transmit a precommit vote,
     /// for timer: set a precommit step timer.
     #[display(fmt = "Precommit event")]
-    PrecommitVote(Hash),
+    PrecommitVote {
+        epoch_id:   u64,
+        round:      u64,
+        epoch_hash: Hash,
+    },
     /// Commit event,
     /// for state: do commit,
     /// for timer: do nothing.
@@ -149,8 +160,15 @@ impl From<u8> for TriggerType {
 /// While trigger type is `NewEpoch`:
 ///     * `hash`: A empty hash,
 ///     * `round`: This must be `None`.
+/// For each sources, while filling the `SMRTrigger`, the `epoch_id` field take the current epoch ID
+/// directly.
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
-#[display(fmt = "{:?} trigger from {:?}", trigger_type, source)]
+#[display(
+    fmt = "{:?} trigger from {:?}, epoch ID {}",
+    trigger_type,
+    source,
+    epoch_id
+)]
 pub struct SMRTrigger {
     /// SMR trigger type.
     pub trigger_type: TriggerType,
@@ -160,6 +178,9 @@ pub struct SMRTrigger {
     pub hash: Hash,
     /// SMR trigger round, the meaning shown above.
     pub round: Option<u64>,
+    /// **NOTICE**: This field is only for timer to signed timer's epoch ID. Therefore, the SMR can
+    /// filter out the outdated timers.
+    pub epoch_id: u64,
 }
 
 /// An inner lock struct.

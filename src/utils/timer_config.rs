@@ -25,8 +25,8 @@ impl TimerConfig {
     pub fn get_timeout(&self, event: SMREvent) -> ConsensusResult<Duration> {
         match event.clone() {
             SMREvent::NewRoundInfo { .. } => Ok(self.get_propose_timeout()),
-            SMREvent::PrevoteVote(_hash) => Ok(self.get_prevote_timeout()),
-            SMREvent::PrecommitVote(_hash) => Ok(self.get_precommit_timeout()),
+            SMREvent::PrevoteVote { .. } => Ok(self.get_prevote_timeout()),
+            SMREvent::PrecommitVote { .. } => Ok(self.get_precommit_timeout()),
             _ => Err(ConsensusError::TimerErr("No commit timer".to_string())),
         }
     }

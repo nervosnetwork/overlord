@@ -1,12 +1,12 @@
 use std::task::{Context, Poll};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use std::{future::Future, pin::Pin};
 
 use derive_more::Display;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::{Stream, StreamExt};
 use futures::{FutureExt, SinkExt};
-use futures_timer::{Delay, TimerHandle};
+use futures_timer::Delay;
 use log::{debug, info};
 
 use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
@@ -18,12 +18,13 @@ use crate::{types::Hash, utils::timer_config::TimerConfig};
 /// timer will get timeout interval from timer config, then set a delay. When the timeout expires,
 #[derive(Debug)]
 pub struct Timer {
-    config: TimerConfig,
-    event:  Event,
-    sender: UnboundedSender<SMREvent>,
-    notify: UnboundedReceiver<SMREvent>,
-    smr:    SMR,
-    round:  u64,
+    config:   TimerConfig,
+    event:    Event,
+    sender:   UnboundedSender<SMREvent>,
+    notify:   UnboundedReceiver<SMREvent>,
+    smr:      SMR,
+    epoch_id: u64,
+    round:    u64,
 }
 
 ///
@@ -83,6 +84,7 @@ impl Timer {
         let (tx, rx) = unbounded();
         Timer {
             config: TimerConfig::new(interval),
+            epoch_id: 0u64,
             round: INIT_ROUND,
             sender: tx,
             notify: rx,
@@ -92,37 +94,73 @@ impl Timer {
     }
 
     fn set_timer(&mut self, event: SMREvent) -> ConsensusResult<()> {
+        let mut is_propose_timer = false;
         match event.clone() {
-            SMREvent::NewRoundInfo { round, .. } => self.round = round,
+            SMREvent::NewRoundInfo {
+                epoch_id, round, ..
+            } => {
+                if epoch_id > self.epoch_id {
+                    self.epoch_id = epoch_id;
+                }
+                self.round = round;
+                is_propose_timer = true;
+            }
             SMREvent::Commit(_) => return Ok(()),
             _ => (),
         };
 
-        let interval = self.config.get_timeout(event.clone())?;
+        let mut interval = self.config.get_timeout(event.clone())?;
+
+        if is_propose_timer {
+            let mut coef = self.round as u32;
+            if coef > 10 {
+                coef = 10;
+            }
+            interval *= 2u32.pow(coef);
+        }
+
         info!("Overlord: timer set {:?} timer", event);
+
         let smr_timer = TimeoutInfo::new(interval, event, self.sender.clone());
 
-        tokio::spawn(async move {
+        runtime::spawn(async move {
             smr_timer.await;
         });
 
         Ok(())
     }
 
+    /// **TODO**: refactor filter here.
+    #[rustfmt::skip]
     fn trigger(&mut self, event: SMREvent) -> ConsensusResult<()> {
-        let (trigger_type, round) = match event {
-            SMREvent::NewRoundInfo { .. } => (TriggerType::Proposal, None),
-            SMREvent::PrevoteVote(_) => (TriggerType::PrevoteQC, Some(self.round)),
-            SMREvent::PrecommitVote(_) => (TriggerType::PrecommitQC, Some(self.round)),
+        let (trigger_type, round, epoch_id) = match event {
+            SMREvent::NewRoundInfo { epoch_id, round, .. } => {
+                if round < self.round {
+                    return Ok(());
+                }
+                (TriggerType::Proposal, None, epoch_id)
+            }
+
+            SMREvent::PrevoteVote {
+                epoch_id, round, ..
+            } => (TriggerType::PrevoteQC, Some(round), epoch_id),
+
+            SMREvent::PrecommitVote {
+                epoch_id, round, ..
+            } => (TriggerType::PrecommitQC, Some(round), epoch_id),
+
             _ => return Err(ConsensusError::TimerErr("No commit timer".to_string())),
         };
 
+        // TODO should be debug!
         debug!("Overlord: timer {:?} time out", event);
+
         self.smr.trigger(SMRTrigger {
             source: TriggerSource::Timer,
             hash: Hash::new(),
             trigger_type,
             round,
+            epoch_id,
         })
     }
 }
@@ -147,7 +185,7 @@ impl Future for TimeoutInfo {
         match self.timeout.poll_unpin(cx) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(_) => {
-                tokio::spawn(async move {
+                runtime::spawn(async move {
                     let _ = tx.send(msg).await;
                 });
                 Poll::Ready(())
@@ -158,8 +196,10 @@ impl Future for TimeoutInfo {
 
 impl TimeoutInfo {
     fn new(interval: Duration, event: SMREvent, tx: UnboundedSender<SMREvent>) -> Self {
-        let mut delay = Delay::new_handle(Instant::now(), TimerHandle::default());
-        delay.reset(interval);
+        // let mut delay = Delay::new_handle(Instant::now(), TimerHandle::default());
+        // delay.reset(interval);
+
+        let delay = Delay::new(interval);
 
         TimeoutInfo {
             timeout: delay,
@@ -173,20 +213,18 @@ impl TimeoutInfo {
 mod test {
     use futures::channel::mpsc::unbounded;
     use futures::stream::StreamExt;
-    use tokio::runtime::Runtime;
 
     use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
     use crate::smr::{Event, SMR};
     use crate::{timer::Timer, types::Hash};
 
-    fn test_timer_trigger(input: SMREvent, output: SMRTrigger) {
+    async fn test_timer_trigger(input: SMREvent, output: SMRTrigger) {
         let (trigger_tx, mut trigger_rx) = unbounded();
         let (event_tx, event_rx) = unbounded();
         let mut timer = Timer::new(Event::new(event_rx), SMR::new(trigger_tx), 3000);
         event_tx.unbounded_send(input).unwrap();
 
-        let rt = Runtime::new().unwrap();
-        rt.spawn(async move {
+        runtime::spawn(async move {
             loop {
                 match timer.next().await {
                     None => break,
@@ -195,64 +233,85 @@ mod test {
             }
         });
 
-        rt.block_on(async move {
-            if let Some(res) = trigger_rx.next().await {
-                assert_eq!(res, output);
-                event_tx.unbounded_send(SMREvent::Stop).unwrap();
-            }
-        })
+        if let Some(res) = trigger_rx.next().await {
+            assert_eq!(res, output);
+            event_tx.unbounded_send(SMREvent::Stop).unwrap();
+        }
     }
 
-    fn gen_output(trigger_type: TriggerType, round: Option<u64>) -> SMRTrigger {
+    fn gen_output(trigger_type: TriggerType, round: Option<u64>, epoch_id: u64) -> SMRTrigger {
         SMRTrigger {
             source: TriggerSource::Timer,
             hash: Hash::new(),
             trigger_type,
             round,
+            epoch_id,
         }
     }
 
-    #[test]
-    fn test_correctness() {
+    #[runtime::test]
+    async fn test_correctness() {
         // Test propose step timer.
         test_timer_trigger(
             SMREvent::NewRoundInfo {
+                epoch_id:      0,
                 round:         0,
                 lock_round:    None,
                 lock_proposal: None,
             },
-            gen_output(TriggerType::Proposal, None),
-        );
+            gen_output(TriggerType::Proposal, None, 0),
+        )
+        .await;
 
         // Test prevote step timer.
         test_timer_trigger(
-            SMREvent::PrevoteVote(Hash::new()),
-            gen_output(TriggerType::PrevoteQC, Some(0)),
-        );
+            SMREvent::PrevoteVote {
+                epoch_id:   0u64,
+                round:      0u64,
+                epoch_hash: Hash::new(),
+            },
+            gen_output(TriggerType::PrevoteQC, Some(0), 0),
+        )
+        .await;
 
         // Test precommit step timer.
         test_timer_trigger(
-            SMREvent::PrecommitVote(Hash::new()),
-            gen_output(TriggerType::PrecommitQC, Some(0)),
-        );
+            SMREvent::PrecommitVote {
+                epoch_id:   0u64,
+                round:      0u64,
+                epoch_hash: Hash::new(),
+            },
+            gen_output(TriggerType::PrecommitQC, Some(0), 0),
+        )
+        .await;
     }
 
-    #[test]
-    fn test_order() {
+    #[runtime::test]
+    async fn test_order() {
         let (trigger_tx, mut trigger_rx) = unbounded();
         let (event_tx, event_rx) = unbounded();
         let mut timer = Timer::new(Event::new(event_rx), SMR::new(trigger_tx), 3000);
 
         let new_round_event = SMREvent::NewRoundInfo {
+            epoch_id:      0,
             round:         0,
             lock_round:    None,
             lock_proposal: None,
         };
-        let prevote_event = SMREvent::PrevoteVote(Hash::new());
-        let precommit_event = SMREvent::PrecommitVote(Hash::new());
 
-        let rt = Runtime::new().unwrap();
-        rt.spawn(async move {
+        let prevote_event = SMREvent::PrevoteVote {
+            epoch_id:   0u64,
+            round:      0u64,
+            epoch_hash: Hash::new(),
+        };
+
+        let precommit_event = SMREvent::PrecommitVote {
+            epoch_id:   0u64,
+            round:      0u64,
+            epoch_hash: Hash::new(),
+        };
+
+        runtime::spawn(async move {
             loop {
                 match timer.next().await {
                     None => break,
@@ -265,25 +324,23 @@ mod test {
         event_tx.unbounded_send(prevote_event).unwrap();
         event_tx.unbounded_send(precommit_event).unwrap();
 
-        rt.block_on(async move {
-            let mut count = 1u32;
-            let mut output = Vec::new();
-            let predict = vec![
-                gen_output(TriggerType::PrecommitQC, Some(0)),
-                gen_output(TriggerType::PrevoteQC, Some(0)),
-                gen_output(TriggerType::Proposal, None),
-            ];
+        let mut count = 1u32;
+        let mut output = Vec::new();
+        let predict = vec![
+            gen_output(TriggerType::PrecommitQC, Some(0), 0),
+            gen_output(TriggerType::PrevoteQC, Some(0), 0),
+            gen_output(TriggerType::Proposal, None, 0),
+        ];
 
-            while let Some(res) = trigger_rx.next().await {
-                output.push(res);
-                if count != 3 {
-                    count += 1;
-                } else {
-                    assert_eq!(predict, output);
-                    event_tx.unbounded_send(SMREvent::Stop).unwrap();
-                    return;
-                }
+        while let Some(res) = trigger_rx.next().await {
+            output.push(res);
+            if count != 3 {
+                count += 1;
+            } else {
+                assert_eq!(predict, output);
+                event_tx.unbounded_send(SMREvent::Stop).unwrap();
+                return;
             }
-        })
+        }
     }
 }

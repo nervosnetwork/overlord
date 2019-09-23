@@ -11,6 +11,7 @@ use std::task::{Context, Poll};
 
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::{FusedStream, Stream, StreamExt};
+use log::error;
 
 use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
 use crate::smr::state_machine::StateMachine;
@@ -46,9 +47,12 @@ impl SMRProvider {
 
     /// Run SMR module in runtime environment.
     pub fn run(mut self) {
-        tokio::spawn(async move {
+        runtime::spawn(async move {
             loop {
-                let _ = self.state_machine.next().await;
+                let res = self.state_machine.next().await;
+                if let Some(err) = res {
+                    error!("Overlord: SMR error {:?}", err);
+                }
             }
         });
     }
@@ -76,13 +80,15 @@ impl SMR {
 
     /// Trigger SMR to goto a new epoch.
     pub fn new_epoch(&mut self, epoch_id: u64) -> ConsensusResult<()> {
+        // TODO refactor
         let trigger = TriggerType::NewEpoch(epoch_id);
         self.tx
             .unbounded_send(SMRTrigger {
                 trigger_type: trigger.clone(),
-                source:       TriggerSource::State,
-                hash:         Hash::new(),
-                round:        None,
+                source: TriggerSource::State,
+                hash: Hash::new(),
+                round: None,
+                epoch_id,
             })
             .map_err(|_| ConsensusError::TriggerSMRErr(trigger.to_string()))
     }

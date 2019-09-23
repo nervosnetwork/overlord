@@ -104,7 +104,7 @@ pub trait Codec: Clone + Debug + Send {
 }
 
 /// Trait for some crypto methods.
-pub trait Crypto: Clone + Send {
+pub trait Crypto: Send {
     /// Hash a message bytes.
     fn hash(&self, msg: Bytes) -> Hash;
 
