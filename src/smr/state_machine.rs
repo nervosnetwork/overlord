@@ -216,10 +216,9 @@ impl StateMachine {
             } else {
                 self.update_polc(prevote_hash.clone(), vote_round);
             }
-        } else {
-            if self.lock.is_none() {
-                self.proposal_hash.clear();
-            }
+        } else if self.lock.is_none() {
+            // If the trigger source is timer and does not have a lock, clear the proposal hash.
+            self.proposal_hash.clear();
         }
 
         // throw precommit vote event
