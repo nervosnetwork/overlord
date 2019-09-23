@@ -216,6 +216,10 @@ impl StateMachine {
             } else {
                 self.update_polc(prevote_hash.clone(), vote_round);
             }
+        } else {
+            if self.lock.is_none() {
+                self.proposal_hash.clear();
+            }
         }
 
         // throw precommit vote event
