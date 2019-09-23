@@ -298,7 +298,7 @@ where
             Context::new(),
             OverlordMsg::SignedProposal(self.sign_proposal(proposal)?),
         )
-        .await?;
+        .await;
 
         self.state_machine.trigger(SMRTrigger {
             trigger_type: TriggerType::Proposal,
@@ -475,7 +475,7 @@ where
                 .insert_vote(signed_vote.get_hash(), signed_vote, self.address.clone());
         } else {
             self.transmit(Context::new(), OverlordMsg::SignedVote(signed_vote))
-                .await?;
+                .await;
         }
 
         self.vote_process(VoteType::Prevote).await?;
@@ -503,7 +503,7 @@ where
                 .insert_vote(signed_vote.get_hash(), signed_vote, self.address.clone());
         } else {
             self.transmit(Context::new(), OverlordMsg::SignedVote(signed_vote))
-                .await?;
+                .await;
         }
 
         self.vote_process(VoteType::Precommit).await?;
@@ -655,7 +655,7 @@ where
         );
 
         self.votes.set_qc(qc.clone());
-        self.broadcast(ctx, OverlordMsg::AggregatedVote(qc)).await?;
+        self.broadcast(ctx, OverlordMsg::AggregatedVote(qc)).await;
 
         let set = self.full_transcation.lock();
         let epoch_hash = if set.contains(&epoch_hash) {
@@ -829,7 +829,7 @@ where
             let qc = self.generate_qc(epoch_hash.clone(), vote_type.clone())?;
             self.votes.set_qc(qc.clone());
             self.broadcast(Context::new(), OverlordMsg::AggregatedVote(qc))
-                .await?;
+                .await;
 
             let set = self.full_transcation.lock();
 
@@ -1142,17 +1142,22 @@ where
         Ok(())
     }
 
-    async fn transmit(&self, ctx: Context, msg: OverlordMsg<T>) -> ConsensusResult<()> {
+    async fn transmit(&self, ctx: Context, msg: OverlordMsg<T>) {
         info!(
             "Overlord: state transmit a message to leader epoch ID {}, round {}",
             self.epoch_id, self.round
         );
 
-        self.function
+        let _ = self
+            .function
             .transmit_to_relayer(ctx, self.leader_address.clone(), msg)
             .await
-            .map_err(|err| ConsensusError::Other(format!("transmit error {:?}", err)))?;
-        Ok(())
+            .map_err(|err| {
+                error!(
+                    "Overlord: state transmit message to leader failed {:?}",
+                    err
+                );
+            });
     }
 
     async fn retransmit_vote(
@@ -1173,28 +1178,40 @@ where
 
         debug!("Overlord: state re-transmit last epoch vote");
 
-        self.function
+        let _ = self
+            .function
             .transmit_to_relayer(
                 ctx,
                 leader_address,
                 OverlordMsg::SignedVote(self.sign_vote(vote)?),
             )
             .await
-            .map_err(|err| ConsensusError::Other(format!("transmit error {:?}", err)))?;
+            .map_err(|err| {
+                error!(
+                    "Overlord: state transmit message to leader failed {:?}",
+                    err
+                );
+            });
+
         Ok(())
     }
 
-    async fn broadcast(&self, ctx: Context, msg: OverlordMsg<T>) -> ConsensusResult<()> {
+    async fn broadcast(&self, ctx: Context, msg: OverlordMsg<T>) {
         info!(
             "Overlord: state broadcast a message to others epoch ID {}, round {}",
             self.epoch_id, self.round
         );
 
-        self.function
+        let _ = self
+            .function
             .broadcast_to_other(ctx, msg)
             .await
-            .map_err(|err| ConsensusError::Other(format!("broadcast error {:?}", err)))?;
-        Ok(())
+            .map_err(|err| {
+                error!(
+                    "Overlord: state transmit message to leader failed {:?}",
+                    err
+                );
+            });
     }
 
     #[cfg(test)]
