@@ -337,8 +337,8 @@ where
         let round = signed_proposal.proposal.round;
 
         info!(
-            "Overlod: state receive a signed proposal epoch ID {}, round {}",
-            epoch_id, round
+            "Overlod: state receive a signed proposal epoch ID {}, round {}, from {:?}",
+            epoch_id, round, signed_proposal.proposal.epoch_hash
         );
 
         // If the proposal epoch ID is lower than the current epoch ID - 1, or the proposal epoch ID
@@ -589,8 +589,8 @@ where
         };
 
         info!(
-            "Overlord: state receive a signed {:?} vote epoch ID {}, round {}",
-            vote_type, epoch_id, round
+            "Overlord: state receive a signed {:?} vote epoch ID {}, round {}, from {:?}",
+            vote_type, epoch_id, round, signed_vote.vote.epoch_hash,
         );
 
         // If the vote epoch ID is lower than the current epoch ID - 1, or the vote epoch ID
@@ -712,8 +712,8 @@ where
         };
 
         info!(
-            "Overlord: state receive an {:?} QC epoch {}, round {}",
-            qc_type, epoch_id, round
+            "Overlord: state receive an {:?} QC epoch {}, round {}, from {:?}",
+            qc_type, epoch_id, round, aggregated_vote.epoch_hash
         );
 
         // If the vote epoch ID is lower than the current epoch ID - 1, or the vote epoch ID
