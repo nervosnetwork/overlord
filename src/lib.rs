@@ -31,6 +31,7 @@ use std::fmt::Debug;
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use serde::{Deserialize, Serialize};
 
 use crate::error::ConsensusError;
 use crate::types::{
@@ -133,7 +134,7 @@ pub trait Crypto: Send {
 }
 
 /// This is for test.
-#[derive(Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct DurationConfig {
     propose_numerator:   u64,
     propose_denominator: u64,
