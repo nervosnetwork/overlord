@@ -136,14 +136,18 @@ pub trait Crypto: Send {
 /// This is for test.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct DurationConfig {
-    propose_numerator:   u64,
-    propose_denominator: u64,
-
-    prevote_numerator:   u64,
-    prevote_denominator: u64,
-
-    precommit_numerator:   u64,
-    precommit_denominator: u64,
+    ///
+    pub propose_numerator: u64,
+    ///
+    pub propose_denominator: u64,
+    ///
+    pub prevote_numerator: u64,
+    ///
+    pub prevote_denominator: u64,
+    ///
+    pub precommit_numerator: u64,
+    ///
+    pub precommit_denominator: u64,
 }
 
 impl DurationConfig {

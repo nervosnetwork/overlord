@@ -1302,3 +1302,26 @@ async fn check_current_epoch<U: Consensus<T, S>, T: Codec, S: Codec>(
     // TODO: write Wal
     Ok(())
 }
+
+#[cfg(test)]
+mod test {
+    use std::time::Duration;
+
+    use log::info;
+    use serde_json::json;
+
+    #[test]
+    fn test_json() {
+        let tmp = Duration::from_millis(200);
+        let cost = tmp.as_millis() as u64;
+
+        info!(
+            "{:?}",
+            json!({
+                "epoch_id": 1u64,
+                "consensus_round": 1u64,
+                "consume": cost,
+            })
+        );
+    }
+}

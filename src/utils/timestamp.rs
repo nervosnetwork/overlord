@@ -23,3 +23,14 @@ impl Timestamp {
         self.0 = Instant::now();
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_timestamp() {
+        let mut ts = Timestamp::new();
+        ts.update(Step::Propose);
+    }
+}
