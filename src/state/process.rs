@@ -167,14 +167,15 @@ where
     async fn goto_new_epoch(&mut self, ctx: Context, status: Status) -> ConsensusResult<()> {
         // This is for test.
         self.timestamp.update(Step::Commit);
-        let consume = Instant::now() - self.epoch_start;
+        let tmp = Instant::now() - self.epoch_start;
+        let consume = tmp.as_millis() as u64;
 
         // This is for test.
         info!(
             "{:?}",
             json!({
                 "epoch_id": self.epoch_id,
-                "consume": consume.as_millis() as u64,
+                "consume": ,
             })
         );
 
