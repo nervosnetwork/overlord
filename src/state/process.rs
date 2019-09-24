@@ -175,7 +175,7 @@ where
             "{:?}",
             json!({
                 "epoch_id": self.epoch_id,
-                "consume": ,
+                "consume": consume,
             })
         );
 
