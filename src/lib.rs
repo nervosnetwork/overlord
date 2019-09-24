@@ -133,7 +133,7 @@ pub trait Crypto: Send {
 }
 
 /// This is for test.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DurationConfig {
     propose_numerator:   u64,
     propose_denominator: u64,
