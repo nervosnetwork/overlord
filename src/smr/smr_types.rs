@@ -1,9 +1,10 @@
 use derive_more::Display;
+use serde::{Deserialize, Serialize};
 
 use crate::types::Hash;
 
 /// SMR steps. The default step is commit step because SMR needs rich status to start a new epoch.
-#[derive(Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Step {
     /// Prepose step, in this step:
     /// Firstly, each node calculate the new proposer, then:

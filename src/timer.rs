@@ -11,6 +11,7 @@ use log::{debug, info};
 
 use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
 use crate::smr::{Event, SMR};
+use crate::DurationConfig;
 use crate::{error::ConsensusError, ConsensusResult, INIT_ROUND};
 use crate::{types::Hash, utils::timer_config::TimerConfig};
 
@@ -80,10 +81,15 @@ impl Stream for Timer {
 }
 
 impl Timer {
-    pub fn new(event: Event, smr: SMR, interval: u64) -> Self {
+    pub fn new(event: Event, smr: SMR, interval: u64, config: Option<DurationConfig>) -> Self {
         let (tx, rx) = unbounded();
+        let mut timer_config = TimerConfig::new(interval);
+        if let Some(tmp) = config {
+            timer_config.update(tmp);
+        }
+
         Timer {
-            config: TimerConfig::new(interval),
+            config: timer_config,
             epoch_id: 0u64,
             round: INIT_ROUND,
             sender: tx,
@@ -221,7 +227,7 @@ mod test {
     async fn test_timer_trigger(input: SMREvent, output: SMRTrigger) {
         let (trigger_tx, mut trigger_rx) = unbounded();
         let (event_tx, event_rx) = unbounded();
-        let mut timer = Timer::new(Event::new(event_rx), SMR::new(trigger_tx), 3000);
+        let mut timer = Timer::new(Event::new(event_rx), SMR::new(trigger_tx), 3000, None);
         event_tx.unbounded_send(input).unwrap();
 
         runtime::spawn(async move {
@@ -290,7 +296,7 @@ mod test {
     async fn test_order() {
         let (trigger_tx, mut trigger_rx) = unbounded();
         let (event_tx, event_rx) = unbounded();
-        let mut timer = Timer::new(Event::new(event_rx), SMR::new(trigger_tx), 3000);
+        let mut timer = Timer::new(Event::new(event_rx), SMR::new(trigger_tx), 3000, None);
 
         let new_round_event = SMREvent::NewRoundInfo {
             epoch_id:      0,

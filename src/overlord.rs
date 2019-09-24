@@ -9,6 +9,7 @@ use parking_lot::RwLock;
 use crate::error::ConsensusError;
 use crate::state::process::State;
 use crate::types::{Address, OverlordMsg};
+use crate::DurationConfig;
 use crate::{smr::SMRProvider, timer::Timer};
 use crate::{Codec, Consensus, ConsensusResult, Crypto};
 
@@ -52,10 +53,14 @@ where
     }
 
     /// Run overlord consensus process. The `interval` is the epoch interval as millisecond.
-    pub async fn run(&self, interval: u64) -> ConsensusResult<()> {
+    pub async fn run(
+        &self,
+        interval: u64,
+        timer_config: Option<DurationConfig>,
+    ) -> ConsensusResult<()> {
         let (mut smr_provider, evt_1, evt_2) = SMRProvider::new();
         let smr = smr_provider.take_smr();
-        let mut timer = Timer::new(evt_2, smr.clone(), interval);
+        let mut timer = Timer::new(evt_2, smr.clone(), interval, timer_config);
 
         let (rx, mut state) = {
             let mut state_rx = self.state_rx.write();

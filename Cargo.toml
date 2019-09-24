@@ -28,6 +28,8 @@ rand_pcg = "0.2"
 rlp = "0.4"
 runtime = "0.3.0-alpha.7"
 runtime-tokio = "0.3.0-alpha.6"
+serde = {version = "1.0", features = ["derive"]}
+serde_json = "1.0"
 tokio = "0.2.0-alpha.4"
 
 [dev-dependencies]
@@ -36,4 +38,3 @@ blake2b_simd = "0.5"
 crossbeam-channel = "0.3"
 env_logger = "0.6"
 rand = "0.6"
-serde = {version = "1.0", features = ["derive"]}

@@ -12,14 +12,16 @@ use futures_timer::Delay;
 use log::{debug, error, info, trace};
 use parking_lot::Mutex;
 use rlp::encode;
+use serde_json::json;
 
-use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
+use crate::smr::smr_types::{SMREvent, SMRTrigger, Step, TriggerSource, TriggerType};
 use crate::smr::{Event, SMR};
 use crate::state::collection::{ProposalCollector, VoteCollector};
 use crate::types::{
     Address, AggregatedSignature, AggregatedVote, Commit, Hash, OverlordMsg, PoLC, Proof, Proposal,
     Signature, SignedProposal, SignedVote, Status, Vote, VoteType,
 };
+use crate::utils::timestamp::Timestamp;
 use crate::{error::ConsensusError, utils::auth_manage::AuthorityManage};
 use crate::{Codec, Consensus, ConsensusResult, Crypto, INIT_EPOCH_ID, INIT_ROUND};
 
@@ -60,6 +62,8 @@ pub struct State<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto> {
     function: Arc<F>,
     pin_txs:  PhantomData<S>,
     util:     C,
+
+    timestamp: Timestamp,
 }
 
 impl<T, S, F, C> State<T, S, F, C>
@@ -91,6 +95,8 @@ where
             function: consensus,
             pin_txs:  PhantomData,
             util:     crypto,
+
+            timestamp: Timestamp::new(),
         }
     }
 
@@ -159,6 +165,18 @@ where
     /// votes and quorum certificates before, these should be re-checked as goto new epoch. Finally,
     /// trigger SMR to goto new epoch.
     async fn goto_new_epoch(&mut self, ctx: Context, status: Status) -> ConsensusResult<()> {
+        // This is for test.
+        self.timestamp.update(Step::Commit);
+
+        // This is for test.
+        info!(
+            "{:?}",
+            json!({
+                "epoch_id": self.epoch_id,
+                "consume": Instant::now() - self.epoch_start,
+            })
+        );
+
         let new_epoch_id = status.epoch_id;
         let get_last_flag = new_epoch_id != self.epoch_id + 1;
 
@@ -455,6 +473,9 @@ where
     }
 
     async fn handle_prevote_vote(&mut self, hash: Hash) -> ConsensusResult<()> {
+        // This is for test.
+        self.timestamp.update(Step::Propose);
+
         info!(
             "Overlord: state receive prevote vote event epoch ID {}, round {}",
             self.epoch_id, self.round
@@ -483,6 +504,9 @@ where
     }
 
     async fn handle_precommit_vote(&mut self, hash: Hash) -> ConsensusResult<()> {
+        // This is for test.
+        self.timestamp.update(Step::Prevote);
+
         info!(
             "Overlord: state received precommit vote event epoch ID {}, round {}",
             self.epoch_id, self.round
@@ -511,6 +535,18 @@ where
     }
 
     async fn handle_commit(&mut self, hash: Hash) -> ConsensusResult<()> {
+        // This is for test.
+        self.timestamp.update(Step::Precommit);
+
+        // This is for test.
+        info!(
+            "{:?}",
+            json!({
+                "epoch_id": self.epoch_id,
+                "consensus_round": self.round,
+            })
+        );
+
         info!(
             "Overlord: state receive commit event epoch ID {}, round {}",
             self.epoch_id, self.round

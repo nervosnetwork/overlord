@@ -131,3 +131,65 @@ pub trait Crypto: Send {
         aggregate_signature: AggregatedSignature,
     ) -> Result<(), Box<dyn Error + Send>>;
 }
+
+/// This is for test.
+#[derive(Clone)]
+pub struct DurationConfig {
+    propose_numerator:   u64,
+    propose_denominator: u64,
+
+    prevote_numerator:   u64,
+    prevote_denominator: u64,
+
+    precommit_numerator:   u64,
+    precommit_denominator: u64,
+}
+
+impl DurationConfig {
+    ///
+    pub fn new(
+        propose_numerator: u64,
+        propose_denominator: u64,
+        prevote_numerator: u64,
+        prevote_denominator: u64,
+        precommit_numerator: u64,
+        precommit_denominator: u64,
+    ) -> Self {
+        DurationConfig {
+            propose_numerator,
+            propose_denominator,
+            prevote_numerator,
+            prevote_denominator,
+            precommit_numerator,
+            precommit_denominator,
+        }
+    }
+
+    ///
+    pub fn get_propose_config(&self) -> (u64, u64) {
+        (self.propose_numerator, self.propose_denominator)
+    }
+
+    ///
+    pub fn get_prevote_config(&self) -> (u64, u64) {
+        (self.prevote_numerator, self.prevote_denominator)
+    }
+
+    ///
+    pub fn get_precommit_config(&self) -> (u64, u64) {
+        (self.precommit_numerator, self.precommit_denominator)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::DurationConfig;
+
+    #[test]
+    fn test_duration_config() {
+        let config = DurationConfig::new(1, 2, 3, 4, 5, 6);
+        assert_eq!(config.get_propose_config(), (1, 2));
+        assert_eq!(config.get_prevote_config(), (3, 4));
+        assert_eq!(config.get_precommit_config(), (5, 6));
+    }
+}
