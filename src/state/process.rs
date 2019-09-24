@@ -70,7 +70,7 @@ where
     C: Crypto,
 {
     /// Create a new state struct.
-    pub fn new(smr: SMR, addr: Address, interval: u64, consensus: F, crypto: C) -> Self {
+    pub fn new(smr: SMR, addr: Address, interval: u64, consensus: Arc<F>, crypto: C) -> Self {
         State {
             epoch_id:             INIT_EPOCH_ID,
             round:                INIT_ROUND,
@@ -88,7 +88,7 @@ where
             epoch_start:          Instant::now(),
             epoch_interval:       interval,
 
-            function: Arc::new(consensus),
+            function: consensus,
             pin_txs:  PhantomData,
             util:     crypto,
         }

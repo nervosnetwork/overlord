@@ -1,4 +1,5 @@
 use std::marker::PhantomData;
+use std::sync::Arc;
 
 use creep::Context;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
@@ -18,7 +19,7 @@ pub struct Overlord<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto> {
     sender:    Pile<UnboundedSender<(Context, OverlordMsg<T>)>>,
     state_rx:  Pile<UnboundedReceiver<(Context, OverlordMsg<T>)>>,
     address:   Pile<Address>,
-    consensus: Pile<F>,
+    consensus: Pile<Arc<F>>,
     crypto:    Pile<C>,
     pin_txs:   PhantomData<S>,
 }
@@ -31,7 +32,7 @@ where
     C: Crypto + Send + Sync + 'static,
 {
     /// Create a new overlord and return an overlord instance with an unbounded receiver.
-    pub fn new(address: Address, consensus: F, crypto: C) -> Self {
+    pub fn new(address: Address, consensus: Arc<F>, crypto: C) -> Self {
         let (tx, rx) = unbounded();
         Overlord {
             sender:    RwLock::new(Some(tx)),
