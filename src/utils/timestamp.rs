@@ -32,5 +32,9 @@ mod test {
     fn test_timestamp() {
         let mut ts = Timestamp::new();
         ts.update(Step::Propose);
+        ts.update(Step::Prevote);
+        ts.update(Step::Precommit);
+        ts.update(Step::Commit);
+        ts.update(Step::Propose);
     }
 }

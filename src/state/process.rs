@@ -381,7 +381,12 @@ where
         //  Verify proposal signature.
         let proposal = signed_proposal.proposal;
         let signature = signed_proposal.signature;
-        self.verify_proposer(round, &proposal.proposer, epoch_id == self.epoch_id)?;
+        self.verify_proposer(
+            epoch_id,
+            round,
+            &proposal.proposer,
+            epoch_id == self.epoch_id,
+        )?;
         self.verify_signature(
             self.util.hash(Bytes::from(encode(&proposal))),
             signature,
@@ -967,7 +972,7 @@ where
             let proposal = sp.proposal.clone();
 
             if self
-                .verify_proposer(proposal.round, &proposal.proposer, true)
+                .verify_proposer(proposal.epoch_id, proposal.round, &proposal.proposer, true)
                 .is_ok()
                 && self
                     .verify_signature(
@@ -1156,17 +1161,14 @@ where
 
     fn verify_proposer(
         &self,
+        epoch_id: u64,
         round: u64,
         address: &Address,
         is_current: bool,
     ) -> ConsensusResult<()> {
         debug!("Overlord: state verify a proposer");
         self.verify_address(address, is_current)?;
-        if address
-            != &self
-                .authority
-                .get_proposer(self.epoch_id + round, is_current)?
-        {
+        if address != &self.authority.get_proposer(epoch_id + round, is_current)? {
             return Err(ConsensusError::ProposalErr("Invalid proposer".to_string()));
         }
         Ok(())
