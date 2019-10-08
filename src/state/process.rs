@@ -12,18 +12,22 @@ use futures_timer::Delay;
 use log::{debug, error, info, trace};
 use parking_lot::Mutex;
 use rlp::encode;
-use serde_json::json;
 
-use crate::smr::smr_types::{SMREvent, SMRTrigger, Step, TriggerSource, TriggerType};
+use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
 use crate::smr::{Event, SMR};
 use crate::state::collection::{ProposalCollector, VoteCollector};
 use crate::types::{
     Address, AggregatedSignature, AggregatedVote, Commit, Hash, OverlordMsg, PoLC, Proof, Proposal,
     Signature, SignedProposal, SignedVote, Status, Vote, VoteType,
 };
-use crate::utils::timestamp::Timestamp;
 use crate::{error::ConsensusError, utils::auth_manage::AuthorityManage};
 use crate::{Codec, Consensus, ConsensusResult, Crypto, INIT_EPOCH_ID, INIT_ROUND};
+
+#[cfg(features = "test")]
+use {
+    crate::{smr::smr_types::Step, utils::timestamp::Timestamp},
+    serde_json::json,
+};
 
 #[cfg(test)]
 use crate::types::Node;
@@ -63,6 +67,7 @@ pub struct State<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto> {
     pin_txs:  PhantomData<S>,
     util:     C,
 
+    #[cfg(features = "test")]
     timestamp: Timestamp,
 }
 
@@ -96,7 +101,8 @@ where
             pin_txs:  PhantomData,
             util:     crypto,
 
-            timestamp: Timestamp::new(),
+            #[cfg(features = "test")]
+            timestamp:                           Timestamp::new(),
         }
     }
 
@@ -165,19 +171,21 @@ where
     /// votes and quorum certificates before, these should be re-checked as goto new epoch. Finally,
     /// trigger SMR to goto new epoch.
     async fn goto_new_epoch(&mut self, ctx: Context, status: Status) -> ConsensusResult<()> {
-        // This is for test.
-        self.timestamp.update(Step::Commit);
-        let tmp = Instant::now() - self.epoch_start;
-        let consume = tmp.as_millis() as u64;
+        #[cfg(features = "test")]
+        {
+            // This is for test.
+            self.timestamp.update(Step::Commit);
+            let tmp = Instant::now() - self.epoch_start;
+            let consume = tmp.as_millis() as u64;
 
-        // This is for test.
-        info!(
-            "{:?}",
-            json!({
-                "epoch_id": self.epoch_id,
-                "consume": consume,
-            })
-        );
+            info!(
+                "{:?}",
+                json!({
+                    "epoch_id": self.epoch_id,
+                    "consume": consume,
+                })
+            );
+        }
 
         let new_epoch_id = status.epoch_id;
         let get_last_flag = new_epoch_id != self.epoch_id + 1;
@@ -480,8 +488,11 @@ where
     }
 
     async fn handle_prevote_vote(&mut self, hash: Hash) -> ConsensusResult<()> {
-        // This is for test.
-        self.timestamp.update(Step::Propose);
+        #[cfg(features = "test")]
+        {
+            // This is for test.
+            self.timestamp.update(Step::Propose);
+        }
 
         info!(
             "Overlord: state receive prevote vote event epoch ID {}, round {}",
@@ -511,8 +522,11 @@ where
     }
 
     async fn handle_precommit_vote(&mut self, hash: Hash) -> ConsensusResult<()> {
-        // This is for test.
-        self.timestamp.update(Step::Prevote);
+        #[cfg(features = "test")]
+        {
+            // This is for test.
+            self.timestamp.update(Step::Prevote);
+        }
 
         info!(
             "Overlord: state received precommit vote event epoch ID {}, round {}",
@@ -542,17 +556,19 @@ where
     }
 
     async fn handle_commit(&mut self, hash: Hash) -> ConsensusResult<()> {
-        // This is for test.
-        self.timestamp.update(Step::Precommit);
+        #[cfg(features = "test")]
+        {
+            // This is for test.
+            self.timestamp.update(Step::Precommit);
 
-        // This is for test.
-        info!(
-            "{:?}",
-            json!({
-                "epoch_id": self.epoch_id,
-                "consensus_round": self.round,
-            })
-        );
+            info!(
+                "{:?}",
+                json!({
+                    "epoch_id": self.epoch_id,
+                    "consensus_round": self.round,
+                })
+            );
+        }
 
         info!(
             "Overlord: state receive commit event epoch ID {}, round {}",
