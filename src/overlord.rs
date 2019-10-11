@@ -18,6 +18,7 @@ pub struct Overlord<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto> {
     sender:    Pile<UnboundedSender<(Context, OverlordMsg<T>)>>,
     state_rx:  Pile<UnboundedReceiver<(Context, OverlordMsg<T>)>>,
     address:   Pile<Address>,
+    wal_path:  Pile<String>,
     consensus: Pile<F>,
     crypto:    Pile<C>,
     pin_txs:   PhantomData<S>,
@@ -31,12 +32,13 @@ where
     C: Crypto + Send + Sync + 'static,
 {
     /// Create a new overlord and return an overlord instance with an unbounded receiver.
-    pub fn new(address: Address, consensus: F, crypto: C) -> Self {
+    pub fn new(address: Address, wal_path: &str, consensus: F, crypto: C) -> Self {
         let (tx, rx) = unbounded();
         Overlord {
             sender:    RwLock::new(Some(tx)),
             state_rx:  RwLock::new(Some(rx)),
             address:   RwLock::new(Some(address)),
+            wal_path:  RwLock::new(Some(wal_path.to_string())),
             consensus: RwLock::new(Some(consensus)),
             crypto:    RwLock::new(Some(crypto)),
             pin_txs:   PhantomData,
@@ -59,6 +61,7 @@ where
         let (rx, mut state) = {
             let mut state_rx = self.state_rx.write();
             let mut address = self.address.write();
+            let mut wal_path = self.wal_path.write();
             let mut consensus = self.consensus.write();
             let mut crypto = self.crypto.write();
             let sender = self.sender.read();
@@ -68,12 +71,14 @@ where
                 smr,
                 address.take().unwrap(),
                 interval,
+                &wal_path.take().unwrap(),
                 consensus.take().unwrap(),
                 crypto.take().unwrap(),
             );
 
             assert!(sender.is_none());
             assert!(address.is_none());
+            assert!(wal_path.is_none());
             assert!(consensus.is_none());
             assert!(crypto.is_none());
             assert!(state_rx.is_none());

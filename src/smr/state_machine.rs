@@ -29,6 +29,7 @@ pub struct StateMachine {
 impl Stream for StateMachine {
     type Item = ConsensusError;
 
+    #[rustfmt::skip]
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
         match Stream::poll_next(Pin::new(&mut self.trigger), cx) {
             Poll::Pending => Poll::Pending,
@@ -43,7 +44,9 @@ impl Stream for StateMachine {
                 let msg = msg.unwrap();
                 let trigger_type = msg.trigger_type.clone();
                 let res = match trigger_type {
-                    TriggerType::NewEpoch(epoch_id) => self.handle_new_epoch(epoch_id, msg.source),
+                    TriggerType::NewEpoch(epoch_id) => {
+                        self.handle_new_epoch(epoch_id, msg.source)
+                    }
                     TriggerType::Proposal => {
                         self.handle_proposal(msg.hash, msg.round, msg.source, msg.epoch_id)
                     }
@@ -52,6 +55,9 @@ impl Stream for StateMachine {
                     }
                     TriggerType::PrecommitQC => {
                         self.handle_precommit(msg.hash, msg.round, msg.source, msg.epoch_id)
+                    }
+                    TriggerType::WalStatus(epoch_id) => {
+                        self.handle_wal_status(epoch_id, msg.round, msg.source)
                     }
                 };
 
@@ -82,6 +88,36 @@ impl StateMachine {
         };
 
         (state_machine, Event::new(rx_1), Event::new(rx_2))
+    }
+
+    /// Wal status will only be called when recover from wal. Generally, this may occur at most once
+    /// per runtime.
+    fn handle_wal_status(
+        &mut self,
+        epoch_id: u64,
+        round: Option<u64>,
+        source: TriggerSource,
+    ) -> ConsensusResult<()> {
+        if round.is_none() {
+            return Err(ConsensusError::TriggerSMRErr(
+                "Wal status round error".to_string(),
+            ));
+        }
+
+        let round = round.unwrap();
+
+        info!(
+            "Overlord: SMR triggered by wal status epoch {} round {}",
+            epoch_id, round
+        );
+
+        if source != TriggerSource::State {
+            return Err(ConsensusError::Other("Wal status source error".to_string()));
+        }
+
+        self.goto_new_epoch(epoch_id);
+        self.round = round;
+        Ok(())
     }
 
     /// Handle a new epoch trigger. If new epoch ID is higher than current, goto a new epoch and

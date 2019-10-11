@@ -54,7 +54,7 @@ pub enum ConsensusError {
     ///
     #[display(fmt = "Storage error {}", _0)]
     StorageErr(String),
-    ///
+    /// Wal error.
     #[display(fmt = "Wal error {}", _0)]
     WalErr(String),
     ///

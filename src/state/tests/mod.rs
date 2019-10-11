@@ -17,6 +17,8 @@ use crate::types::{
 };
 use crate::Codec;
 
+const WAL_PATH: &str = "./logs/wal_1";
+
 #[derive(Debug)]
 struct Condition<T: Codec> {
     epoch_id:           u64,

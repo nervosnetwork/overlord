@@ -62,7 +62,7 @@ async fn handle_msg_test(
     let helper = ConsensusHelper::new(msg_tx);
     let crypto = BlsCrypto::new(Address::from(vec![0u8]));
 
-    let mut state = State::new(smr, address, 3000, helper, crypto);
+    let mut state = State::new(smr, address, 3000, WAL_PATH, helper, crypto);
     state.set_authority(gen_auth_list());
     update_state(&mut condition, &mut state);
     assert!(condition.proposal_collector.is_none());

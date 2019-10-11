@@ -13,13 +13,14 @@ use log::{debug, error, info, trace};
 use parking_lot::Mutex;
 use rlp::encode;
 
-use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
+use crate::smr::smr_types::{SMREvent, SMRTrigger, Step, TriggerSource, TriggerType};
 use crate::smr::{Event, SMR};
 use crate::state::collection::{ProposalCollector, VoteCollector};
 use crate::types::{
     Address, AggregatedSignature, AggregatedVote, Commit, Hash, OverlordMsg, PoLC, Proof, Proposal,
     Signature, SignedProposal, SignedVote, Status, Vote, VoteType,
 };
+use crate::wal::{Wal, WalMsg};
 use crate::{error::ConsensusError, utils::auth_manage::AuthorityManage};
 use crate::{Codec, Consensus, ConsensusResult, Crypto, INIT_EPOCH_ID, INIT_ROUND};
 
@@ -56,6 +57,7 @@ pub struct State<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto> {
     last_commit_proposal: Option<Hash>,
     epoch_start:          Instant,
     epoch_interval:       u64,
+    wal:                  Arc<Mutex<Wal>>,
 
     function: Arc<F>,
     pin_txs:  PhantomData<S>,
@@ -70,7 +72,17 @@ where
     C: Crypto,
 {
     /// Create a new state struct.
-    pub fn new(smr: SMR, addr: Address, interval: u64, consensus: F, crypto: C) -> Self {
+    pub fn new(
+        smr: SMR,
+        addr: Address,
+        interval: u64,
+        wal_path: &str,
+        consensus: F,
+        crypto: C,
+    ) -> Self {
+        let wal_log = Wal::new(wal_path).expect("Create wal log failed");
+        // TODO: Load wal
+
         State {
             epoch_id:             INIT_EPOCH_ID,
             round:                INIT_ROUND,
@@ -87,6 +99,7 @@ where
             last_commit_proposal: None,
             epoch_start:          Instant::now(),
             epoch_interval:       interval,
+            wal:                  Arc::new(Mutex::new(wal_log)),
 
             function: Arc::new(consensus),
             pin_txs:  PhantomData,
@@ -200,6 +213,13 @@ where
             self.re_check_qcs(qcs)?;
         }
 
+        // Save wal
+        {
+            let mut wal = self.wal.lock();
+            wal.save::<T, S>(WalMsg::EpochId(new_epoch_id))?;
+            wal.save::<T, S>(WalMsg::Authority(auth_list))?;
+        }
+
         self.state_machine.new_epoch(new_epoch_id)?;
         Ok(())
     }
@@ -224,11 +244,23 @@ where
             ));
         }
 
-        if lock_proposal.is_none() {
+        let lock_flag = if lock_proposal.is_none() {
             // Clear full transcation signal.
             self.full_transcation = Arc::new(Mutex::new(HashSet::new()));
             // Clear hash with epoch.
             self.hash_with_epoch.clear();
+            false
+        } else {
+            true
+        };
+
+        // Save wal
+        {
+            let mut wal = self.wal.lock();
+            wal.save::<T, S>(WalMsg::Round(round))?;
+            if !lock_flag {
+                wal.clear_lock()?;
+            }
         }
 
         // If self is not proposer, check whether it has received current signed proposal before. If
@@ -318,9 +350,19 @@ where
         let epoch_id = self.epoch_id;
         let tx_signal = Arc::clone(&self.full_transcation);
         let function = Arc::clone(&self.function);
+        let wal_log = Arc::clone(&self.wal);
+
         runtime::spawn(async move {
-            let _ =
-                check_current_epoch(ctx.clone(), function, tx_signal, epoch_id, hash, epoch).await;
+            let _ = check_current_epoch(
+                ctx.clone(),
+                function,
+                tx_signal,
+                epoch_id,
+                hash,
+                epoch,
+                wal_log,
+            )
+            .await;
         });
 
         Ok(())
@@ -446,9 +488,11 @@ where
         let epoch_id = self.epoch_id;
         let tx_signal = Arc::clone(&self.full_transcation);
         let function = Arc::clone(&self.function);
+        let wal_log = Arc::clone(&self.wal);
 
         runtime::spawn(async move {
-            let _ = check_current_epoch(ctx, function, tx_signal, epoch_id, hash, epoch).await;
+            let _ =
+                check_current_epoch(ctx, function, tx_signal, epoch_id, hash, epoch, wal_log).await;
         });
 
         Ok(())
@@ -497,7 +541,13 @@ where
         };
 
         let signed_vote = self.sign_vote(precommit)?;
+
         // **TODO: write Wal**
+        {
+            let mut wal = self.wal.lock();
+            wal.save::<T, S>(WalMsg::Step(Step::Precommit))?;
+        }
+
         if self.is_leader {
             self.votes
                 .insert_vote(signed_vote.get_hash(), signed_vote, self.address.clone());
@@ -828,11 +878,11 @@ where
         } else if let Some(mut epoch_hash) = self.counting_vote(vote_type.clone())? {
             let qc = self.generate_qc(epoch_hash.clone(), vote_type.clone())?;
             self.votes.set_qc(qc.clone());
+
             self.broadcast(Context::new(), OverlordMsg::AggregatedVote(qc))
                 .await;
 
             let set = self.full_transcation.lock();
-
             if vote_type == VoteType::Prevote {
                 epoch_hash = if set.contains(&epoch_hash) {
                     epoch_hash
@@ -1254,13 +1304,17 @@ async fn check_current_epoch<U: Consensus<T, S>, T: Codec, S: Codec>(
     epoch_id: u64,
     hash: Hash,
     epoch: T,
+    wal_log: Arc<Mutex<Wal>>,
 ) -> ConsensusResult<()> {
-    let _transcation = function
+    let transcation = function
         .check_epoch(ctx, epoch_id, hash.clone(), epoch)
         .await
         .map_err(|err| ConsensusError::Other(format!("Check current epoch {:?}", err)))?;
     let mut set = tx_signal.lock();
     set.insert(hash);
-    // TODO: write Wal
+
+    // Save wal
+    let mut wal = wal_log.lock();
+    wal.save::<T, S>(WalMsg::FullTxs(transcation))?;
     Ok(())
 }

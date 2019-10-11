@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 ///
 pub mod smr_types;
 ///
@@ -88,6 +90,20 @@ impl SMR {
                 source: TriggerSource::State,
                 hash: Hash::new(),
                 round: None,
+                epoch_id,
+            })
+            .map_err(|_| ConsensusError::TriggerSMRErr(trigger.to_string()))
+    }
+
+    /// Trigger SMR with wal status.
+    pub fn wal_status(&mut self, epoch_id: u64, round: u64) -> ConsensusResult<()> {
+        let trigger = TriggerType::WalStatus(epoch_id);
+        self.tx
+            .unbounded_send(SMRTrigger {
+                trigger_type: trigger.clone(),
+                source: TriggerSource::State,
+                hash: Hash::new(),
+                round: Some(round),
                 epoch_id,
             })
             .map_err(|_| ConsensusError::TriggerSMRErr(trigger.to_string()))

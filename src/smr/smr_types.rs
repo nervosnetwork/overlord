@@ -111,6 +111,9 @@ pub enum TriggerType {
     /// New Epoch trigger.
     #[display(fmt = "New epoch {}", _0)]
     NewEpoch(u64),
+    /// A Status recover from wal when start.
+    #[display(fmt = "Wal status")]
+    WalStatus(u64),
 }
 
 /// SMR trigger sources.
@@ -131,7 +134,7 @@ impl Into<u8> for TriggerType {
             TriggerType::Proposal => 0u8,
             TriggerType::PrevoteQC => 1u8,
             TriggerType::PrecommitQC => 2u8,
-            TriggerType::NewEpoch(_) => unreachable!(),
+            _ => unreachable!(),
         }
     }
 }
@@ -160,6 +163,9 @@ impl From<u8> for TriggerType {
 /// While trigger type is `NewEpoch`:
 ///     * `hash`: A empty hash,
 ///     * `round`: This must be `None`.
+/// While trigger type is `WalStatus`:
+///     * `hash`: A empty hash,
+///     * `round`: This must be `Some`.
 /// For each sources, while filling the `SMRTrigger`, the `epoch_id` field take the current epoch ID
 /// directly.
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
