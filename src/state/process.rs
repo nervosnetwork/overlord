@@ -413,7 +413,7 @@ where
         // If the signed proposal is with a lock, check the lock round and the QC then trigger it to
         // SMR. Otherwise, touch off SMR directly.
         let lock_round = if let Some(polc) = proposal.lock.clone() {
-            trace!("Overlord: state receive a signed proposal with a lock");
+            debug!("Overlord: state receive a signed proposal with a lock");
 
             if !self.authority.is_above_threshold(
                 polc.lock_votes.signature.address_bitmap.clone(),
@@ -562,7 +562,7 @@ where
             self.epoch_id, self.round
         );
 
-        trace!("Overlord: state get origin epoch");
+        debug!("Overlord: state get origin epoch");
         let epoch = self.epoch_id;
         let content = self
             .hash_with_epoch
@@ -575,7 +575,7 @@ where
             })?
             .to_owned();
 
-        trace!("Overlord: state generate proof");
+        debug!("Overlord: state generate proof");
         let qc = self
             .votes
             .get_qc(epoch, self.round, VoteType::Precommit)?
@@ -689,7 +689,7 @@ where
         let epoch_hash = self.counting_vote(vote_type.clone())?;
 
         if epoch_hash.is_none() {
-            trace!("Overlord: state counting of vote and no one above threshold");
+            debug!("Overlord: state counting of vote and no one above threshold");
             return Ok(());
         }
 
@@ -703,7 +703,7 @@ where
         let epoch_hash = epoch_hash.unwrap();
         let qc = self.generate_qc(epoch_hash.clone(), vote_type.clone())?;
 
-        trace!(
+        debug!(
             "Overlord: state set QC epoch ID {}, round {}",
             self.epoch_id,
             self.round
@@ -824,7 +824,7 @@ where
         let qc_hash = aggregated_vote.epoch_hash.clone();
         self.votes.set_qc(aggregated_vote);
 
-        trace!("Overlord: state check if get full transcations");
+        debug!("Overlord: state check if get full transcations");
         let set = self.full_transcation.lock();
         let epoch_hash = if set.contains(&qc_hash) {
             qc_hash
@@ -944,7 +944,7 @@ where
             self.votes
                 .get_votes(self.epoch_id, self.round, vote_type.clone(), &epoch_hash)?;
 
-        trace!("Overlord: state build aggregated signature");
+        debug!("Overlord: state build aggregated signature");
 
         let len = votes.len();
         let mut signatures = Vec::with_capacity(len);
