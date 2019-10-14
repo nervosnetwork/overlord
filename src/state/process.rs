@@ -599,7 +599,11 @@ where
 
         // log consensus cost
         let consume = Instant::now() - self.epoch_start;
-        log_json(None, json!({"epoch_id": epoch, "consensus_cost": consume}));
+        log_json(
+            "Overlord_Metrics",
+            None,
+            json!({"epoch_id": epoch, "consensus_cost": consume}),
+        );
 
         let ctx = Context::new();
         let status = self

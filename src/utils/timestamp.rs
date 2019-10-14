@@ -15,6 +15,7 @@ impl Timestamp {
 
     pub fn update(&mut self, step: Step) {
         log_json(
+            "Overlord_Metrics",
             None,
             json!({
                 "overlord-step": step,
