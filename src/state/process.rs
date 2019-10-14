@@ -324,7 +324,7 @@ where
         })?;
 
         info!(
-            "Overlord: state tigger SMR epoch ID {}, round {}, type {:?}",
+            "Overlord: state trigger SMR epoch ID {}, round {}, type {:?}",
             self.epoch_id,
             self.round,
             TriggerType::Proposal
@@ -734,6 +734,9 @@ where
         let epoch_hash = if set.contains(&epoch_hash) {
             epoch_hash
         } else {
+            warn!(
+                "Overlord: state check that does not get full transitions when handle signed vote"
+            );
             Hash::new()
         };
 
@@ -749,8 +752,9 @@ where
             epoch_id:     self.epoch_id,
         })?;
 
+        // This is for test
         info!(
-            "Overlord: state tigger SMR epoch ID {}, round {}, type {:?}",
+            "Overlord: state trigger SMR epoch ID {}, round {}, type {:?}",
             self.epoch_id, self.round, vote_type,
         );
 
@@ -847,7 +851,7 @@ where
         let epoch_hash = if set.contains(&qc_hash) {
             qc_hash
         } else {
-            warn!("Overlord: state check that does not get full transcations");
+            warn!("Overlord: state check that does not get full transcations when handle aggregated vote");
             Hash::new()
         };
 
@@ -864,8 +868,9 @@ where
             epoch_id:     self.epoch_id,
         })?;
 
+        // This is for test
         info!(
-            "Overlord: state tigger SMR epoch ID {}, round {}, type {:?}",
+            "Overlord: state trigger SMR epoch ID {}, round {}, type {:?}",
             self.epoch_id, self.round, qc_type,
         );
 
@@ -884,16 +889,28 @@ where
                 .votes
                 .get_qc(self.epoch_id, self.round, vote_type.clone())
             {
+                let set = self.full_transcation.lock();
+                let mut epoch_hash = qc.epoch_hash.clone();
+
+                if vote_type == VoteType::Prevote && !epoch_hash.is_empty() {
+                    epoch_hash = if set.contains(&epoch_hash) {
+                        epoch_hash
+                    } else {
+                        warn!("Overlord: state check that does not get full transcations when handle vote");
+                        Hash::new()
+                    };
+                }
+
                 self.state_machine.trigger(SMRTrigger {
                     trigger_type: qc.vote_type.clone().into(),
                     source:       TriggerSource::State,
-                    hash:         qc.epoch_hash,
+                    hash:         epoch_hash,
                     round:        Some(self.round),
                     epoch_id:     self.epoch_id,
                 })?;
 
                 info!(
-                    "Overlord: state tigger SMR epoch ID {}, round {}, type {:?}",
+                    "Overlord: state trigger SMR epoch ID {}, round {}, type {:?}",
                     self.epoch_id, self.round, qc.vote_type,
                 );
 
@@ -911,6 +928,7 @@ where
                 epoch_hash = if set.contains(&epoch_hash) {
                     epoch_hash
                 } else {
+                    warn!("Overlord: state check that does not get full transcations when handle vote");
                     Hash::new()
                 };
             }
@@ -928,8 +946,9 @@ where
                 epoch_id:     self.epoch_id,
             })?;
 
+            // This is for test
             info!(
-                "Overlord: state tigger SMR epoch ID {}, round {}, type {:?}",
+                "Overlord: state trigger SMR epoch ID {}, round {}, type {:?}",
                 self.epoch_id, self.round, vote_type,
             );
         }
