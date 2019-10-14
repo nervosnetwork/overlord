@@ -705,8 +705,7 @@ where
 
         debug!(
             "Overlord: state set QC epoch ID {}, round {}",
-            self.epoch_id,
-            self.round
+            self.epoch_id, self.round
         );
 
         self.votes.set_qc(qc.clone());
