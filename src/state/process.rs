@@ -10,8 +10,10 @@ use derive_more::Display;
 use futures::{channel::mpsc::UnboundedReceiver, select, StreamExt};
 use futures_timer::Delay;
 use log::{debug, error, info, trace};
+use log_json::log_json;
 use parking_lot::Mutex;
 use rlp::encode;
+use serde_json::json;
 
 use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
 use crate::smr::{Event, SMR};
@@ -24,10 +26,7 @@ use crate::{error::ConsensusError, utils::auth_manage::AuthorityManage};
 use crate::{Codec, Consensus, ConsensusResult, Crypto, INIT_EPOCH_ID, INIT_ROUND};
 
 #[cfg(features = "test")]
-use {
-    crate::{smr::smr_types::Step, utils::timestamp::Timestamp},
-    serde_json::json,
-};
+use crate::{smr::smr_types::Step, utils::timestamp::Timestamp};
 
 #[cfg(test)]
 use crate::types::Node;
@@ -172,21 +171,9 @@ where
     /// trigger SMR to goto new epoch.
     async fn goto_new_epoch(&mut self, ctx: Context, status: Status) -> ConsensusResult<()> {
         #[cfg(features = "test")]
-        {
-            // This is for test.
-            self.timestamp.update(Step::Commit);
-            let tmp = Instant::now() - self.epoch_start;
-            let consume = tmp.as_millis() as u64;
+        self.timestamp.update(Step::Commit);
 
-            info!(
-                "{:?}",
-                json!({
-                    "epoch_id": self.epoch_id,
-                    "consume": consume,
-                })
-            );
-        }
-
+        self.epoch_start = Instant::now();
         let new_epoch_id = status.epoch_id;
         let get_last_flag = new_epoch_id != self.epoch_id + 1;
 
@@ -609,6 +596,10 @@ where
         self.last_commit_round = Some(self.round);
         self.last_commit_proposal = Some(hash);
         // **TODO: write Wal**
+
+        // log consensus cost
+        let consume = Instant::now() - self.epoch_start;
+        log_json(None, json!({"epoch_id": epoch, "consensus_cost": consume}));
 
         let ctx = Context::new();
         let status = self

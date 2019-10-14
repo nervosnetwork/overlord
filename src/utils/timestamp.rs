@@ -1,5 +1,6 @@
 use std::time::Instant;
 
+use log_json::log_json;
 use serde_json::json;
 
 use crate::smr::smr_types::Step;
@@ -13,12 +14,12 @@ impl Timestamp {
     }
 
     pub fn update(&mut self, step: Step) {
-        log::info!(
-            "{:?}",
+        log_json(
+            None,
             json!({
-                "step": step,
-                "consume":  Instant::now() - self.0,
-            })
+                "overlord-step": step,
+                "cost":  Instant::now() - self.0,
+            }),
         );
         self.0 = Instant::now();
     }
