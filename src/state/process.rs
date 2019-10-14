@@ -9,7 +9,7 @@ use creep::Context;
 use derive_more::Display;
 use futures::{channel::mpsc::UnboundedReceiver, select, StreamExt};
 use futures_timer::Delay;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use log_json::log_json;
 use parking_lot::Mutex;
 use rlp::encode;
@@ -331,11 +331,18 @@ where
         );
 
         let epoch_id = self.epoch_id;
+        let round = self.round;
         let tx_signal = Arc::clone(&self.full_transcation);
         let function = Arc::clone(&self.function);
         runtime::spawn(async move {
-            let _ =
-                check_current_epoch(ctx.clone(), function, tx_signal, epoch_id, hash, epoch).await;
+            if let Err(e) =
+                check_current_epoch(ctx.clone(), function, tx_signal, epoch_id, hash, epoch).await
+            {
+                error!(
+                    "Overlord: state check epoch failed, epoch ID {}, round {}, error {:?}",
+                    epoch_id, round, e
+                )
+            }
         });
 
         Ok(())
@@ -464,11 +471,19 @@ where
 
         info!("Overlord: state check the whole epoch");
         let epoch_id = self.epoch_id;
+        let round = self.round;
         let tx_signal = Arc::clone(&self.full_transcation);
         let function = Arc::clone(&self.function);
 
         runtime::spawn(async move {
-            let _ = check_current_epoch(ctx, function, tx_signal, epoch_id, hash, epoch).await;
+            if let Err(e) =
+                check_current_epoch(ctx, function, tx_signal, epoch_id, hash, epoch).await
+            {
+                error!(
+                    "Overlord: state check epoch failed, epoch ID {}, round {}, error {:?}",
+                    epoch_id, round, e
+                );
+            }
         });
 
         Ok(())
@@ -832,6 +847,7 @@ where
         let epoch_hash = if set.contains(&qc_hash) {
             qc_hash
         } else {
+            warn!("Overlord: state check that does not get full transcations");
             Hash::new()
         };
 
