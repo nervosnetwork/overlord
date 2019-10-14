@@ -9,7 +9,7 @@ use creep::Context;
 use derive_more::Display;
 use futures::{channel::mpsc::UnboundedReceiver, select, StreamExt};
 use futures_timer::Delay;
-use log::{debug, error, info, trace};
+use log::{debug, error, info};
 use log_json::log_json;
 use parking_lot::Mutex;
 use rlp::encode;
