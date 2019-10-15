@@ -11,10 +11,8 @@ use futures::channel::mpsc::{unbounded, UnboundedReceiver};
 use futures::{select, StreamExt};
 use futures_timer::Delay;
 use log::{debug, error, info, warn};
-use log_json::log_json;
 use parking_lot::Mutex;
 use rlp::encode;
-use serde_json::json;
 
 use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
 use crate::smr::{Event, SMR};
@@ -27,10 +25,16 @@ use crate::{error::ConsensusError, utils::auth_manage::AuthorityManage};
 use crate::{Codec, Consensus, ConsensusResult, Crypto, INIT_EPOCH_ID, INIT_ROUND};
 
 #[cfg(features = "test")]
-use crate::{smr::smr_types::Step, utils::timestamp::Timestamp};
+use {
+    crate::{
+        smr::smr_types::Step,
+        utils::{metrics::metrics, timestamp::Timestamp},
+    },
+    serde_json::json,
+};
 
-#[cfg(test)]
-use crate::types::Node;
+// #[cfg(test)]
+// use crate::types::Node;
 
 const CHECK_EPOCH_FLAG: bool = true;
 
@@ -592,12 +596,11 @@ where
         // **TODO: write Wal**
 
         // log consensus cost
-        let consume = Instant::now() - self.epoch_start;
-        log_json(
-            "Overlord_Metrics",
-            None,
-            json!({"epoch_id": epoch, "consensus_cost": consume}),
-        );
+        #[cfg(feature = "test")]
+        {
+            let consume = Instant::now() - self.epoch_start;
+            matrics(json!({"epoch_id": epoch, "consensus_cost": consume}));
+        }
 
         let ctx = Context::new();
         let status = self
@@ -1316,10 +1319,10 @@ where
         self.round = round;
     }
 
-    #[cfg(test)]
-    pub fn set_authority(&mut self, mut authority: Vec<Node>) {
-        self.authority.update(&mut authority, false);
-    }
+    // #[cfg(test)]
+    // pub fn set_authority(&mut self, mut authority: Vec<Node>) {
+    //     self.authority.update(&mut authority, false);
+    // }
 
     #[cfg(test)]
     pub fn set_proposal_collector(&mut self, collector: ProposalCollector<T>) {

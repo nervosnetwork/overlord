@@ -1,8 +1,8 @@
 use std::time::Instant;
 
-use log_json::log_json;
 use serde_json::json;
 
+use crate::metrics::metrics;
 use crate::smr::smr_types::Step;
 
 #[derive(Clone, Debug)]
@@ -14,14 +14,10 @@ impl Timestamp {
     }
 
     pub fn update(&mut self, step: Step) {
-        log_json(
-            "Overlord_Metrics",
-            None,
-            json!({
-                "overlord-step": step,
-                "cost":  Instant::now() - self.0,
-            }),
-        );
+        metrics(json!({
+            "overlord-step": step,
+            "cost":  Instant::now() - self.0,
+        }));
         self.0 = Instant::now();
     }
 }
