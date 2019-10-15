@@ -1,31 +1,45 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+pub use log::{debug, error, info, trace, warn};
+use log::{log_enabled, Level};
 
-use log::trace;
-use serde_json::{json, Value};
-
-/// Log the context message and a json value in json format at the trace level.
-pub fn metrics(info_value: Value) {
-    let output = json!({"info": info_value, "timestamp": sys_now()});
-    trace!("{}", output);
+///
+#[macro_export]
+macro_rules! duration_since_ms {
+    ($start:expr) => {{
+        let end = Instant::now();
+        end.duration_since($start).as_millis() as u64
+    }};
 }
 
-fn sys_now() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use env_logger;
-
-    #[test]
-    fn test_log() {
-        env_logger::init();
-
-        let log = json!({"epoch_id": 0});
-        metrics(log);
+///
+#[macro_export(local_inner_macros)]
+macro_rules! json {
+    ($($json:tt)+) => {
+        serde_json::json!({"timestamp": timestamp(), $($json)+})
     }
+}
+
+///
+#[macro_export(local_inner_macros)]
+macro_rules! metrics {
+    ($name:expr => $start:expr, $($json:tt)+) => {
+        if metrics_enabled() {
+            let cost_ms = duration_since_ms!($start);
+            let timing = json!($name: cost_ms, $($json)+);
+
+            log::trace!("{}", timing);
+        }
+    };
+    ($start:expr, $($json:tt)+) => {{
+        metrics!("cost_ms" => $start, $($json)+)
+    }};
+}
+
+///
+pub fn metrics_enabled() -> bool {
+    log_enabled!(target: "Muta_Metrics", Level::Trace)
+}
+
+///
+pub fn timestamp() -> String {
+    chrono::Utc::now().to_rfc3339()
 }

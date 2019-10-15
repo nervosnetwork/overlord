@@ -10,6 +10,3 @@ pub mod timer_config;
 ///
 #[cfg(feature = "test")]
 pub mod timestamp;
-
-#[cfg(feature = "test")]
-pub use metrics::metrics;

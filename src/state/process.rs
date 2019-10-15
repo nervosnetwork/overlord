@@ -26,10 +26,8 @@ use crate::{Codec, Consensus, ConsensusResult, Crypto, INIT_EPOCH_ID, INIT_ROUND
 
 #[cfg(feature = "test")]
 use {
-    crate::{
-        smr::smr_types::Step,
-        utils::{metrics, timestamp::Timestamp},
-    },
+    crate::utils::metrics::{metrics_enabled, timestamp},
+    crate::{metrics, smr::smr_types::Step, utils::timestamp::Timestamp},
     serde_json::json,
 };
 
@@ -598,8 +596,7 @@ where
         // log consensus cost
         #[cfg(feature = "test")]
         {
-            let consume = Instant::now() - self.epoch_start;
-            metrics(json!({"epoch_id": epoch, "consensus_cost": consume}));
+            metrics!("consensus_cost" => self.epoch_start, "epoch ID": epoch);
         }
 
         let ctx = Context::new();
