@@ -7,7 +7,8 @@ use bit_vec::BitVec;
 use bytes::Bytes;
 use creep::Context;
 use derive_more::Display;
-use futures::{channel::mpsc::UnboundedReceiver, select, StreamExt};
+use futures::channel::mpsc::{unbounded, UnboundedReceiver};
+use futures::{select, StreamExt};
 use futures_timer::Delay;
 use log::{debug, error, info, warn};
 use log_json::log_json;
@@ -30,6 +31,8 @@ use crate::{smr::smr_types::Step, utils::timestamp::Timestamp};
 
 #[cfg(test)]
 use crate::types::Node;
+
+const CHECK_EPOCH_FLAG: bool = true;
 
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
 enum MsgType {
@@ -55,6 +58,7 @@ pub struct State<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto> {
     authority:            AuthorityManage,
     hash_with_epoch:      HashMap<Hash, T>,
     full_transcation:     Arc<Mutex<HashSet<Hash>>>,
+    check_epoch_rx:       UnboundedReceiver<bool>,
     is_leader:            bool,
     leader_address:       Address,
     last_commit_round:    Option<u64>,
@@ -79,6 +83,8 @@ where
 {
     /// Create a new state struct.
     pub fn new(smr: SMR, addr: Address, interval: u64, consensus: Arc<F>, crypto: C) -> Self {
+        let (_tx, rx) = unbounded();
+
         State {
             epoch_id:             INIT_EPOCH_ID,
             round:                INIT_ROUND,
@@ -89,6 +95,7 @@ where
             authority:            AuthorityManage::new(),
             hash_with_epoch:      HashMap::new(),
             full_transcation:     Arc::new(Mutex::new(HashSet::new())),
+            check_epoch_rx:       rx,
             is_leader:            false,
             leader_address:       Address::default(),
             last_commit_round:    None,
@@ -330,21 +337,7 @@ where
             TriggerType::Proposal
         );
 
-        let epoch_id = self.epoch_id;
-        let round = self.round;
-        let tx_signal = Arc::clone(&self.full_transcation);
-        let function = Arc::clone(&self.function);
-        runtime::spawn(async move {
-            if let Err(e) =
-                check_current_epoch(ctx.clone(), function, tx_signal, epoch_id, hash, epoch).await
-            {
-                error!(
-                    "Overlord: state check epoch failed, epoch ID {}, round {}, error {:?}",
-                    epoch_id, round, e
-                )
-            }
-        });
-
+        self.check_epoch(ctx, hash, epoch).await;
         Ok(())
     }
 
@@ -469,23 +462,9 @@ where
             TriggerType::Proposal
         );
 
-        info!("Overlord: state check the whole epoch");
-        let epoch_id = self.epoch_id;
-        let round = self.round;
-        let tx_signal = Arc::clone(&self.full_transcation);
-        let function = Arc::clone(&self.function);
+        debug!("Overlord: state check the whole epoch");
 
-        runtime::spawn(async move {
-            if let Err(e) =
-                check_current_epoch(ctx, function, tx_signal, epoch_id, hash, epoch).await
-            {
-                error!(
-                    "Overlord: state check epoch failed, epoch ID {}, round {}, error {:?}",
-                    epoch_id, round, e
-                );
-            }
-        });
-
+        self.check_epoch(ctx, hash, epoch).await;
         Ok(())
     }
 
@@ -519,8 +498,6 @@ where
                 .await;
         }
 
-        // Wait for 50ms then check votes
-        let _ = Delay::new(Duration::from_millis(50)).await;
         self.vote_process(VoteType::Prevote).await?;
         Ok(())
     }
@@ -731,16 +708,7 @@ where
 
         self.votes.set_qc(qc.clone());
         self.broadcast(ctx, OverlordMsg::AggregatedVote(qc)).await;
-
-        let set = self.full_transcation.lock();
-        let epoch_hash = if set.contains(&epoch_hash) {
-            epoch_hash
-        } else {
-            warn!(
-                "Overlord: state check that does not get full transitions when handle signed vote"
-            );
-            Hash::new()
-        };
+        let epoch_hash = self.check_full_txs(epoch_hash).await?;
 
         info!(
             "Overlord: state trigger SMR {:?} QC epoch ID {}, round {}",
@@ -849,13 +817,7 @@ where
         self.votes.set_qc(aggregated_vote);
 
         debug!("Overlord: state check if get full transcations");
-        let set = self.full_transcation.lock();
-        let epoch_hash = if set.contains(&qc_hash) {
-            qc_hash
-        } else {
-            warn!("Overlord: state check that does not get full transcations when handle aggregated vote");
-            Hash::new()
-        };
+        let epoch_hash = self.check_full_txs(qc_hash).await?;
 
         info!(
             "Overlord: state trigger SMR {:?} QC epoch ID {}, round {}",
@@ -891,16 +853,9 @@ where
                 .votes
                 .get_qc(self.epoch_id, self.round, vote_type.clone())
             {
-                let set = self.full_transcation.lock();
                 let mut epoch_hash = qc.epoch_hash.clone();
-
                 if vote_type == VoteType::Prevote && !epoch_hash.is_empty() {
-                    epoch_hash = if set.contains(&epoch_hash) {
-                        epoch_hash
-                    } else {
-                        warn!("Overlord: state check that does not get full transcations when handle vote");
-                        Hash::new()
-                    };
+                    epoch_hash = self.check_full_txs(epoch_hash).await?;
                 }
 
                 self.state_machine.trigger(SMRTrigger {
@@ -924,15 +879,8 @@ where
             self.broadcast(Context::new(), OverlordMsg::AggregatedVote(qc))
                 .await;
 
-            let set = self.full_transcation.lock();
-
             if vote_type == VoteType::Prevote {
-                epoch_hash = if set.contains(&epoch_hash) {
-                    epoch_hash
-                } else {
-                    warn!("Overlord: state check that does not get full transcations when handle vote");
-                    Hash::new()
-                };
+                epoch_hash = self.check_full_txs(epoch_hash).await?;
             }
 
             info!(
@@ -1304,6 +1252,62 @@ where
                     err
                 );
             });
+    }
+
+    async fn check_epoch(&mut self, ctx: Context, hash: Hash, epoch: T) {
+        let epoch_id = self.epoch_id;
+        let round = self.round;
+        let tx_signal = Arc::clone(&self.full_transcation);
+        let function = Arc::clone(&self.function);
+        let (new_tx, new_rx) = unbounded();
+        let mempool_tx = new_tx.clone();
+        self.check_epoch_rx = new_rx;
+
+        runtime::spawn(async move {
+            if let Err(e) =
+                check_current_epoch(ctx, function, tx_signal, epoch_id, hash, epoch).await
+            {
+                error!(
+                    "Overlord: state check epoch failed, epoch ID {}, round {}, error {:?}",
+                    epoch_id, round, e
+                )
+            }
+
+            if let Err(e) = mempool_tx.unbounded_send(CHECK_EPOCH_FLAG) {
+                error!(
+                    "Overlord: state send check epoch flag failed, epoch ID {}, round {}, error {:?}",
+                    epoch_id, round, e
+                );
+            }
+        });
+
+        runtime::spawn(async move {
+            let _ = Delay::new(Duration::from_millis(1500)).await;
+            if let Err(e) = new_tx.unbounded_send(CHECK_EPOCH_FLAG) {
+                error!(
+                    "Overlord: state send check epoch flag failed, epoch ID {}, round {}, error {:?}",
+                    epoch_id, round, e
+                );
+            }
+        });
+    }
+
+    async fn check_full_txs(&mut self, hash: Hash) -> ConsensusResult<Hash> {
+        let _ =
+            self.check_epoch_rx.next().await.ok_or_else(|| {
+                ConsensusError::ChannelErr("receive check txs result".to_string())
+            })?;
+
+        let set = self.full_transcation.lock();
+        let epoch_hash = if set.contains(&hash) {
+            hash
+        } else {
+            warn!(
+                "Overlord: state check that does not get full transitions when handle signed vote"
+            );
+            Hash::new()
+        };
+        Ok(epoch_hash)
     }
 
     #[cfg(test)]
