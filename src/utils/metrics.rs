@@ -41,5 +41,5 @@ pub fn metrics_enabled() -> bool {
 
 ///
 pub fn timestamp() -> String {
-    chrono::Utc::now().to_rfc3339()
+    format!("{}", chrono::Utc::now().timestamp())
 }
