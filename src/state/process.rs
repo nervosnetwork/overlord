@@ -519,6 +519,8 @@ where
                 .await;
         }
 
+        // Wait for 50ms then check votes
+        let _ = Delay::new(Duration::from_millis(50)).await;
         self.vote_process(VoteType::Prevote).await?;
         Ok(())
     }
