@@ -1,12 +1,15 @@
 ///
 pub mod auth_manage;
 ///
-#[cfg(features = "test")]
+#[cfg(feature = "test")]
 pub mod metrics;
 ///
 mod rand_proposer;
 ///
 pub mod timer_config;
 ///
-#[cfg(features = "test")]
+#[cfg(feature = "test")]
 pub mod timestamp;
+
+#[cfg(feature = "test")]
+pub use metrics::metrics;

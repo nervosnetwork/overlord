@@ -24,11 +24,11 @@ use crate::types::{
 use crate::{error::ConsensusError, utils::auth_manage::AuthorityManage};
 use crate::{Codec, Consensus, ConsensusResult, Crypto, INIT_EPOCH_ID, INIT_ROUND};
 
-#[cfg(features = "test")]
+#[cfg(feature = "test")]
 use {
     crate::{
         smr::smr_types::Step,
-        utils::{metrics::metrics, timestamp::Timestamp},
+        utils::{metrics, timestamp::Timestamp},
     },
     serde_json::json,
 };
@@ -74,7 +74,7 @@ pub struct State<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto> {
     pin_txs:  PhantomData<S>,
     util:     C,
 
-    #[cfg(features = "test")]
+    #[cfg(feature = "test")]
     timestamp: Timestamp,
 }
 
@@ -111,8 +111,8 @@ where
             pin_txs:  PhantomData,
             util:     crypto,
 
-            #[cfg(features = "test")]
-            timestamp:                           Timestamp::new(),
+            #[cfg(feature = "test")]
+            timestamp:                          Timestamp::new(),
         }
     }
 
@@ -181,7 +181,7 @@ where
     /// votes and quorum certificates before, these should be re-checked as goto new epoch. Finally,
     /// trigger SMR to goto new epoch.
     async fn goto_new_epoch(&mut self, ctx: Context, status: Status) -> ConsensusResult<()> {
-        #[cfg(features = "test")]
+        #[cfg(feature = "test")]
         self.timestamp.update(Step::Commit);
 
         self.epoch_start = Instant::now();
@@ -473,7 +473,7 @@ where
     }
 
     async fn handle_prevote_vote(&mut self, hash: Hash) -> ConsensusResult<()> {
-        #[cfg(features = "test")]
+        #[cfg(feature = "test")]
         {
             // This is for test.
             self.timestamp.update(Step::Propose);
@@ -507,7 +507,7 @@ where
     }
 
     async fn handle_precommit_vote(&mut self, hash: Hash) -> ConsensusResult<()> {
-        #[cfg(features = "test")]
+        #[cfg(feature = "test")]
         {
             // This is for test.
             self.timestamp.update(Step::Prevote);
@@ -541,7 +541,7 @@ where
     }
 
     async fn handle_commit(&mut self, hash: Hash) -> ConsensusResult<()> {
-        #[cfg(features = "test")]
+        #[cfg(feature = "test")]
         {
             // This is for test.
             self.timestamp.update(Step::Precommit);
@@ -599,7 +599,7 @@ where
         #[cfg(feature = "test")]
         {
             let consume = Instant::now() - self.epoch_start;
-            matrics(json!({"epoch_id": epoch, "consensus_cost": consume}));
+            metrics(json!({"epoch_id": epoch, "consensus_cost": consume}));
         }
 
         let ctx = Context::new();

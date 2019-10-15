@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use serde_json::json;
 
-use crate::metrics::metrics;
+use crate::utils::metrics;
 use crate::smr::smr_types::Step;
 
 #[derive(Clone, Debug)]
