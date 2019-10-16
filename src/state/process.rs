@@ -1320,7 +1320,7 @@ where
         let epoch_hash = {
             let mut map = self.full_transcation.lock();
             map.insert(hash.clone(), flag);
-            
+
             if flag {
                 hash
             } else {
