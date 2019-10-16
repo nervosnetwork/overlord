@@ -59,7 +59,7 @@ pub struct State<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto> {
     votes:                VoteCollector,
     authority:            AuthorityManage,
     hash_with_epoch:      HashMap<Hash, T>,
-    full_transcation:     Arc<Mutex<HashSet<Hash>>>,
+    full_transcation:     Arc<Mutex<HashMap<Hash, bool>>>,
     check_epoch_rx:       UnboundedReceiver<bool>,
     is_leader:            bool,
     leader_address:       Address,
@@ -96,7 +96,7 @@ where
             votes:                VoteCollector::new(),
             authority:            AuthorityManage::new(),
             hash_with_epoch:      HashMap::new(),
-            full_transcation:     Arc::new(Mutex::new(HashSet::new())),
+            full_transcation:     Arc::new(Mutex::new(HashMap::new())),
             check_epoch_rx:       rx,
             is_leader:            false,
             leader_address:       Address::default(),
@@ -250,7 +250,7 @@ where
 
         if lock_proposal.is_none() {
             // Clear full transcation signal.
-            self.full_transcation = Arc::new(Mutex::new(HashSet::new()));
+            self.full_transcation = Arc::new(Mutex::new(HashMap::new()));
             // Clear hash with epoch.
             self.hash_with_epoch.clear();
         }
@@ -698,7 +698,7 @@ where
 
         // Build the quorum certificate needs to aggregate signatures into an aggregate
         // signature besides the address bitmap.
-        let epoch_hash = epoch_hash.unwrap();
+        let mut epoch_hash = epoch_hash.unwrap();
         let qc = self.generate_qc(epoch_hash.clone(), vote_type.clone())?;
 
         debug!(
@@ -708,7 +708,10 @@ where
 
         self.votes.set_qc(qc.clone());
         self.broadcast(ctx, OverlordMsg::AggregatedVote(qc)).await;
-        let epoch_hash = self.check_full_txs(epoch_hash).await?;
+
+        if vote_type == VoteType::Prevote && !epoch_hash.is_empty() {
+            epoch_hash = self.check_full_txs(epoch_hash).await?;
+        }
 
         info!(
             "Overlord: state trigger SMR {:?} QC epoch ID {}, round {}",
@@ -817,7 +820,12 @@ where
         self.votes.set_qc(aggregated_vote);
 
         debug!("Overlord: state check if get full transcations");
-        let epoch_hash = self.check_full_txs(qc_hash).await?;
+
+        let epoch_hash = if qc_type == VoteType::Prevote && !qc_hash.is_empty() {
+            self.check_full_txs(qc_hash.clone()).await?
+        } else {
+            qc_hash
+        };
 
         info!(
             "Overlord: state trigger SMR {:?} QC epoch ID {}, round {}",
@@ -879,7 +887,7 @@ where
             self.broadcast(Context::new(), OverlordMsg::AggregatedVote(qc))
                 .await;
 
-            if vote_type == VoteType::Prevote {
+            if vote_type == VoteType::Prevote && !epoch_hash.is_empty() {
                 epoch_hash = self.check_full_txs(epoch_hash).await?;
             }
 
@@ -1283,7 +1291,7 @@ where
 
         runtime::spawn(async move {
             let _ = Delay::new(Duration::from_millis(1500)).await;
-            if let Err(e) = new_tx.unbounded_send(CHECK_EPOCH_FLAG) {
+            if let Err(e) = new_tx.unbounded_send(false) {
                 error!(
                     "Overlord: state send check epoch flag failed, epoch ID {}, round {}, error {:?}",
                     epoch_id, round, e
@@ -1293,19 +1301,34 @@ where
     }
 
     async fn check_full_txs(&mut self, hash: Hash) -> ConsensusResult<Hash> {
-        let _ =
+        {
+            let map = self.full_transcation.lock();
+            if let Some(res) = map.get(&hash) {
+                if *res {
+                    return Ok(hash.clone());
+                } else {
+                    return Ok(Hash::new());
+                }
+            }
+        }
+
+        let flag =
             self.check_epoch_rx.next().await.ok_or_else(|| {
                 ConsensusError::ChannelErr("receive check txs result".to_string())
             })?;
 
-        let set = self.full_transcation.lock();
-        let epoch_hash = if set.contains(&hash) {
-            hash
-        } else {
-            warn!(
-                "Overlord: state check that does not get full transitions when handle signed vote"
-            );
-            Hash::new()
+        let epoch_hash = {
+            let mut map = self.full_transcation.lock();
+            map.insert(hash.clone(), flag);
+            
+            if flag {
+                hash
+            } else {
+                warn!(
+                    "Overlord: state check that does not get full transitions when handle signed vote"
+                );
+                Hash::new()
+            }
         };
         Ok(epoch_hash)
     }
@@ -1333,8 +1356,8 @@ where
 
     #[cfg(test)]
     pub fn set_full_transaction(&mut self, hash: Hash) {
-        let mut set = self.full_transcation.lock();
-        set.insert(hash);
+        let mut map = self.full_transcation.lock();
+        map.insert(hash, true);
     }
 
     #[cfg(test)]
@@ -1346,17 +1369,18 @@ where
 async fn check_current_epoch<U: Consensus<T, S>, T: Codec, S: Codec>(
     ctx: Context,
     function: Arc<U>,
-    tx_signal: Arc<Mutex<HashSet<Hash>>>,
+    tx_signal: Arc<Mutex<HashMap<Hash, bool>>>,
     epoch_id: u64,
     hash: Hash,
     epoch: T,
 ) -> ConsensusResult<()> {
-    let _transcation = function
+    let transcations = function
         .check_epoch(ctx, epoch_id, hash.clone(), epoch)
-        .await
-        .map_err(|err| ConsensusError::Other(format!("Check current epoch {:?}", err)))?;
-    let mut set = tx_signal.lock();
-    set.insert(hash);
+        .await;
+
+    let res = transcations.is_ok();
+    let mut map = tx_signal.lock();
+    map.insert(hash, res);
     // TODO: write Wal
     Ok(())
 }
