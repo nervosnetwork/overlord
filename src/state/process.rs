@@ -490,7 +490,8 @@ where
         let epoch = proposal.content.clone();
 
         self.hash_with_epoch.insert(hash.clone(), proposal.content);
-        self.proposals.insert(self.epoch_id, self.round, signed_proposal)?;
+        self.proposals
+            .insert(self.epoch_id, self.round, signed_proposal)?;
 
         error!("Overlord: state {:?}", self.hash_with_epoch);
 
