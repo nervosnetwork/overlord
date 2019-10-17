@@ -196,7 +196,7 @@ where
 
             SMREvent::PrecommitVote { epoch_hash, .. } => {
                 error!("Overlord: {:?}", self.hash_with_epoch.get(&epoch_hash));
-                
+
                 if let Err(e) = self.handle_precommit_vote(epoch_hash).await {
                     error!("Overlord: state handle precommit vote error {:?}", e);
                 }
@@ -599,16 +599,40 @@ where
 
         debug!("Overlord: state get origin epoch");
         let epoch = self.epoch_id;
-        let content = self
-            .hash_with_epoch
-            .get(&hash)
-            .ok_or_else(|| {
-                ConsensusError::Other(format!(
+
+        let content = if let Some(tmp) = self.hash_with_epoch.get(&hash) {
+            tmp.to_owned()
+        } else {
+            let proposal_vec = self.proposals.get_epoch_proposals(epoch).ok_or_else(|| {
+                ConsensusError::StorageErr(format!("No proposal in epoch ID {}", epoch))
+            })?;
+            let mut res = u64::max_value();
+            for (index, proposal) in proposal_vec.iter().enumerate() {
+                if proposal.proposal.epoch_hash == hash {
+                    res = index as u64;
+                    break;
+                }
+            }
+
+            if res == u64::max_value() {
+                return Err(ConsensusError::Other(format!(
                     "Lose whole epoch epoch ID {}, round {}",
                     self.epoch_id, self.round
-                ))
-            })?
-            .to_owned();
+                )));
+            }
+            proposal_vec[res as usize].proposal.content.clone()
+        };
+
+        // let content = self
+        //     .hash_with_epoch
+        //     .get(&hash)
+        //     .ok_or_else(|| {
+        //         ConsensusError::Other(format!(
+        //             "Lose whole epoch epoch ID {}, round {}",
+        //             self.epoch_id, self.round
+        //         ))
+        //     })?
+        //     .to_owned();
 
         debug!("Overlord: state generate proof");
         let qc = self
