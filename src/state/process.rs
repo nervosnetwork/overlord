@@ -225,6 +225,8 @@ where
         let new_epoch_id = status.epoch_id;
         let get_last_flag = new_epoch_id != self.epoch_id + 1;
 
+        info!("Overlord: state goto new epoch {}", new_epoch_id);
+
         // Update epoch ID and authority list.
         self.epoch_id = new_epoch_id;
         self.round = INIT_ROUND;
@@ -488,6 +490,9 @@ where
         let epoch = proposal.content.clone();
 
         self.hash_with_epoch.insert(hash.clone(), proposal.content);
+
+        error!("Overlord: state {:?}", self.hash_with_epoch);
+
         self.state_machine.trigger(SMRTrigger {
             trigger_type: TriggerType::Proposal,
             source:       TriggerSource::State,
