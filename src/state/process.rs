@@ -184,7 +184,7 @@ where
                 }
                 Ok(())
             }
-            
+
             SMREvent::PrevoteVote { epoch_hash, .. } => {
                 if let Err(e) = self.handle_prevote_vote(epoch_hash).await {
                     error!("Overlord: state handle prevote vote error {:?}", e);
