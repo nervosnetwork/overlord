@@ -136,10 +136,29 @@ where
     ) -> ConsensusResult<()> {
         let msg = msg.ok_or_else(|| ConsensusError::Other("Message sender dropped".to_string()))?;
         let (ctx, raw) = (msg.0, msg.1);
+
         match raw {
-            OverlordMsg::SignedProposal(sp) => self.handle_signed_proposal(ctx.clone(), sp).await,
-            OverlordMsg::AggregatedVote(av) => self.handle_aggregated_vote(ctx.clone(), av).await,
-            OverlordMsg::SignedVote(sv) => self.handle_signed_vote(ctx.clone(), sv).await,
+            OverlordMsg::SignedProposal(sp) => {
+                if let Err(e) = self.handle_signed_proposal(ctx.clone(), sp).await {
+                    error!("Overlord: state handle signed proposal error {:?}", e);
+                }
+                Ok(())
+            }
+
+            OverlordMsg::AggregatedVote(av) => {
+                if let Err(e) = self.handle_aggregated_vote(ctx.clone(), av).await {
+                    error!("Overlord: state handle aggregated vote error {:?}", e);
+                }
+                Ok(())
+            }
+
+            OverlordMsg::SignedVote(sv) => {
+                if let Err(e) = self.handle_signed_vote(ctx.clone(), sv).await {
+                    error!("Overlord: state handle signed vote error {:?}", e);
+                }
+                Ok(())
+            }
+
             OverlordMsg::RichStatus(rs) => self.goto_new_epoch(ctx.clone(), rs).await,
 
             // This is for unit tests.
@@ -157,13 +176,29 @@ where
                 lock_proposal,
                 ..
             } => {
-                self.handle_new_round(round, lock_round, lock_proposal)
+                if let Err(e) = self
+                    .handle_new_round(round, lock_round, lock_proposal)
                     .await
+                {
+                    error!("Overlord: state handle new round error {:?}", e);
+                }
+                Ok(())
             }
-            SMREvent::PrevoteVote { epoch_hash, .. } => self.handle_prevote_vote(epoch_hash).await,
+            
+            SMREvent::PrevoteVote { epoch_hash, .. } => {
+                if let Err(e) = self.handle_prevote_vote(epoch_hash).await {
+                    error!("Overlord: state handle prevote vote error {:?}", e);
+                }
+                Ok(())
+            }
+
             SMREvent::PrecommitVote { epoch_hash, .. } => {
-                self.handle_precommit_vote(epoch_hash).await
+                if let Err(e) = self.handle_precommit_vote(epoch_hash).await {
+                    error!("Overlord: state handle precommit vote error {:?}", e);
+                }
+                Ok(())
             }
+
             SMREvent::Commit(hash) => self.handle_commit(hash).await,
             _ => unreachable!(),
         }
