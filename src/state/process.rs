@@ -186,8 +186,6 @@ where
             }
 
             SMREvent::PrevoteVote { epoch_hash, .. } => {
-                error!("Overlord: {:?}", self.hash_with_epoch.get(&epoch_hash));
-
                 if let Err(e) = self.handle_prevote_vote(epoch_hash).await {
                     error!("Overlord: state handle prevote vote error {:?}", e);
                 }
@@ -195,8 +193,6 @@ where
             }
 
             SMREvent::PrecommitVote { epoch_hash, .. } => {
-                error!("Overlord: {:?}", self.hash_with_epoch.get(&epoch_hash));
-
                 if let Err(e) = self.handle_precommit_vote(epoch_hash).await {
                     error!("Overlord: state handle precommit vote error {:?}", e);
                 }
@@ -396,7 +392,7 @@ where
 
         info!(
             "Overlod: state receive a signed proposal epoch ID {}, round {}, from {:?}",
-            epoch_id, round, signed_proposal.proposal.epoch_hash
+            epoch_id, round, signed_proposal.proposal.proposer
         );
 
         // If the proposal epoch ID is lower than the current epoch ID - 1, or the proposal epoch ID
@@ -493,8 +489,6 @@ where
         self.proposals
             .insert(self.epoch_id, self.round, signed_proposal)?;
 
-        error!("Overlord: state {:?}", self.hash_with_epoch);
-
         self.state_machine.trigger(SMRTrigger {
             trigger_type: TriggerType::Proposal,
             source:       TriggerSource::State,
@@ -589,14 +583,6 @@ where
         {
             // This is for test.
             self.timestamp.update(Step::Precommit);
-
-            info!(
-                "{:?}",
-                json!({
-                    "epoch_id": self.epoch_id,
-                    "consensus_round": self.round,
-                })
-            );
         }
 
         info!(
@@ -713,7 +699,7 @@ where
 
         info!(
             "Overlord: state receive a signed {:?} vote epoch ID {}, round {}, from {:?}",
-            vote_type, epoch_id, round, signed_vote.vote.epoch_hash,
+            vote_type, epoch_id, round, signed_vote.vote.voter,
         );
 
         // If the vote epoch ID is lower than the current epoch ID - 1, or the vote epoch ID
@@ -833,7 +819,7 @@ where
 
         info!(
             "Overlord: state receive an {:?} QC epoch {}, round {}, from {:?}",
-            qc_type, epoch_id, round, aggregated_vote.epoch_hash
+            qc_type, epoch_id, round, aggregated_vote.leader
         );
 
         // If the vote epoch ID is lower than the current epoch ID - 1, or the vote epoch ID
