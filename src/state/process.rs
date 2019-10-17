@@ -186,6 +186,8 @@ where
             }
 
             SMREvent::PrevoteVote { epoch_hash, .. } => {
+                error!("Overlord: {:?}", self.hash_with_epoch.get(&epoch_hash));
+
                 if let Err(e) = self.handle_prevote_vote(epoch_hash).await {
                     error!("Overlord: state handle prevote vote error {:?}", e);
                 }
@@ -193,6 +195,8 @@ where
             }
 
             SMREvent::PrecommitVote { epoch_hash, .. } => {
+                error!("Overlord: {:?}", self.hash_with_epoch.get(&epoch_hash));
+                
                 if let Err(e) = self.handle_precommit_vote(epoch_hash).await {
                     error!("Overlord: state handle precommit vote error {:?}", e);
                 }
