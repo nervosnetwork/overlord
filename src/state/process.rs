@@ -417,8 +417,8 @@ where
         }
 
         //  Verify proposal signature.
-        let proposal = signed_proposal.proposal;
-        let signature = signed_proposal.signature;
+        let proposal = signed_proposal.proposal.clone();
+        let signature = signed_proposal.signature.clone();
         self.verify_proposer(
             epoch_id,
             round,
@@ -490,6 +490,7 @@ where
         let epoch = proposal.content.clone();
 
         self.hash_with_epoch.insert(hash.clone(), proposal.content);
+        self.proposals.insert(self.epoch_id, self.round, signed_proposal)?;
 
         error!("Overlord: state {:?}", self.hash_with_epoch);
 
