@@ -199,10 +199,36 @@ where
                 Ok(())
             }
 
-            SMREvent::Commit(hash) => self.handle_commit(hash).await,
+            SMREvent::Commit(hash) => {
+                if let Err(e) = self.handle_commit(hash).await {
+                    error!("Overlord: state handle commit error {:?}", e);
+                }
+                Ok(())
+            }
+            
             _ => unreachable!(),
         }
     }
+
+    // async fn handle_check_resp(&self, hash: Hash) -> ConsensusResult<()> {
+    //     let res = {
+    //         let map = self.full_transcation.lock();
+    //         map.get(&hash)
+    //             .ok_or_else(|| {
+    //                 ConsensusError::Other(format!(
+    //                     "No check epoch error, epoch ID {}, round {}",
+    //                     self.epoch_id, self.round,
+    //                 ))
+    //             })?
+    //             .to_owned()
+    //     };
+
+    //     if !res {
+    //         return Ok(());
+    //     }
+
+    //     Ok(())
+    // }
 
     /// On receiving a rich status will call this method. This status can be either the return value
     /// of the `commit()` interface, or lastest status after the synchronization is completed send
