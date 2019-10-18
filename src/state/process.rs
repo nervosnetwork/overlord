@@ -664,7 +664,8 @@ where
 
         info!(
             "Overlord: achieve consensus in epoch ID {} costs {} round",
-            self.epoch_id, self.round
+            self.epoch_id,
+            self.round + 1
         );
 
         if Instant::now() < self.epoch_start + Duration::from_millis(self.epoch_interval) {
@@ -1346,7 +1347,7 @@ where
         });
 
         runtime::spawn(async move {
-            let _ = Delay::new(Duration::from_millis(1500)).await;
+            let _ = Delay::new(Duration::from_millis(5000)).await;
             if let Err(e) = new_tx.unbounded_send(false) {
                 error!(
                     "Overlord: state send check epoch flag failed, epoch ID {}, round {}, error {:?}",
@@ -1430,6 +1431,14 @@ async fn check_current_epoch<U: Consensus<T, S>, T: Codec, S: Codec>(
     hash: Hash,
     epoch: T,
 ) -> ConsensusResult<()> {
+    {
+        let map = tx_signal.lock();
+        if let Some(res) = map.get(&hash) {
+            info!("Overlord: state check epoch {}", res);
+            return Ok(());
+        }
+    }
+
     let transcations = function
         .check_epoch(ctx, epoch_id, hash.clone(), epoch)
         .await;
@@ -1437,6 +1446,7 @@ async fn check_current_epoch<U: Consensus<T, S>, T: Codec, S: Codec>(
     let res = transcations.is_ok();
     let mut map = tx_signal.lock();
     map.insert(hash, res);
+    info!("Overlord: state check epoch {}", res);
     // TODO: write Wal
     Ok(())
 }
