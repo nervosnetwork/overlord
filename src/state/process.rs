@@ -668,7 +668,10 @@ where
             self.round + 1
         );
 
-        if Instant::now() < self.epoch_start + Duration::from_millis(self.epoch_interval) {
+        // TODO: refactor
+        if self.next_proposer(status.epoch_id)?
+            && Instant::now() < self.epoch_start + Duration::from_millis(self.epoch_interval)
+        {
             Delay::new_at(self.epoch_start + Duration::from_millis(self.epoch_interval))
                 .await
                 .map_err(|err| ConsensusError::Other(format!("Overlord delay error {:?}", err)))?;
@@ -1136,6 +1139,11 @@ where
         // If self is not the proposer, set the leader address to the proposer address.
         self.leader_address = proposer;
         Ok(false)
+    }
+
+    fn next_proposer(&self, seed: u64) -> ConsensusResult<bool> {
+        let proposer = self.authority.get_proposer(seed, true)?;
+        Ok(self.address == proposer)
     }
 
     fn sign_proposal(&self, proposal: Proposal<T>) -> ConsensusResult<SignedProposal<T>> {
