@@ -96,7 +96,7 @@ pub trait Consensus<T: Codec, S: Codec>: Send + Sync {
 }
 
 /// Trait for doing serialize and deserialize.
-pub trait Codec: Clone + Debug + Send {
+pub trait Codec: Clone + Debug + Send + PartialEq + Eq {
     /// Serialize self into bytes.
     fn encode(&self) -> Result<Bytes, Box<dyn Error + Send>>;
 

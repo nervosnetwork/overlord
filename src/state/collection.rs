@@ -82,7 +82,10 @@ where
     }
 
     fn insert(&mut self, round: u64, proposal: SignedProposal<T>) -> ConsensusResult<()> {
-        if self.0.get(&round).is_some() {
+        if let Some(sp) = self.0.get(&round) {
+            if sp == &proposal {
+                return Ok(());
+            }
             return Err(ConsensusError::Other("_".to_string()));
         }
         self.0.insert(round, proposal);
