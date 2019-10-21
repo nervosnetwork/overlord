@@ -68,7 +68,7 @@ where
             let mut address = self.address.write();
             let mut consensus = self.consensus.write();
             let mut crypto = self.crypto.write();
-            let sender = self.sender.read();
+            // let sender = self.sender.read();
 
             let tmp_rx = state_rx.take().unwrap();
             let tmp_state = State::new(
