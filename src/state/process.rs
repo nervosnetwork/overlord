@@ -16,7 +16,7 @@ use rlp::encode;
 
 use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
 use crate::smr::{Event, SMR};
-use crate::state::collection::{ProposalCollector, VoteCollector};
+use crate::state::collection::{ProposalCollector, VoteCollector, VotePool};
 use crate::types::{
     hex, Address, AggregatedSignature, AggregatedVote, Commit, Hash, OverlordMsg, PoLC, Proof,
     Proposal, Signature, SignedProposal, SignedVote, Status, Vote, VoteType,
@@ -991,15 +991,21 @@ where
     }
 
     fn counting_vote(&mut self, vote_type: VoteType) -> ConsensusResult<Option<Hash>> {
+        let len = self
+            .votes
+            .vote_count(self.epoch_id, self.round, vote_type.clone());
         let vote_map = self
             .votes
             .get_vote_map(self.epoch_id, self.round, vote_type.clone())?;
         let threshold = self.authority.get_vote_weight_sum(true)? * 2;
 
         info!(
-            "Overlord: state receive {:?} votes, round {}",
-            vote_map, self.round
+            "Overlord: state round {}, {:?} vote pool length {}",
+            self.round,
+            vote_type.clone(),
+            len
         );
+        info!("{:?}", VotePool::new(vote_map.to_owned()));
 
         for (hash, set) in vote_map.iter() {
             let mut acc = 0u8;
