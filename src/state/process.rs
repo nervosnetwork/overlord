@@ -808,8 +808,12 @@ where
         self.votes.set_qc(qc.clone());
         self.broadcast(ctx, OverlordMsg::AggregatedVote(qc)).await;
 
-        if vote_type == VoteType::Prevote && !epoch_hash.is_empty() {
-            epoch_hash = self.check_full_txs(epoch_hash).await?;
+        if !epoch_hash.is_empty() {
+            if vote_type == VoteType::Prevote {
+                epoch_hash = self.check_full_txs(epoch_hash).await?;
+            } else if !self.try_get_full_txs(&epoch_hash) {
+                return Ok(());
+            }
         }
 
         info!(
@@ -943,15 +947,14 @@ where
 
         debug!("Overlord: state check if get full transcations");
 
-        let epoch_hash = if !qc_hash.is_empty() {
+        let mut epoch_hash = qc_hash;
+        if !epoch_hash.is_empty() {
             if qc_type == VoteType::Prevote {
-                self.check_full_txs(qc_hash.clone()).await?
-            } else {
+                epoch_hash = self.check_full_txs(epoch_hash).await?;
+            } else if !self.try_get_full_txs(&epoch_hash) {
                 return Ok(());
             }
-        } else {
-            qc_hash
-        };
+        }
 
         info!(
             "Overlord: state trigger SMR {:?} QC epoch ID {}, round {}",
@@ -988,8 +991,12 @@ where
                 .get_qc(self.epoch_id, self.round, vote_type.clone())
             {
                 let mut epoch_hash = qc.epoch_hash.clone();
-                if vote_type == VoteType::Prevote && !epoch_hash.is_empty() {
-                    epoch_hash = self.check_full_txs(epoch_hash).await?;
+                if !epoch_hash.is_empty() {
+                    if vote_type == VoteType::Prevote {
+                        epoch_hash = self.check_full_txs(epoch_hash).await?;
+                    } else if !self.try_get_full_txs(&epoch_hash) {
+                        return Ok(());
+                    }
                 }
 
                 self.state_machine.trigger(SMRTrigger {
@@ -1016,7 +1023,7 @@ where
             if !epoch_hash.is_empty() {
                 if vote_type == VoteType::Prevote {
                     epoch_hash = self.check_full_txs(epoch_hash).await?;
-                } else {
+                } else if !self.try_get_full_txs(&epoch_hash) {
                     return Ok(());
                 }
             }
@@ -1479,6 +1486,14 @@ where
             }
         };
         Ok(epoch_hash)
+    }
+
+    fn try_get_full_txs(&self, hash: &Hash) -> bool {
+        let map = self.full_transcation.lock();
+        if let Some(res) = map.get(hash) {
+            return *res;
+        }
+        false
     }
 
     #[cfg(test)]
