@@ -338,3 +338,7 @@ pub(crate) struct VerifyResp {
     /// The verify result.
     pub(crate) is_pass: bool,
 }
+
+pub(crate) fn hex(b: &Bytes) -> String {
+    hex::encode(b)
+}

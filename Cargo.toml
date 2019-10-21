@@ -22,6 +22,7 @@ creep = "0.1"
 derive_more = "0.15"
 futures-preview = { version = "0.3.0-alpha.19", features = [ "async-await" ] }
 futures-timer = "0.4"
+hex = "0.4"
 log = "0.4"
 log-json = { git = "https://github.com/KaoImin/log-json.git", default-features = false }
 parking_lot = "0.9"

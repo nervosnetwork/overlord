@@ -199,6 +199,13 @@ impl VoteCollector {
         )
     }
 
+    pub fn vote_count(&mut self, epoch_id: u64, round: u64, vote_type: VoteType) -> usize {
+        if let Some(vrc) = self.0.get(&epoch_id) {
+            return vrc.vote_count(round, vote_type.clone());
+        }
+        0
+    }
+
     /// Remove items that epoch ID is less than `till`.
     pub fn flush(&mut self, till: u64) {
         self.0 = self.0.split_off(&till);
@@ -257,6 +264,13 @@ impl VoteRoundCollector {
     fn get_qc(&mut self, round: u64, qc_type: VoteType) -> Option<AggregatedVote> {
         self.0.get_mut(&round).and_then(|rc| rc.get_qc(qc_type))
     }
+
+    fn vote_count(&self, round: u64, vote_type: VoteType) -> usize {
+        if let Some(rc) = self.0.get(&round) {
+            return rc.vote_count(vote_type);
+        }
+        0
+    }
 }
 
 /// A round collector contains a qc and prevote votes and precommit votes.
@@ -304,6 +318,13 @@ impl RoundCollector {
 
     fn get_qc(&mut self, qc_type: VoteType) -> Option<AggregatedVote> {
         self.qc.get_quorum_certificate(qc_type)
+    }
+
+    fn vote_count(&self, vote_type: VoteType) -> usize {
+        if vote_type == VoteType::Prevote {
+            return self.prevote.vote_count();
+        }
+        self.precommit.vote_count()
     }
 }
 
@@ -389,6 +410,10 @@ impl Votes {
 
     fn get_all_votes(&mut self) -> Vec<SignedVote> {
         self.by_address.values().cloned().collect::<Vec<_>>()
+    }
+
+    fn vote_count(&self) -> usize {
+        self.by_address.len()
     }
 }
 

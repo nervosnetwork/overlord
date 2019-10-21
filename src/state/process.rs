@@ -19,7 +19,7 @@ use crate::smr::{Event, SMR};
 use crate::state::collection::{ProposalCollector, VoteCollector};
 use crate::types::{
     Address, AggregatedSignature, AggregatedVote, Commit, Hash, OverlordMsg, PoLC, Proof, Proposal,
-    Signature, SignedProposal, SignedVote, Status, Vote, VoteType,
+    Signature, SignedProposal, SignedVote, Status, Vote, VoteType, hex
 };
 use crate::{error::ConsensusError, utils::auth_manage::AuthorityManage};
 use crate::{Codec, Consensus, ConsensusResult, Crypto, INIT_EPOCH_ID, INIT_ROUND};
@@ -210,26 +210,6 @@ where
         }
     }
 
-    // async fn handle_check_resp(&self, hash: Hash) -> ConsensusResult<()> {
-    //     let res = {
-    //         let map = self.full_transcation.lock();
-    //         map.get(&hash)
-    //             .ok_or_else(|| {
-    //                 ConsensusError::Other(format!(
-    //                     "No check epoch error, epoch ID {}, round {}",
-    //                     self.epoch_id, self.round,
-    //                 ))
-    //             })?
-    //             .to_owned()
-    //     };
-
-    //     if !res {
-    //         return Ok(());
-    //     }
-
-    //     Ok(())
-    // }
-
     /// On receiving a rich status will call this method. This status can be either the return value
     /// of the `commit()` interface, or lastest status after the synchronization is completed send
     /// by the overlord handler.
@@ -417,8 +397,8 @@ where
         let round = signed_proposal.proposal.round;
 
         info!(
-            "Overlod: state receive a signed proposal epoch ID {}, round {}, from {:?}",
-            epoch_id, round, signed_proposal.proposal.proposer
+            "Overlod: state receive a signed proposal epoch ID {}, round {}, from {}",
+            epoch_id, round, hex(&signed_proposal.proposal.proposer)
         );
 
         // If the proposal epoch ID is lower than the current epoch ID - 1, or the proposal epoch ID
@@ -729,7 +709,7 @@ where
 
         info!(
             "Overlord: state receive a signed {:?} vote epoch ID {}, round {}, from {:?}",
-            vote_type, epoch_id, round, signed_vote.vote.voter,
+            vote_type, epoch_id, round, hex(&signed_vote.vote.voter),
         );
 
         // If the vote epoch ID is lower than the current epoch ID - 1, or the vote epoch ID
@@ -764,7 +744,10 @@ where
         }
 
         if !self.is_leader {
-            error!("Overlord: state is not leader but receive signed vote");
+            error!(
+                "Overlord: state is not leader but receive signed vote round {}",
+                self.round
+            );
             return Ok(());
         }
 
@@ -849,7 +832,7 @@ where
 
         info!(
             "Overlord: state receive an {:?} QC epoch {}, round {}, from {:?}",
-            qc_type, epoch_id, round, aggregated_vote.leader
+            qc_type, epoch_id, round, hex(&aggregated_vote.leader)
         );
 
         // If the vote epoch ID is lower than the current epoch ID - 1, or the vote epoch ID
@@ -1004,6 +987,11 @@ where
             .votes
             .get_vote_map(self.epoch_id, self.round, vote_type.clone())?;
         let threshold = self.authority.get_vote_weight_sum(true)? * 2;
+
+        info!(
+            "Overlord: state receive {:?} votes, round {}",
+            vote_map, self.round
+        );
 
         for (hash, set) in vote_map.iter() {
             let mut acc = 0u8;
@@ -1160,9 +1148,11 @@ where
             .get_proposer(self.epoch_id + self.round, true)?;
 
         if proposer == self.address {
+            info!("Overlord: state self become leader");
             return Ok(true);
         }
         // If self is not the proposer, set the leader address to the proposer address.
+        info!("Overlord: state {:?} become leader", hex(&proposer));
         self.leader_address = proposer;
         Ok(false)
     }
