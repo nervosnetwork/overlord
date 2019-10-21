@@ -407,7 +407,7 @@ where
         // is equal to the current epoch ID and the proposal round is lower than the current round,
         // ignore it directly.
         if epoch_id < self.epoch_id - 1 || (epoch_id == self.epoch_id && round < self.round) {
-            debug!("Overlord: state receive an outdated signed proposal");
+            debug!("Overlord: state receive an outdated signed proposal, epoch ID {}, round {}, from {:?}", epoch_id, round, hex(&signed_proposal.proposal.proposer));
             return Ok(());
         }
 
@@ -415,8 +415,8 @@ where
         // equal to the current epoch ID and the proposal round is higher than the current round,
         // cache it until that epoch ID.
         if epoch_id > self.epoch_id || (epoch_id == self.epoch_id && round > self.round) {
+            debug!("Overlord: state receive a future signed proposal, epoch ID {}, round {}, from {:?}", epoch_id, round, hex(&signed_proposal.proposal.proposer));
             self.proposals.insert(epoch_id, round, signed_proposal)?;
-            debug!("Overlord: state receive a future signed proposal");
             return Ok(());
         }
 
@@ -441,7 +441,7 @@ where
         if epoch_id == self.epoch_id - 1 {
             if let Some((last_round, last_proposal)) = self.last_commit_msg()? {
                 if round <= last_round {
-                    debug!("Overlord: state receive an outdated signed proposal");
+                    debug!("Overlord: state receive an outdated signed proposal, epoch ID {}, round {}, from {:?}", epoch_id, round, hex(&proposal.proposer));
                     return Ok(());
                 }
 
@@ -721,7 +721,12 @@ where
         // is equal to the current epoch ID and the vote round is lower than the current round,
         // ignore it directly.
         if epoch_id < self.epoch_id || (epoch_id == self.epoch_id && round < self.round) {
-            debug!("Overlord: state receive an outdated signed vote");
+            debug!(
+                "Overlord: state receive an outdated signed vote, epoch ID {}, round {}, from {:?}",
+                epoch_id,
+                round,
+                hex(&signed_vote.vote.voter)
+            );
             return Ok(());
         }
 
@@ -737,14 +742,19 @@ where
         )?;
         self.verify_address(&vote.voter, true)?;
         self.votes
-            .insert_vote(signed_vote.get_hash(), signed_vote, vote.voter);
+            .insert_vote(signed_vote.get_hash(), signed_vote, vote.voter.clone());
 
         // If the vote epoch ID is higher than the current epoch ID, cache it and rehandle it by
         // entering the epoch. Else if the vote epoch ID is equal to the current epoch ID
         // and the vote round is higher than the current round, cache it until that round
         // and precess it.
         if epoch_id > self.epoch_id || (epoch_id == self.epoch_id && round > self.round) {
-            debug!("Overlord: state receive a future signed vote");
+            debug!(
+                "Overlord: state receive a future signed vote, epoch ID {}, round {}, from {:?}",
+                epoch_id,
+                round,
+                hex(&vote.voter)
+            );
             return Ok(());
         }
 
@@ -765,14 +775,14 @@ where
             return Ok(());
         }
 
+        let mut epoch_hash = epoch_hash.unwrap();
         info!(
-            "Overlord: state counting a epoch hash that votes above threshold, epoch ID {}, round {}",
-            self.epoch_id, self.round
+            "Overlord: state counting a epoch hash {:?} that votes above threshold, epoch ID {}, round {}",
+            hex(&epoch_hash), self.epoch_id, self.round
         );
 
         // Build the quorum certificate needs to aggregate signatures into an aggregate
         // signature besides the address bitmap.
-        let mut epoch_hash = epoch_hash.unwrap();
         let qc = self.generate_qc(epoch_hash.clone(), vote_type.clone())?;
 
         debug!(
@@ -847,10 +857,20 @@ where
         // is equal to the current epoch ID and the vote round is lower than the current round,
         // ignore it directly.
         if epoch_id < self.epoch_id - 1 || (epoch_id == self.epoch_id && round < self.round) {
-            debug!("Overlord: state receive an outdated QC");
+            debug!(
+                "Overlord: state receive an outdated QC, epoch ID {}, round {}, from {:?}",
+                epoch_id,
+                round,
+                hex(&aggregated_vote.leader)
+            );
             return Ok(());
         } else if epoch_id > self.epoch_id {
-            debug!("Overlord: state receive a future QC");
+            debug!(
+                "Overlord: state receive a future QC, epoch ID {}, round {}, from {:?}",
+                epoch_id,
+                round,
+                hex(&aggregated_vote.leader)
+            );
             self.votes.set_qc(aggregated_vote);
             return Ok(());
         }
@@ -864,7 +884,12 @@ where
         )?;
 
         if epoch_id == self.epoch_id && round > self.round {
-            debug!("Overlord: state receive a future QC");
+            debug!(
+                "Overlord: state receive a future QC, epoch ID {}, round {}, from {:?}",
+                epoch_id,
+                round,
+                hex(&aggregated_vote.leader)
+            );
             self.votes.set_qc(aggregated_vote);
             return Ok(());
         }
@@ -875,7 +900,12 @@ where
         if epoch_id == self.epoch_id - 1 {
             if let Some((last_round, last_proposal)) = self.last_commit_msg()? {
                 if round <= last_round || qc_type == VoteType::Precommit {
-                    debug!("Overlord: state receive an outdated QC");
+                    debug!(
+                        "Overlord: state receive an outdated QC, epoch ID {}, round {}, from {:?}",
+                        epoch_id,
+                        round,
+                        hex(&aggregated_vote.leader)
+                    );
                     return Ok(());
                 }
 
