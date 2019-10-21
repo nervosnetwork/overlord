@@ -47,9 +47,10 @@ where
 
     /// Get the overlord handler from the overlord instance.
     pub fn get_handler(&self) -> OverlordHandler<T> {
-        let mut sender = self.sender.write();
+        let sender = self.sender.write();
         assert!(sender.is_some());
-        OverlordHandler::new(sender.take().unwrap())
+        let tx = sender.clone().unwrap();
+        OverlordHandler::new(tx)
     }
 
     /// Run overlord consensus process. The `interval` is the epoch interval as millisecond.
