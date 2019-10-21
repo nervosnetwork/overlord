@@ -18,8 +18,8 @@ use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
 use crate::smr::{Event, SMR};
 use crate::state::collection::{ProposalCollector, VoteCollector};
 use crate::types::{
-    Address, AggregatedSignature, AggregatedVote, Commit, Hash, OverlordMsg, PoLC, Proof, Proposal,
-    Signature, SignedProposal, SignedVote, Status, Vote, VoteType, hex
+    hex, Address, AggregatedSignature, AggregatedVote, Commit, Hash, OverlordMsg, PoLC, Proof,
+    Proposal, Signature, SignedProposal, SignedVote, Status, Vote, VoteType,
 };
 use crate::{error::ConsensusError, utils::auth_manage::AuthorityManage};
 use crate::{Codec, Consensus, ConsensusResult, Crypto, INIT_EPOCH_ID, INIT_ROUND};
@@ -398,7 +398,9 @@ where
 
         info!(
             "Overlod: state receive a signed proposal epoch ID {}, round {}, from {}",
-            epoch_id, round, hex(&signed_proposal.proposal.proposer)
+            epoch_id,
+            round,
+            hex(&signed_proposal.proposal.proposer)
         );
 
         // If the proposal epoch ID is lower than the current epoch ID - 1, or the proposal epoch ID
@@ -709,7 +711,10 @@ where
 
         info!(
             "Overlord: state receive a signed {:?} vote epoch ID {}, round {}, from {:?}",
-            vote_type, epoch_id, round, hex(&signed_vote.vote.voter),
+            vote_type,
+            epoch_id,
+            round,
+            hex(&signed_vote.vote.voter),
         );
 
         // If the vote epoch ID is lower than the current epoch ID - 1, or the vote epoch ID
@@ -832,7 +837,10 @@ where
 
         info!(
             "Overlord: state receive an {:?} QC epoch {}, round {}, from {:?}",
-            qc_type, epoch_id, round, hex(&aggregated_vote.leader)
+            qc_type,
+            epoch_id,
+            round,
+            hex(&aggregated_vote.leader)
         );
 
         // If the vote epoch ID is lower than the current epoch ID - 1, or the vote epoch ID

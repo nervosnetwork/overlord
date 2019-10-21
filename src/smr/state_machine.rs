@@ -6,8 +6,8 @@ use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::Stream;
 use log::{debug, error, info};
 
-use crate::{error::ConsensusError, types::hex};
 use crate::smr::smr_types::{Lock, SMREvent, SMRTrigger, Step, TriggerSource, TriggerType};
+use crate::{error::ConsensusError, types::hex};
 use crate::{smr::Event, types::Hash};
 use crate::{ConsensusResult, INIT_EPOCH_ID, INIT_ROUND};
 
@@ -131,7 +131,8 @@ impl StateMachine {
 
         info!(
             "Overlord: SMR triggered by a proposal hash {:?}, from {:?}",
-            hex(&proposal_hash), source
+            hex(&proposal_hash),
+            source
         );
 
         self.check()?;
@@ -143,7 +144,7 @@ impl StateMachine {
         if let Some(lock_round) = lock_round {
             if let Some(lock) = self.lock.clone() {
                 debug!("Overlord: SMR handle proposal with a lock");
-                
+
                 if lock_round > lock.round {
                     self.remove_polc();
                     self.set_proposal(proposal_hash.clone());
@@ -191,7 +192,8 @@ impl StateMachine {
 
         info!(
             "Overlord: SMR triggered by prevote QC hash {:?} from {:?}",
-            hex(&prevote_hash), source
+            hex(&prevote_hash),
+            source
         );
 
         self.check()?;
@@ -249,7 +251,8 @@ impl StateMachine {
 
         info!(
             "Overlord: SMR triggered by precommit QC hash {:?}, from {:?}",
-            hex(&precommit_hash), source
+            hex(&precommit_hash),
+            source
         );
 
         self.check()?;
