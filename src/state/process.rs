@@ -898,8 +898,12 @@ where
 
         debug!("Overlord: state check if get full transcations");
 
-        let epoch_hash = if qc_type == VoteType::Prevote && !qc_hash.is_empty() {
-            self.check_full_txs(qc_hash.clone()).await?
+        let epoch_hash = if !qc_hash.is_empty() {
+            if qc_type == VoteType::Prevote {
+                self.check_full_txs(qc_hash.clone()).await?
+            } else {
+                return Ok(());
+            }
         } else {
             qc_hash
         };
@@ -964,8 +968,12 @@ where
             self.broadcast(Context::new(), OverlordMsg::AggregatedVote(qc))
                 .await;
 
-            if vote_type == VoteType::Prevote && !epoch_hash.is_empty() {
-                epoch_hash = self.check_full_txs(epoch_hash).await?;
+            if !epoch_hash.is_empty() {
+                if vote_type == VoteType::Prevote {
+                    epoch_hash = self.check_full_txs(epoch_hash).await?;
+                } else {
+                    return Ok(());
+                }
             }
 
             info!(
