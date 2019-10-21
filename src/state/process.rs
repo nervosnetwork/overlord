@@ -407,7 +407,12 @@ where
         // is equal to the current epoch ID and the proposal round is lower than the current round,
         // ignore it directly.
         if epoch_id < self.epoch_id - 1 || (epoch_id == self.epoch_id && round < self.round) {
-            debug!("Overlord: state receive an outdated signed proposal, epoch ID {}, round {}, from {:?}", epoch_id, round, hex(&signed_proposal.proposal.proposer));
+            debug!(
+                "Overlord: state receive an outdated signed proposal, epoch ID {}, round {}, from {:?}",
+                epoch_id,
+                round,
+                hex(&signed_proposal.proposal.proposer)
+            );
             return Ok(());
         }
 
@@ -415,7 +420,12 @@ where
         // equal to the current epoch ID and the proposal round is higher than the current round,
         // cache it until that epoch ID.
         if epoch_id > self.epoch_id || (epoch_id == self.epoch_id && round > self.round) {
-            debug!("Overlord: state receive a future signed proposal, epoch ID {}, round {}, from {:?}", epoch_id, round, hex(&signed_proposal.proposal.proposer));
+            debug!(
+                "Overlord: state receive a future signed proposal, epoch ID {}, round {}, from {:?}", 
+                epoch_id,
+                round,
+                hex(&signed_proposal.proposal.proposer),
+            );
             self.proposals.insert(epoch_id, round, signed_proposal)?;
             return Ok(());
         }
@@ -441,7 +451,12 @@ where
         if epoch_id == self.epoch_id - 1 {
             if let Some((last_round, last_proposal)) = self.last_commit_msg()? {
                 if round <= last_round {
-                    debug!("Overlord: state receive an outdated signed proposal, epoch ID {}, round {}, from {:?}", epoch_id, round, hex(&proposal.proposer));
+                    debug!(
+                        "Overlord: state receive an outdated signed proposal, epoch ID {}, round {}, from {:?}", 
+                        epoch_id,
+                        round,
+                        hex(&proposal.proposer),
+                    );
                     return Ok(());
                 }
 
