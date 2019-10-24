@@ -21,20 +21,12 @@ use crate::types::{
     hex, Address, AggregatedSignature, AggregatedVote, Commit, Hash, OverlordMsg, PoLC, Proof,
     Proposal, Signature, SignedProposal, SignedVote, Status, Vote, VoteType,
 };
+use crate::utils::metrics::{metrics_enabled, timestamp};
 use crate::{error::ConsensusError, utils::auth_manage::AuthorityManage};
-use crate::{Codec, Consensus, ConsensusResult, Crypto, INIT_EPOCH_ID, INIT_ROUND};
+use crate::{metrics, Codec, Consensus, ConsensusResult, Crypto, INIT_EPOCH_ID, INIT_ROUND};
 
-#[cfg(feature = "test")]
-use {
-    crate::utils::metrics::{metrics_enabled, timestamp},
-    crate::{metrics, smr::smr_types::Step, utils::timestamp::Timestamp},
-    serde_json::json,
-};
-
-// #[cfg(test)]
-// use crate::types::Node;
-
-const CHECK_EPOCH_FLAG: bool = true;
+const CHECK_EPOCH_SUCCESS: bool = true;
+const CHECK_EPOCH_FAILED: bool = false;
 
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
 enum MsgType {
@@ -71,9 +63,6 @@ pub struct State<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto> {
     function: Arc<F>,
     pin_txs:  PhantomData<S>,
     util:     C,
-
-    #[cfg(feature = "test")]
-    timestamp: Timestamp,
 }
 
 impl<T, S, F, C> State<T, S, F, C>
@@ -108,9 +97,6 @@ where
             function: consensus,
             pin_txs:  PhantomData,
             util:     crypto,
-
-            #[cfg(feature = "test")]
-            timestamp:                          Timestamp::new(),
         }
     }
 
@@ -220,9 +206,6 @@ where
     /// votes and quorum certificates before, these should be re-checked as goto new epoch. Finally,
     /// trigger SMR to goto new epoch.
     async fn goto_new_epoch(&mut self, ctx: Context, status: Status) -> ConsensusResult<()> {
-        #[cfg(feature = "test")]
-        self.timestamp.update(Step::Commit);
-
         self.epoch_start = Instant::now();
         let new_epoch_id = status.epoch_id;
         let get_last_flag = new_epoch_id != self.epoch_id + 1;
@@ -235,6 +218,16 @@ where
         self.epoch_start = Instant::now();
         let mut auth_list = status.authority_list;
         self.authority.update(&mut auth_list, true);
+
+        let validators = auth_list
+            .iter()
+            .map(|node| hex::encode(&node.address))
+            .collect::<Vec<_>>();
+        metrics!(
+            "new_epoch",
+            "epoch_id": new_epoch_id,
+            "validators": validators
+        );
 
         // If the status' epoch ID is much higher than the current,
         if get_last_flag {
@@ -356,11 +349,30 @@ where
             round:      self.round,
             content:    epoch.clone(),
             epoch_hash: hash.clone(),
-            lock:       polc,
+            lock:       polc.clone(),
             proposer:   self.address.clone(),
         };
 
         // **TODO: parallelism**
+        if let Some(lock) = polc.clone() {
+            let lock_votes = lock.lock_votes.signature.address_bitmap.clone();
+            let lock_voters = self
+                .authority
+                .get_voters(lock_votes)
+                .iter()
+                .map(hex::encode)
+                .collect::<Vec<_>>();
+
+            metrics!(
+                "broadcast_proposal",
+                "epoch_id": self.epoch_id,
+                "round": self.round,
+                "lock_round": lock.lock_round,
+                "lock_voters": lock_voters
+            );
+        } else {
+            metrics!("broadcast_proposal", "epoch_id": self.epoch_id, "round": self.round);
+        }
         self.broadcast(
             Context::new(),
             OverlordMsg::SignedProposal(self.sign_proposal(proposal)?),
@@ -374,6 +386,26 @@ where
             round:        lock_round,
             epoch_id:     self.epoch_id,
         })?;
+
+        if let Some(lock) = polc {
+            let lock_votes = lock.lock_votes.signature.address_bitmap.clone();
+            let lock_voters = self
+                .authority
+                .get_voters(lock_votes)
+                .iter()
+                .map(hex::encode)
+                .collect::<Vec<_>>();
+
+            metrics!(
+                "receive_proposal",
+                "epoch_id": self.epoch_id,
+                "round": self.round,
+                "lock_round": lock.lock_round,
+                "lock_voters": lock_voters
+            );
+        } else {
+            metrics!("receive_proposal", "epoch_id": self.epoch_id, "round": self.round);
+        }
 
         info!(
             "Overlord: state trigger SMR epoch ID {}, round {}, type {:?}",
@@ -445,6 +477,26 @@ where
             &proposal.proposer,
             MsgType::SignedProposal,
         )?;
+
+        if let Some(lock) = proposal.lock.clone() {
+            let lock_votes = lock.lock_votes.signature.address_bitmap.clone();
+            let lock_voters = self
+                .authority
+                .get_voters(lock_votes)
+                .iter()
+                .map(hex::encode)
+                .collect::<Vec<_>>();
+
+            metrics!(
+                "receive_proposal",
+                "epoch_id": proposal.epoch_id,
+                "round": proposal.round,
+                "lock_round": lock.lock_round,
+                "lock_voters": lock_voters
+            );
+        } else {
+            metrics!("receive_proposal", "epoch_id": proposal.epoch_id, "round": proposal.round);
+        }
 
         // Deal with proposal's epoch ID is equal to the current epoch ID - 1 and round is higher
         // than the last commit round. Retransmit prevote vote to the last commit proposal.
@@ -534,12 +586,6 @@ where
     }
 
     async fn handle_prevote_vote(&mut self, hash: Hash) -> ConsensusResult<()> {
-        #[cfg(feature = "test")]
-        {
-            // This is for test.
-            self.timestamp.update(Step::Propose);
-        }
-
         info!(
             "Overlord: state receive prevote vote event epoch ID {}, round {}",
             self.epoch_id, self.round
@@ -549,11 +595,21 @@ where
             epoch_id:   self.epoch_id,
             round:      self.round,
             vote_type:  VoteType::Prevote,
-            epoch_hash: hash,
+            epoch_hash: hash.clone(),
             voter:      self.address.clone(),
         };
 
         let signed_vote = self.sign_vote(prevote)?;
+
+        metrics!(
+            "send_vote",
+            "epoch_id": self.epoch_id,
+            "round": self.round,
+            "vote_type": VoteType::Prevote.into_string(),
+            "epoch_hash": hex::encode(&hash),
+            "voter": hex::encode(&self.address),
+        );
+
         // **TODO: write Wal**
         if self.is_leader {
             self.votes
@@ -568,12 +624,6 @@ where
     }
 
     async fn handle_precommit_vote(&mut self, hash: Hash) -> ConsensusResult<()> {
-        #[cfg(feature = "test")]
-        {
-            // This is for test.
-            self.timestamp.update(Step::Prevote);
-        }
-
         info!(
             "Overlord: state received precommit vote event epoch ID {}, round {}",
             self.epoch_id, self.round
@@ -583,11 +633,21 @@ where
             epoch_id:   self.epoch_id,
             round:      self.round,
             vote_type:  VoteType::Precommit,
-            epoch_hash: hash,
+            epoch_hash: hash.clone(),
             voter:      self.address.clone(),
         };
 
         let signed_vote = self.sign_vote(precommit)?;
+
+        metrics!(
+            "send_vote",
+            "epoch_id": self.epoch_id,
+            "round": self.round,
+            "vote_type": VoteType::Precommit.into_string(),
+            "epoch_hash": hex::encode(&hash),
+            "voter": hex::encode(&self.address),
+        );
+
         // **TODO: write Wal**
         if self.is_leader {
             self.votes
@@ -602,12 +662,6 @@ where
     }
 
     async fn handle_commit(&mut self, hash: Hash) -> ConsensusResult<()> {
-        #[cfg(feature = "test")]
-        {
-            // This is for test.
-            self.timestamp.update(Step::Precommit);
-        }
-
         info!(
             "Overlord: state receive commit event epoch ID {}, round {}",
             self.epoch_id, self.round
@@ -639,17 +693,6 @@ where
             proposal_vec[res as usize].proposal.content.clone()
         };
 
-        // let content = self
-        //     .hash_with_epoch
-        //     .get(&hash)
-        //     .ok_or_else(|| {
-        //         ConsensusError::Other(format!(
-        //             "Lose whole epoch epoch ID {}, round {}",
-        //             self.epoch_id, self.round
-        //         ))
-        //     })?
-        //     .to_owned();
-
         debug!("Overlord: state generate proof");
         let qc = self
             .votes
@@ -669,14 +712,15 @@ where
         };
 
         self.last_commit_round = Some(self.round);
-        self.last_commit_proposal = Some(hash);
+        self.last_commit_proposal = Some(hash.clone());
         // **TODO: write Wal**
 
-        // log consensus cost
-        #[cfg(feature = "test")]
-        {
-            metrics!("consensus_cost" => self.epoch_start, "epoch ID": epoch);
-        }
+        metrics!(
+            "commit",
+            "epoch_id": self.epoch_id,
+            "round": self.round,
+            "epoch_hash": hex::encode(&hash),
+        );
 
         let ctx = Context::new();
         let status = self
@@ -759,6 +803,15 @@ where
         self.votes
             .insert_vote(signed_vote.get_hash(), signed_vote, vote.voter.clone());
 
+        metrics!(
+            "receive_vote",
+            "vote_type": vote.vote_type.clone().into_string(),
+            "epoch_id": vote.epoch_id,
+            "round": vote.round,
+            "epoch_hash": hex::encode(&vote.epoch_hash),
+            "voter": hex::encode(&vote.voter),
+        );
+
         // If the vote epoch ID is higher than the current epoch ID, cache it and rehandle it by
         // entering the epoch. Else if the vote epoch ID is equal to the current epoch ID
         // and the vote round is higher than the current round, cache it until that round
@@ -805,8 +858,34 @@ where
             self.epoch_id, self.round
         );
 
+        let voters = self
+            .authority
+            .get_voters(qc.signature.address_bitmap.clone())
+            .iter()
+            .map(hex::encode)
+            .collect::<Vec<_>>();
+
+        metrics!(
+            "broadcast_qc",
+            "qc_type": qc.vote_type.clone().into_string(),
+            "epoch_id": qc.epoch_id,
+            "round": qc.round,
+            "epoch_hash": hex::encode(&qc.epoch_hash),
+            "voters": voters.clone(),
+        );
+
         self.votes.set_qc(qc.clone());
-        self.broadcast(ctx, OverlordMsg::AggregatedVote(qc)).await;
+        self.broadcast(ctx, OverlordMsg::AggregatedVote(qc.clone()))
+            .await;
+
+        metrics!(
+            "receive_qc",
+            "qc_type": qc.vote_type.clone().into_string(),
+            "epoch_id": qc.epoch_id,
+            "round": qc.round,
+            "epoch_hash": hex::encode(&qc.epoch_hash),
+            "voters": voters,
+        );
 
         if !epoch_hash.is_empty() {
             if vote_type == VoteType::Prevote {
@@ -901,6 +980,22 @@ where
             epoch_id,
             qc_type.clone(),
         )?;
+
+        let voters = self
+            .authority
+            .get_voters(aggregated_vote.signature.address_bitmap.clone())
+            .iter()
+            .map(hex::encode)
+            .collect::<Vec<_>>();
+
+        metrics!(
+            "receive_qc",
+            "qc_type": aggregated_vote.vote_type.clone().into_string(),
+            "epoch_id": aggregated_vote.epoch_id,
+            "round": aggregated_vote.round,
+            "epoch_hash": hex::encode(&aggregated_vote.epoch_hash),
+            "voters": voters,
+        );
 
         if epoch_id == self.epoch_id && round > self.round {
             debug!(
@@ -1139,6 +1234,26 @@ where
                     )
                     .is_ok()
             {
+                if let Some(lock) = sp.proposal.lock.clone() {
+                    let lock_votes = lock.lock_votes.signature.address_bitmap.clone();
+                    let lock_voters = self
+                        .authority
+                        .get_voters(lock_votes)
+                        .iter()
+                        .map(hex::encode)
+                        .collect::<Vec<_>>();
+
+                    metrics!(
+                        "receive_proposal",
+                        "epoch_id": proposal.epoch_id,
+                        "round": proposal.round,
+                        "lock_round": lock.lock_round,
+                        "lock_voters": lock_voters
+                    );
+                } else {
+                    metrics!("receive_proposal", "epoch_id": proposal.epoch_id, "round": proposal.round);
+                }
+
                 self.proposals
                     .insert(proposal.epoch_id, proposal.round, sp)?;
             }
@@ -1166,6 +1281,15 @@ where
                 .is_ok()
                 && self.verify_address(&vote.voter, true).is_ok()
             {
+                metrics!(
+                    "receive_vote",
+                    "vote_type": vote.vote_type.clone().into_string(),
+                    "epoch_id": vote.epoch_id,
+                    "round": vote.round,
+                    "epoch_hash": hex::encode(&vote.epoch_hash),
+                    "voter": hex::encode(&vote.voter),
+                );
+
                 self.votes.insert_vote(sv.get_hash(), sv, vote.voter);
             }
         }
@@ -1187,6 +1311,22 @@ where
                 )
                 .is_ok()
             {
+                let voters = self
+                    .authority
+                    .get_voters(qc.signature.address_bitmap.clone())
+                    .iter()
+                    .map(hex::encode)
+                    .collect::<Vec<_>>();
+
+                metrics!(
+                    "receive_qc",
+                    "qc_type": qc.vote_type.clone().into_string(),
+                    "epoch_id": qc.epoch_id,
+                    "round": qc.round,
+                    "epoch_hash": hex::encode(&qc.epoch_hash),
+                    "voters": voters,
+                );
+
                 self.votes.set_qc(qc);
             }
         }
@@ -1221,12 +1361,17 @@ where
             .authority
             .get_proposer(self.epoch_id + self.round, true)?;
 
+        metrics!(
+            "new_round",
+            "epoch_id": self.epoch_id,
+            "round": self.round,
+            "leader": hex::encode(&proposer)
+        );
+
         if proposer == self.address {
             info!("Overlord: state self become leader");
             return Ok(true);
         }
-        // If self is not the proposer, set the leader address to the proposer address.
-        info!("Overlord: state {:?} become leader", hex(&proposer));
         self.leader_address = proposer;
         Ok(false)
     }
@@ -1427,6 +1572,13 @@ where
         self.check_epoch_rx = new_rx;
 
         runtime::spawn(async move {
+            metrics!(
+                "check_epoch_request",
+                "epoch_id": epoch_id,
+                "round": round,
+                "epoch_hash": hex::encode(&hash)
+            );
+
             if let Err(e) =
                 check_current_epoch(ctx, function, tx_signal, epoch_id, hash, epoch).await
             {
@@ -1436,7 +1588,7 @@ where
                 )
             }
 
-            if let Err(e) = mempool_tx.unbounded_send(CHECK_EPOCH_FLAG) {
+            if let Err(e) = mempool_tx.unbounded_send(CHECK_EPOCH_SUCCESS) {
                 error!(
                     "Overlord: state send check epoch flag failed, epoch ID {}, round {}, error {:?}",
                     epoch_id, round, e
@@ -1446,7 +1598,7 @@ where
 
         runtime::spawn(async move {
             let _ = Delay::new(Duration::from_millis(5000)).await;
-            if let Err(e) = new_tx.unbounded_send(false) {
+            if let Err(e) = new_tx.unbounded_send(CHECK_EPOCH_FAILED) {
                 error!(
                     "Overlord: state send check epoch flag failed, epoch ID {}, round {}, error {:?}",
                     epoch_id, round, e

@@ -7,9 +7,10 @@ use futures::stream::Stream;
 use log::{debug, error, info};
 
 use crate::smr::smr_types::{Lock, SMREvent, SMRTrigger, Step, TriggerSource, TriggerType};
+use crate::utils::metrics::{metrics_enabled, timestamp};
 use crate::{error::ConsensusError, types::hex};
+use crate::{metrics, ConsensusResult, INIT_EPOCH_ID, INIT_ROUND};
 use crate::{smr::Event, types::Hash};
-use crate::{ConsensusResult, INIT_EPOCH_ID, INIT_ROUND};
 
 /// A smallest implementation of an atomic overlord state machine. It
 #[derive(Debug, Display)]
@@ -101,6 +102,7 @@ impl StateMachine {
         self.goto_new_epoch(epoch_id);
 
         // throw new round info event
+        metrics!("new_round", "epoch_id": self.epoch_id, "round": self.round);
         self.throw_event(SMREvent::NewRoundInfo {
             epoch_id:      self.epoch_id,
             round:         0u64,
@@ -136,6 +138,18 @@ impl StateMachine {
         );
 
         self.check()?;
+        if let Some(lock) = self.lock.clone() {
+            metrics!(
+                "propose_step",
+                "epoch_id": self.epoch_id,
+                "round": self.round,
+                "lock_round": lock.round,
+                "lock_hash": hex::encode(&lock.hash)
+            );
+        } else {
+            metrics!("propose_step", "epoch_id": self.epoch_id, "round": self.round);
+        }
+
         if proposal_hash.is_empty() && lock_round.is_some() {
             return Err(ConsensusError::ProposalErr("Invalid lock".to_string()));
         }
@@ -197,6 +211,17 @@ impl StateMachine {
         );
 
         self.check()?;
+        if let Some(lock) = self.lock.clone() {
+            metrics!(
+                "prevote_step",
+                "epoch_id": self.epoch_id,
+                "round": self.round,
+                "lock_round": lock.round,
+                "lock_hash": hex::encode(&lock.hash)
+            );
+        } else {
+            metrics!("prevote_step", "epoch_id": self.epoch_id, "round": self.round);
+        }
 
         // A prevote QC from timer which means prevote timeout can not lead to unlock. Therefore,
         // only prevote QCs from state will update the PoLC. If the prevote QC is from timer, throw
@@ -256,6 +281,17 @@ impl StateMachine {
         );
 
         self.check()?;
+        if let Some(lock) = self.lock.clone() {
+            metrics!(
+                "precommit_step",
+                "epoch_id": self.epoch_id,
+                "round": self.round,
+                "lock_round": lock.round,
+                "lock_hash": hex::encode(&lock.hash)
+            );
+        } else {
+            metrics!("precommit_step", "epoch_id": self.epoch_id, "round": self.round);
+        }
 
         self.check_round(precommit_round)?;
         if precommit_hash.is_empty() {
@@ -317,8 +353,17 @@ impl StateMachine {
         self.proposal_hash.clear();
         self.goto_step(Step::Propose);
 
-        if self.lock.is_some() {
-            self.proposal_hash = self.lock.clone().unwrap().hash;
+        if let Some(lock) = self.lock.clone() {
+            metrics!(
+                "new_round",
+                "epoch_id": self.epoch_id,
+                "round": self.round,
+                "lock_round": lock.round,
+                "lock_hash": hex::encode(&lock.hash)
+            );
+            self.proposal_hash = lock.hash;
+        } else {
+            metrics!("new_round", "epoch_id": self.epoch_id, "round": self.round);
         }
     }
 

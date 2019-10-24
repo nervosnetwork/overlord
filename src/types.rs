@@ -2,6 +2,7 @@ use std::cmp::{Ord, Ordering, PartialOrd};
 
 use bytes::Bytes;
 use derive_more::Display;
+use serde::{Deserialize, Serialize};
 
 use crate::smr::smr_types::TriggerType;
 use crate::Codec;
@@ -83,6 +84,15 @@ impl From<u8> for VoteType {
             1 => VoteType::Prevote,
             2 => VoteType::Precommit,
             _ => panic!("Invalid vote type!"),
+        }
+    }
+}
+
+impl VoteType {
+    pub(crate) fn into_string(self) -> String {
+        match self {
+            VoteType::Prevote => "prevote".to_string(),
+            VoteType::Precommit => "precommit".to_string(),
         }
     }
 }
@@ -178,7 +188,7 @@ impl SignedVote {
 }
 
 /// An aggregate signature.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct AggregatedSignature {
     /// Aggregated signature.
     pub signature: Signature,
