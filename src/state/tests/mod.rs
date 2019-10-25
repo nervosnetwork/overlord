@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 
 mod event_test;
-mod message_test;
 mod test_utils;
 
 use std::collections::HashMap;
