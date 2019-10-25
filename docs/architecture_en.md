@@ -97,7 +97,7 @@ The node uses a deterministic random algorithm to determine the leader of the cu
 
 *Others*: Set a timer T2, check the validity of the aggregated prevote vote, generate *PoLC* send precommit vote
 
-####Verification phase
+####Verification step
 
 All nodes set a timer T3. After receiving the verification result of the *proposal*, they enter the *pre-commit* stage.
 
