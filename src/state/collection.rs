@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::fmt::{Display, Formatter};
 
-use crate::types::{hex, Address, AggregatedVote, Hash, SignedProposal, SignedVote, VoteType};
+use crate::types::{Address, AggregatedVote, Hash, SignedProposal, SignedVote, VoteType};
 use crate::{error::ConsensusError, Codec, ConsensusResult};
 
 /// A struct to collect signed proposals in each epoch. It stores each epoch and the corresponding
@@ -418,28 +417,6 @@ impl Votes {
 
     fn vote_count(&self) -> usize {
         self.by_address.len()
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct VotePool(pub HashMap<Hash, HashSet<Address>>);
-
-impl Display for VotePool {
-    fn fmt(&self, f: &mut Formatter<'_>) -> ::std::fmt::Result {
-        let mut res = Vec::new();
-
-        for (hash, addr_set) in self.0.iter() {
-            for addr in addr_set.iter() {
-                res.push(format!("hash: {}, address: {}", hex(hash), hex(addr)));
-            }
-        }
-        write!(f, "{:?}", res)
-    }
-}
-
-impl VotePool {
-    pub fn new(map: HashMap<Hash, HashSet<Address>>) -> Self {
-        VotePool(map)
     }
 }
 

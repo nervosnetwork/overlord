@@ -115,7 +115,7 @@ pub enum TriggerType {
 }
 
 /// SMR trigger sources.
-#[derive(Clone, Debug, Display, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Display, PartialEq, Eq)]
 pub enum TriggerSource {
     /// SMR triggered by state.
     #[display(fmt = "State")]

@@ -136,12 +136,11 @@ impl Timer {
         Ok(())
     }
 
-    /// **TODO**: refactor filter here.
     #[rustfmt::skip]
     fn trigger(&mut self, event: SMREvent) -> ConsensusResult<()> {
         let (trigger_type, round, epoch_id) = match event {
             SMREvent::NewRoundInfo { epoch_id, round, .. } => {
-                if round < self.round {
+                if epoch_id < self.epoch_id || round < self.round {
                     return Ok(());
                 }
                 (TriggerType::Proposal, None, epoch_id)
@@ -149,16 +148,25 @@ impl Timer {
 
             SMREvent::PrevoteVote {
                 epoch_id, round, ..
-            } => (TriggerType::PrevoteQC, Some(round), epoch_id),
+            } => {
+                if epoch_id < self.epoch_id {
+                    return Ok(());
+                }
+                (TriggerType::PrevoteQC, Some(round), epoch_id)
+            }
 
             SMREvent::PrecommitVote {
                 epoch_id, round, ..
-            } => (TriggerType::PrecommitQC, Some(round), epoch_id),
+            } => {
+                if epoch_id < self.epoch_id {
+                    return Ok(());
+                }
+                (TriggerType::PrecommitQC, Some(round), epoch_id)
+            }
 
             _ => return Err(ConsensusError::TimerErr("No commit timer".to_string())),
         };
 
-        // TODO should be debug!
         debug!("Overlord: timer {:?} time out", event);
 
         self.smr.trigger(SMRTrigger {

@@ -8,9 +8,8 @@ use log::{debug, error, info};
 
 use crate::smr::smr_types::{Lock, SMREvent, SMRTrigger, Step, TriggerSource, TriggerType};
 use crate::utils::metrics::{metrics_enabled, timestamp};
-use crate::{error::ConsensusError, types::hex};
+use crate::{error::ConsensusError, smr::Event, types::Hash};
 use crate::{metrics, ConsensusResult, INIT_EPOCH_ID, INIT_ROUND};
-use crate::{smr::Event, types::Hash};
 
 /// A smallest implementation of an atomic overlord state machine. It
 #[derive(Debug, Display)]
@@ -133,8 +132,7 @@ impl StateMachine {
 
         info!(
             "Overlord: SMR triggered by a proposal hash {:?}, from {:?}",
-            hex(&proposal_hash),
-            source
+            proposal_hash, source
         );
 
         self.check()?;
@@ -144,10 +142,11 @@ impl StateMachine {
                 "epoch_id": self.epoch_id,
                 "round": self.round,
                 "lock_round": lock.round,
-                "lock_hash": hex::encode(&lock.hash)
+                "lock_hash": hex::encode(&lock.hash),
+                "source": source,
             );
         } else {
-            metrics!("propose_step", "epoch_id": self.epoch_id, "round": self.round);
+            metrics!("propose_step", "epoch_id": self.epoch_id, "round": self.round,  "source": source);
         }
 
         if proposal_hash.is_empty() && lock_round.is_some() {
@@ -206,8 +205,7 @@ impl StateMachine {
 
         info!(
             "Overlord: SMR triggered by prevote QC hash {:?} from {:?}",
-            hex(&prevote_hash),
-            source
+            prevote_hash, source
         );
 
         self.check()?;
@@ -217,10 +215,11 @@ impl StateMachine {
                 "epoch_id": self.epoch_id,
                 "round": self.round,
                 "lock_round": lock.round,
-                "lock_hash": hex::encode(&lock.hash)
+                "lock_hash": hex::encode(&lock.hash),
+                "source": source,
             );
         } else {
-            metrics!("prevote_step", "epoch_id": self.epoch_id, "round": self.round);
+            metrics!("prevote_step", "epoch_id": self.epoch_id, "round": self.round, "source": source);
         }
 
         // A prevote QC from timer which means prevote timeout can not lead to unlock. Therefore,
@@ -276,8 +275,7 @@ impl StateMachine {
 
         info!(
             "Overlord: SMR triggered by precommit QC hash {:?}, from {:?}",
-            hex(&precommit_hash),
-            source
+            precommit_hash, source
         );
 
         self.check()?;
@@ -287,10 +285,11 @@ impl StateMachine {
                 "epoch_id": self.epoch_id,
                 "round": self.round,
                 "lock_round": lock.round,
-                "lock_hash": hex::encode(&lock.hash)
+                "lock_hash": hex::encode(&lock.hash),
+                "source": source,
             );
         } else {
-            metrics!("precommit_step", "epoch_id": self.epoch_id, "round": self.round);
+            metrics!("precommit_step", "epoch_id": self.epoch_id, "round": self.round, "source": source);
         }
 
         self.check_round(precommit_round)?;
@@ -316,8 +315,15 @@ impl StateMachine {
                 }
             }
             self.update_polc(precommit_hash.clone(), self.round);
-            self.throw_event(SMREvent::Commit(precommit_hash))?;
+            self.throw_event(SMREvent::Commit(precommit_hash.clone()))?;
             self.goto_step(Step::Commit);
+
+            metrics!(
+                "commit_step",
+                "epoch_id": self.epoch_id,
+                "round": self.round,
+                "commit_hash": hex::encode(&precommit_hash)
+            );
         }
 
         Ok(())
