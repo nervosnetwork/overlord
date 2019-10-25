@@ -101,7 +101,7 @@ The node uses a deterministic random algorithm to determine the leader of the cu
 
 All nodes set a timer T3. After receiving the verification result of the *proposal*, they enter the *pre-commit* stage.
 
-#### Pre-commit phase
+#### Precommit step
 
 *Relayer*: Set a timer T4 to aggregate the received precommit votes and generate a bitmap to broadcast the aggregated votes and bitmaps to other nodes.
 
