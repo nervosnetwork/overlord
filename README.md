@@ -6,11 +6,11 @@
 
 Overlord consensus protocol.
 
-## Intrucduction
+## Intruduction
 
 Overlord is a new consensus protocol that decouple the consensus process from the execution process.
 
-Detaild intrucduction: [中文](./docs/architecture_zh.md)|English
+Detaild intruduction: [中文](./docs/architecture_zh.md)|[English](./docs/architecture_en.md)
 
 ## Usage
 
