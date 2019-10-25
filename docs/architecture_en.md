@@ -91,7 +91,7 @@ The node uses a deterministic random algorithm to determine the leader of the cu
 
 *Others*: Set a timer T1 to send a *prevote* vote to *Relayer* when the proposal is received
 
-#### Pre-voting phase
+#### Prevote step
 
 *Relayer*: Set a timer T2 to aggregate the received *prevote* votes and generate a bitmap to broadcast the aggregated votes and bitmaps to other nodes.
 
