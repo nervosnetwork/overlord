@@ -46,7 +46,7 @@ Overlord is an interpretation layer above the specific consensus algorithm. By r
 
 We have made three major improvements compared to Tendermint:
 
-1. Apply the aggregate signature to Tendermint to make the consensus message complexity from <img src="https://latex.codecogs.com/svg.latex?\inline&space;O(n^{2})" title= "O(n^{2})" /> falls to <img src="https://latex.codecogs.com/svg.latex?\inline&space;O(n)" title="O(n)" / >, thus being able to support more consensus nodes
+1. Apply the aggregate signature to Tendermint to make the consensus message complexity from <img src="https://latex.codecogs.com/svg.latex?\inline&space;O(n^{2})" title= "O(n^{2})" /> falls to <img src="https://latex.codecogs.com/svg.latex?\inline&space;O(n)" title="O(n)" />, thus being able to support more consensus nodes
 2. The propose transaction area is added to the proposal, so that the synchronization of the new transaction can be paralleled with the consensus process.
 3. After receiving the proposal, the consensus node can vote for the prevote without waiting for the epoch check, and must obtain the epoch check result before voting the precommit vote, so that the block check is parallel with the prevote process.
 
