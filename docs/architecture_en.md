@@ -107,7 +107,7 @@ All nodes set a timer T3. After receiving the verification result of the *propos
 
 *Others*: Set a timer T4 to check the legitimacy of the aggregated precommit vote
 
-#### Commit stage
+#### Commit step
 
 All nodes commit the proposal
 
