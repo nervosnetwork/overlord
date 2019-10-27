@@ -88,15 +88,6 @@ impl From<u8> for VoteType {
     }
 }
 
-impl VoteType {
-    pub(crate) fn into_string(self) -> String {
-        match self {
-            VoteType::Prevote => "prevote".to_string(),
-            VoteType::Precommit => "precommit".to_string(),
-        }
-    }
-}
-
 /// Overlord messages.
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
 pub enum OverlordMsg<T: Codec> {

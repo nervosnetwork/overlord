@@ -44,7 +44,7 @@ pub type ConsensusResult<T> = ::std::result::Result<T, ConsensusError>;
 const INIT_EPOCH_ID: u64 = 0;
 const INIT_ROUND: u64 = 0;
 
-/// A necessary trait to keep
+/// Trait for some functions that consensus needs.
 #[async_trait]
 pub trait Consensus<T: Codec, S: Codec>: Send + Sync {
     /// Get an epoch of the given epoch ID and return the epoch with its hash.
@@ -133,25 +133,25 @@ pub trait Crypto: Send {
     ) -> Result<(), Box<dyn Error + Send>>;
 }
 
-/// This is for test.
+/// The setting of the timeout interval of each step.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct DurationConfig {
-    ///
+    /// The numerator of the proportion of propose timeout to the epoch interval.
     pub propose_numerator: u64,
-    ///
+    /// The denominator of the proportion of propose timeout to the epoch interval.
     pub propose_denominator: u64,
-    ///
+    /// The numerator of the proportion of prevote timeout to the epoch interval.
     pub prevote_numerator: u64,
-    ///
+    /// The denominator of the proportion of prevote timeout to the epoch interval.
     pub prevote_denominator: u64,
-    ///
+    /// The numerator of the proportion of precommit timeout to the epoch interval.
     pub precommit_numerator: u64,
-    ///
+    /// The denominator of the proportion of precommit timeout to the epoch interval.
     pub precommit_denominator: u64,
 }
 
 impl DurationConfig {
-    ///
+    /// Create a consensus timeout configuration.
     pub fn new(
         propose_numerator: u64,
         propose_denominator: u64,

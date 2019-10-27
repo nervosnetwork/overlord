@@ -119,10 +119,6 @@ impl AuthorityManage {
     pub fn get_addres_ref(&self) -> &Vec<Address> {
         &self.current.address
     }
-
-    pub fn get_voters(&self, bitmap: Bytes) -> Vec<Address> {
-        self.current.get_voters(bitmap)
-    }
 }
 
 /// Epoch authority manage is an extensional data structure of authority list which means
@@ -185,17 +181,6 @@ impl EpochAuthorityManage {
         Err(ConsensusError::Other(
             "The address list mismatch propose weight list".to_string(),
         ))
-    }
-
-    pub fn get_voters(&self, bitmap: Bytes) -> Vec<Address> {
-        let bitmap = BitVec::from_bytes(&bitmap);
-        let mut res = vec![];
-        for node in bitmap.iter().zip(self.address.iter()) {
-            if node.0 {
-                res.push(node.1.clone());
-            }
-        }
-        res
     }
 
     /// Calculate whether the sum of vote weights from bitmap is above 2/3.
