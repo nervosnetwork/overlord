@@ -1,4 +1,5 @@
 use std::marker::PhantomData;
+use std::sync::Arc;
 
 use creep::Context;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
@@ -8,6 +9,7 @@ use parking_lot::RwLock;
 use crate::error::ConsensusError;
 use crate::state::process::State;
 use crate::types::{Address, OverlordMsg};
+use crate::DurationConfig;
 use crate::{smr::SMRProvider, timer::Timer};
 use crate::{Codec, Consensus, ConsensusResult, Crypto};
 
@@ -18,7 +20,7 @@ pub struct Overlord<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto> {
     sender:    Pile<UnboundedSender<(Context, OverlordMsg<T>)>>,
     state_rx:  Pile<UnboundedReceiver<(Context, OverlordMsg<T>)>>,
     address:   Pile<Address>,
-    consensus: Pile<F>,
+    consensus: Pile<Arc<F>>,
     crypto:    Pile<C>,
     pin_txs:   PhantomData<S>,
 }
@@ -31,7 +33,7 @@ where
     C: Crypto + Send + Sync + 'static,
 {
     /// Create a new overlord and return an overlord instance with an unbounded receiver.
-    pub fn new(address: Address, consensus: F, crypto: C) -> Self {
+    pub fn new(address: Address, consensus: Arc<F>, crypto: C) -> Self {
         let (tx, rx) = unbounded();
         Overlord {
             sender:    RwLock::new(Some(tx)),
@@ -45,23 +47,28 @@ where
 
     /// Get the overlord handler from the overlord instance.
     pub fn get_handler(&self) -> OverlordHandler<T> {
-        let mut sender = self.sender.write();
+        let sender = self.sender.write();
         assert!(sender.is_some());
-        OverlordHandler::new(sender.take().unwrap())
+        let tx = sender.clone().unwrap();
+        OverlordHandler::new(tx)
     }
 
     /// Run overlord consensus process. The `interval` is the epoch interval as millisecond.
-    pub async fn run(&self, interval: u64) -> ConsensusResult<()> {
+    pub async fn run(
+        &self,
+        interval: u64,
+        timer_config: Option<DurationConfig>,
+    ) -> ConsensusResult<()> {
         let (mut smr_provider, evt_1, evt_2) = SMRProvider::new();
         let smr = smr_provider.take_smr();
-        let mut timer = Timer::new(evt_2, smr.clone(), interval);
+        let mut timer = Timer::new(evt_2, smr.clone(), interval, timer_config);
 
         let (rx, mut state) = {
             let mut state_rx = self.state_rx.write();
             let mut address = self.address.write();
             let mut consensus = self.consensus.write();
             let mut crypto = self.crypto.write();
-            let sender = self.sender.read();
+            // let sender = self.sender.read();
 
             let tmp_rx = state_rx.take().unwrap();
             let tmp_state = State::new(
@@ -72,7 +79,7 @@ where
                 crypto.take().unwrap(),
             );
 
-            assert!(sender.is_none());
+            // assert!(sender.is_none());
             assert!(address.is_none());
             assert!(consensus.is_none());
             assert!(crypto.is_none());

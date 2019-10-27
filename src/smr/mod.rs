@@ -80,7 +80,6 @@ impl SMR {
 
     /// Trigger SMR to goto a new epoch.
     pub fn new_epoch(&mut self, epoch_id: u64) -> ConsensusResult<()> {
-        // TODO refactor
         let trigger = TriggerType::NewEpoch(epoch_id);
         self.tx
             .unbounded_send(SMRTrigger {

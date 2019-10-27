@@ -6,9 +6,8 @@ use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::Stream;
 use log::{debug, error, info};
 
-use crate::error::ConsensusError;
 use crate::smr::smr_types::{Lock, SMREvent, SMRTrigger, Step, TriggerSource, TriggerType};
-use crate::{smr::Event, types::Hash};
+use crate::{error::ConsensusError, smr::Event, types::Hash};
 use crate::{ConsensusResult, INIT_EPOCH_ID, INIT_ROUND};
 
 /// A smallest implementation of an atomic overlord state machine. It
@@ -140,9 +139,10 @@ impl StateMachine {
         }
 
         // update PoLC
-        debug!("Overlord: SMR handle proposal with a lock");
         if let Some(lock_round) = lock_round {
             if let Some(lock) = self.lock.clone() {
+                debug!("Overlord: SMR handle proposal with a lock");
+
                 if lock_round > lock.round {
                     self.remove_polc();
                     self.set_proposal(proposal_hash.clone());
@@ -194,7 +194,6 @@ impl StateMachine {
         );
 
         self.check()?;
-
         // A prevote QC from timer which means prevote timeout can not lead to unlock. Therefore,
         // only prevote QCs from state will update the PoLC. If the prevote QC is from timer, throw
         // precommit vote event directly.
@@ -252,7 +251,6 @@ impl StateMachine {
         );
 
         self.check()?;
-
         self.check_round(precommit_round)?;
         if precommit_hash.is_empty() {
             let (lock_round, lock_proposal) = self
@@ -279,7 +277,6 @@ impl StateMachine {
             self.throw_event(SMREvent::Commit(precommit_hash))?;
             self.goto_step(Step::Commit);
         }
-
         Ok(())
     }
 
@@ -312,10 +309,6 @@ impl StateMachine {
         self.round += 1;
         self.proposal_hash.clear();
         self.goto_step(Step::Propose);
-
-        if self.lock.is_some() {
-            self.proposal_hash = self.lock.clone().unwrap().hash;
-        }
     }
 
     /// Goto the given step.

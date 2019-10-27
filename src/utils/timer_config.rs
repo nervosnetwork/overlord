@@ -1,6 +1,7 @@
 use std::{cell::Cell, time::Duration};
 
 use crate::smr::smr_types::SMREvent;
+use crate::DurationConfig;
 use crate::{error::ConsensusError, ConsensusResult};
 
 /// Overlord timer config.
@@ -20,6 +21,12 @@ impl TimerConfig {
             prevote:   (10, 30),
             precommit: (5, 30),
         }
+    }
+
+    pub fn update(&mut self, config: DurationConfig) {
+        self.propose = config.get_propose_config();
+        self.prevote = config.get_prevote_config();
+        self.precommit = config.get_precommit_config();
     }
 
     pub fn get_timeout(&self, event: SMREvent) -> ConsensusResult<Duration> {
