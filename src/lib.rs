@@ -170,18 +170,15 @@ impl DurationConfig {
         }
     }
 
-    ///
-    pub fn get_propose_config(&self) -> (u64, u64) {
+    pub(crate) fn get_propose_config(&self) -> (u64, u64) {
         (self.propose_numerator, self.propose_denominator)
     }
 
-    ///
-    pub fn get_prevote_config(&self) -> (u64, u64) {
+    pub(crate) fn get_prevote_config(&self) -> (u64, u64) {
         (self.prevote_numerator, self.prevote_denominator)
     }
 
-    ///
-    pub fn get_precommit_config(&self) -> (u64, u64) {
+    pub(crate) fn get_precommit_config(&self) -> (u64, u64) {
         (self.precommit_numerator, self.precommit_denominator)
     }
 }

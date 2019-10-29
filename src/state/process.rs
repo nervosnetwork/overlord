@@ -211,7 +211,9 @@ where
         get_last_flag: bool,
     ) -> ConsensusResult<()> {
         self.epoch_start = Instant::now();
-        let new_epoch_id = self.epoch_id;
+        let new_epoch_id = status.epoch_id;
+        self.epoch_id = new_epoch_id;
+        self.round = INIT_ROUND;
         info!("Overlord: state goto new epoch {}", self.epoch_id);
 
         // Update epoch ID and authority list.
@@ -633,10 +635,8 @@ where
             self.round + 1
         );
 
-        let get_auth_flag = status.epoch_id != self.epoch_id - 1;
+        let get_auth_flag = status.epoch_id != self.epoch_id + 1;
         let mut auth_list = status.authority_list.clone();
-        self.epoch_id = status.epoch_id;
-        self.round = INIT_ROUND;
         self.authority.update(&mut auth_list, true);
 
         if self.next_proposer(status.epoch_id)?
