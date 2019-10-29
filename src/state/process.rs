@@ -382,8 +382,8 @@ where
         let round = signed_proposal.proposal.round;
 
         info!(
-            "{:?}-Overlod: state receive a signed proposal epoch ID {}, round {}",
-            self.address, epoch_id, round,
+            "Overlod: state receive a signed proposal epoch ID {}, round {}",
+            epoch_id, round,
         );
 
         // If the proposal epoch ID is lower than the current epoch ID - 1, or the proposal epoch ID
@@ -431,7 +431,7 @@ where
             if let Some((last_round, last_proposal)) = self.last_commit_msg()? {
                 if round <= last_round {
                     debug!(
-                        "Overlord: state receive an outdated signed proposal, epoch ID {}, round {}",
+                        "Overlord: state receive an outdated signed proposal, epoch ID {}, round {}", 
                         epoch_id, round,
                     );
                     return Ok(());
