@@ -23,18 +23,10 @@ overlord = { git = "https://github.com/cryptape/overlord.git" }
 
 ### Example
 
-```rust
-use overlord::{Codec, Consensus, Context, Crypto, Overlord, OverlordHandler};
+We simulated a salon scene to show an example of using overlord.
 
-impl<T, F> Consensus<T, F> for OverlordEngine {}
+A distributed system for reaching a consensus on the content of a speech is realized by simulating the dialogue between speakers through the communication between threads.
 
-impl Crypto for OverlordCrypto {}
+Users can run example by `cargo run -- example salon`, and the system will output the agreed speech content in turn.
 
-fn main() {
-    let overlord = Overlord::new(address, OverlordEngine, OverlordCrypto);
-    let handler = overlord.get_handler();
-
-    tokio::run(overlord.run());
-    handler.send_msg().unwrap();
-}
-```
+It will check whether different speakers agree on the content of the speech.

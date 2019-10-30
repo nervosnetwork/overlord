@@ -20,20 +20,20 @@ lazy_static! {
     static ref HASHER_INST: HasherKeccak = HasherKeccak::new();
 }
 
-const NODE_NUM: u8 = 20;
+const SPEAKER_NUM: u8 = 20;
 
-const INTERVAL: u64 = 1000;
+const SPEECH_INTERVAL: u64 = 1000;  //ms
 
-type Chan = (Sender<OverlordMsg<Message>>, Receiver<OverlordMsg<Message>>);
+type Channel = (Sender<OverlordMsg<Speech>>, Receiver<OverlordMsg<Speech>>);
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-struct Message {
+struct Speech {
     inner: Bytes,
 }
 
-impl Message {
-    fn from(bytes: Bytes) -> Self {
-        Message { inner: bytes }
+impl Speech {
+    fn from(thought: Bytes) -> Self {
+        Speech { inner: thought }
     }
 }
 
@@ -43,10 +43,10 @@ struct Detail {
 }
 
 impl Detail {
-    fn from(msg: Message) -> Self {
+    fn from(speech: Speech) -> Self {
         Detail {
-            // TODO: expand your data
-            inner: msg.inner,
+            // explain your speech
+            inner: speech.inner,
         }
     }
 }
@@ -68,32 +68,31 @@ macro_rules! impl_codec_for {
     }
 }
 
-impl_codec_for!(Message, Detail);
+impl_codec_for!(Speech, Detail);
 
 struct MockCrypto {
-    address: Bytes,
+    name: Bytes,
 }
 
 impl MockCrypto {
-    fn new(address: Bytes) -> Self {
-        MockCrypto { address }
+    fn new(name: Bytes) -> Self {
+        MockCrypto { name }
     }
 }
 
 impl Crypto for MockCrypto {
-    fn hash(&self, msg: Bytes) -> Bytes {
-        hash(&msg)
+    fn hash(&self, speech: Bytes) -> Bytes {
+        hash(&speech)
     }
 
     fn sign(&self, _hash: Bytes) -> Result<Bytes, Box<dyn Error + Send>> {
-        // TODO: implement your signature method
-        Ok(self.address.clone())
+        Ok(self.name.clone())
     }
 
     fn aggregate_signatures(
         &self,
         _signatures: Vec<Bytes>,
-        _voters: Vec<Bytes>,
+        _speaker: Vec<Bytes>,
     ) -> Result<Bytes, Box<dyn Error + Send>> {
         Ok(Bytes::new())
     }
@@ -103,7 +102,6 @@ impl Crypto for MockCrypto {
         signature: Bytes,
         _hash: Bytes,
     ) -> Result<Bytes, Box<dyn Error + Send>> {
-        // TODO: implement your verify signature method
         Ok(signature)
     }
 
@@ -115,38 +113,38 @@ impl Crypto for MockCrypto {
     }
 }
 
-struct ConsensusEngine {
-    authority_list: Vec<Node>,
-    peers:          HashMap<Bytes, Sender<OverlordMsg<Message>>>,
-    network:        Receiver<OverlordMsg<Message>>,
-    commits:        Arc<Mutex<HashMap<u64, Bytes>>>,
+struct Brain {
+    speaker_list: Vec<Node>,
+    talk_to:          HashMap<Bytes, Sender<OverlordMsg<Speech>>>,
+    hearing:        Receiver<OverlordMsg<Speech>>,
+    consensus_speech:        Arc<Mutex<HashMap<u64, Bytes>>>,
 }
 
-impl ConsensusEngine {
+impl Brain {
     fn new(
-        authority_list: Vec<Node>,
-        peers: HashMap<Bytes, Sender<OverlordMsg<Message>>>,
-        network: Receiver<OverlordMsg<Message>>,
-        commits: Arc<Mutex<HashMap<u64, Bytes>>>,
-    ) -> ConsensusEngine {
-        ConsensusEngine {
-            authority_list,
-            peers,
-            network,
-            commits,
+        speaker_list: Vec<Node>,
+        talk_to: HashMap<Bytes, Sender<OverlordMsg<Speech>>>,
+        hearing: Receiver<OverlordMsg<Speech>>,
+        consensus_speech: Arc<Mutex<HashMap<u64, Bytes>>>,
+    ) -> Brain {
+        Brain {
+            speaker_list,
+            talk_to,
+            hearing,
+            consensus_speech,
         }
     }
 }
 
 #[async_trait]
-impl Consensus<Message, Detail> for ConsensusEngine {
+impl Consensus<Speech, Detail> for Brain {
     async fn get_epoch(
         &self,
         _ctx: Context,
         _epoch_id: u64,
-    ) -> Result<(Message, Hash), Box<dyn Error + Send>> {
-        let data = gen_random_bytes();
-        Ok((Message::from(data.clone()), hash(&data)))
+    ) -> Result<(Speech, Hash), Box<dyn Error + Send>> {
+        let thought = gen_random_bytes();
+        Ok((Speech::from(thought.clone()), hash(&thought)))
     }
 
     async fn check_epoch(
@@ -154,33 +152,33 @@ impl Consensus<Message, Detail> for ConsensusEngine {
         _ctx: Context,
         _epoch_id: u64,
         _hash: Hash,
-        data: Message,
+        speech: Speech,
     ) -> Result<Detail, Box<dyn Error + Send>> {
-        Ok(Detail::from(data))
+        Ok(Detail::from(speech))
     }
 
     async fn commit(
         &self,
         _ctx: Context,
         epoch_id: u64,
-        commit: Commit<Message>,
+        commit: Commit<Speech>,
     ) -> Result<Status, Box<dyn Error + Send>> {
-        let mut commit_map = self.commits.lock().unwrap();
-        if let Some(data) = commit_map.get(&commit.epoch_id) {
-            assert_eq!(data, &commit.content.inner);
+        let mut speeches = self.consensus_speech.lock().unwrap();
+        if let Some(speech) = speeches.get(&commit.epoch_id) {
+            assert_eq!(speech, &commit.content.inner);
         } else {
             println!(
                 "In epoch_id: {:?}, commit with : {:?}",
                 commit.epoch_id,
                 hex::encode(commit.content.inner.clone())
             );
-            commit_map.insert(commit.epoch_id, commit.content.inner);
+            speeches.insert(commit.epoch_id, commit.content.inner);
         }
 
         Ok(Status {
             epoch_id:       epoch_id + 1,
-            interval:       Some(INTERVAL),
-            authority_list: self.authority_list.clone(),
+            interval:       Some(SPEECH_INTERVAL),
+            authority_list: self.speaker_list.clone(),
         })
     }
 
@@ -189,16 +187,16 @@ impl Consensus<Message, Detail> for ConsensusEngine {
         _ctx: Context,
         _epoch_id: u64,
     ) -> Result<Vec<Node>, Box<dyn Error + Send>> {
-        Ok(self.authority_list.clone())
+        Ok(self.speaker_list.clone())
     }
 
     async fn broadcast_to_other(
         &self,
         _ctx: Context,
-        msg: OverlordMsg<Message>,
+        words: OverlordMsg<Speech>,
     ) -> Result<(), Box<dyn Error + Send>> {
-        self.peers.iter().for_each(|(_, sender)| {
-            sender.send(msg.clone()).unwrap();
+        self.talk_to.iter().for_each(|(_, mouth)| {
+            mouth.send(words.clone()).unwrap();
         });
         Ok(())
     }
@@ -206,36 +204,36 @@ impl Consensus<Message, Detail> for ConsensusEngine {
     async fn transmit_to_relayer(
         &self,
         _ctx: Context,
-        addr: Bytes,
-        msg: OverlordMsg<Message>,
+        name: Bytes,
+        words: OverlordMsg<Speech>,
     ) -> Result<(), Box<dyn Error + Send>> {
-        self.peers.get(&addr).unwrap().send(msg).unwrap();
+        self.talk_to.get(&name).unwrap().send(words).unwrap();
         Ok(())
     }
 }
 
-struct ConsensusMachine {
-    overlord: Arc<Overlord<Message, Detail, ConsensusEngine, MockCrypto>>,
-    handler:  OverlordHandler<Message>,
-    engine:   Arc<ConsensusEngine>,
+struct Speaker {
+    overlord: Arc<Overlord<Speech, Detail, Brain, MockCrypto>>,
+    handler:  OverlordHandler<Speech>,
+    brain:   Arc<Brain>,
 }
 
-impl ConsensusMachine {
+impl Speaker {
     fn new(
-        address: Bytes,
-        authority_list: Vec<Node>,
-        peers: HashMap<Bytes, Sender<OverlordMsg<Message>>>,
-        network: Receiver<OverlordMsg<Message>>,
-        commits: Arc<Mutex<HashMap<u64, Bytes>>>,
+        name: Bytes,
+        speaker_list: Vec<Node>,
+        talk_to: HashMap<Bytes, Sender<OverlordMsg<Speech>>>,
+        hearing: Receiver<OverlordMsg<Speech>>,
+        consensus_speech: Arc<Mutex<HashMap<u64, Bytes>>>,
     ) -> Self {
-        let crypto = MockCrypto::new(address.clone());
-        let engine = Arc::new(ConsensusEngine::new(
-            authority_list.clone(),
-            peers,
-            network,
-            commits,
+        let crypto = MockCrypto::new(name.clone());
+        let brain = Arc::new(Brain::new(
+            speaker_list.clone(),
+            talk_to,
+            hearing,
+            consensus_speech,
         ));
-        let overlord = Overlord::new(address, Arc::clone(&engine), crypto);
+        let overlord = Overlord::new(name, Arc::clone(&brain), crypto);
         let overlord_handler = overlord.get_handler();
 
         overlord_handler
@@ -243,8 +241,8 @@ impl ConsensusMachine {
                 Context::new(),
                 OverlordMsg::RichStatus(Status {
                     epoch_id: 1,
-                    interval: Some(INTERVAL),
-                    authority_list,
+                    interval: Some(SPEECH_INTERVAL),
+                    authority_list: speaker_list,
                 }),
             )
             .unwrap();
@@ -252,7 +250,7 @@ impl ConsensusMachine {
         Self {
             overlord: Arc::new(overlord),
             handler: overlord_handler,
-            engine,
+            brain,
         }
     }
 
@@ -261,11 +259,11 @@ impl ConsensusMachine {
         interval: u64,
         timer_config: Option<DurationConfig>,
     ) -> Result<(), Box<dyn Error + Send>> {
-        let engine = Arc::<ConsensusEngine>::clone(&self.engine);
+        let brain = Arc::<Brain>::clone(&self.brain);
         let handler = self.handler.clone();
 
         thread::spawn(move || loop {
-            if let Ok(msg) = engine.network.recv() {
+            if let Ok(msg) = brain.hearing.recv() {
                 match msg {
                     OverlordMsg::SignedVote(vote) => {
                         handler
@@ -295,37 +293,37 @@ impl ConsensusMachine {
 
 #[runtime::main(runtime_tokio::Tokio)]
 async fn main() {
-    let authority_list: Vec<Node> = (0..NODE_NUM)
+    let speaker_list: Vec<Node> = (0..SPEAKER_NUM)
         .map(|_| Node::new(gen_random_bytes()))
         .collect();
-    let connections: Vec<Chan> = (0..NODE_NUM).map(|_| unbounded()).collect();
-    let networks: HashMap<Bytes, Receiver<OverlordMsg<Message>>> = authority_list
+    let channels: Vec<Channel> = (0..SPEAKER_NUM).map(|_| unbounded()).collect();
+    let hearings: HashMap<Bytes, Receiver<OverlordMsg<Speech>>> = speaker_list
         .iter()
         .map(|node| node.address.clone())
-        .zip(connections.iter().map(|(_, receiver)| receiver.clone()))
+        .zip(channels.iter().map(|(_, receiver)| receiver.clone()))
         .collect();
-    let commits = Arc::new(Mutex::new(HashMap::new()));
+    let consensus_speech = Arc::new(Mutex::new(HashMap::new()));
 
-    let authority_list_clone = authority_list.clone();
+    let speaker_list_clone = speaker_list.clone();
 
-    for node in authority_list {
-        let address = node.address;
-        let mut peers: HashMap<Bytes, Sender<OverlordMsg<Message>>> = authority_list_clone
+    for speaker in speaker_list {
+        let name = speaker.address;
+        let mut talk_to: HashMap<Bytes, Sender<OverlordMsg<Speech>>> = speaker_list_clone
             .iter()
-            .map(|node| node.address.clone())
-            .zip(connections.iter().map(|(sender, _)| sender.clone()))
+            .map(|speaker| speaker.address.clone())
+            .zip(channels.iter().map(|(sender, _)| sender.clone()))
             .collect();
-        peers.remove(&address);
+        talk_to.remove(&name);
 
-        let node = Arc::new(ConsensusMachine::new(
-            address.clone(),
-            authority_list_clone.clone(),
-            peers,
-            networks.get(&address).unwrap().clone(),
-            Arc::<Mutex<HashMap<u64, Bytes>>>::clone(&commits),
+        let speaker = Arc::new(Speaker::new(
+            name.clone(),
+            speaker_list_clone.clone(),
+            talk_to,
+            hearings.get(&name).unwrap().clone(),
+            Arc::<Mutex<HashMap<u64, Bytes>>>::clone(&consensus_speech),
         ));
         runtime::spawn(async move {
-            node.run(INTERVAL, timer_config()).await.unwrap();
+            speaker.run(SPEECH_INTERVAL, timer_config()).await.unwrap();
         });
     }
 
