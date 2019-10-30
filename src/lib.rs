@@ -1,4 +1,7 @@
-//! Overlord Consensus Protocol
+//! Overlord Consensus Protocol is a Byzantine fault tolerance (BFT) consensus algorithm aiming to
+//! support thousands of transactions per second under hundreds of consensus nodes, with transaction
+//! delays of no more than a few seconds. Simply put, it is a high-performance consensus algorithm
+//! able to meets most of the real business needs.
 
 #![deny(missing_docs)]
 #![feature(test)]
