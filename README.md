@@ -27,6 +27,6 @@ We simulated a salon scene to show an example of using overlord.
 
 A distributed system for reaching a consensus on the content of a speech is realized by simulating the dialogue between speakers through the communication between threads.
 
-Users can run example by `cargo run -- example salon`, and the system will output the agreed speech content in turn.
+Run the example by `cargo run --example salon`, and the system will output the agreed speech content in turn. Click [here](./examples/salon.rs) to see the detail.
 
 It will check whether different speakers agree on the content of the speech.
