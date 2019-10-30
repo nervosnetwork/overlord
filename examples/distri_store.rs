@@ -11,6 +11,7 @@ use crossbeam_channel::{unbounded, Receiver, Sender};
 use hasher::{Hasher, HasherKeccak};
 use lazy_static::lazy_static;
 use rand::random;
+use serde::{Deserialize, Serialize};
 
 use overlord::types::{AggregatedSignature, Commit, Hash, Node, OverlordMsg, Status};
 use overlord::{Codec, Consensus, Crypto, DurationConfig, Overlord, OverlordHandler};
@@ -19,13 +20,13 @@ lazy_static! {
     static ref HASHER_INST: HasherKeccak = HasherKeccak::new();
 }
 
-const NODE_NUM: u8 = 100;
+const NODE_NUM: u8 = 20;
 
-const INTERVAL: u64 = 5000;
+const INTERVAL: u64 = 1000;
 
 type Chan = (Sender<OverlordMsg<Message>>, Receiver<OverlordMsg<Message>>);
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 struct Message {
     inner: Bytes,
 }
@@ -36,17 +37,7 @@ impl Message {
     }
 }
 
-impl Codec for Message {
-    fn encode(&self) -> Result<Bytes, Box<dyn Error + Send>> {
-        Ok(self.inner.clone())
-    }
-
-    fn decode(data: Bytes) -> Result<Self, Box<dyn Error + Send>> {
-        Ok(Message { inner: data })
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 struct Detail {
     inner: Bytes,
 }
@@ -60,15 +51,24 @@ impl Detail {
     }
 }
 
-impl Codec for Detail {
-    fn encode(&self) -> Result<Bytes, Box<dyn Error + Send>> {
-        Ok(self.inner.clone())
-    }
+macro_rules! impl_codec_for {
+    ($($struc: ident),+) => {
+        $(
+            impl Codec for $struc {
+                fn encode(&self) -> Result<Bytes, Box<dyn Error + Send>> {
+                    Ok(Bytes::from(bincode::serialize(&self.inner).unwrap()))
+                }
 
-    fn decode(data: Bytes) -> Result<Self, Box<dyn Error + Send>> {
-        Ok(Detail { inner: data })
+                fn decode(data: Bytes) -> Result<Self, Box<dyn Error + Send>> {
+                    let data: Option<Bytes> = bincode::deserialize(&data).unwrap();
+                    Ok($struc { inner: data.unwrap() })
+                }
+            }
+        )+
     }
 }
+
+impl_codec_for!(Message, Detail);
 
 struct MockCrypto {
     address: Bytes,
@@ -111,85 +111,6 @@ impl Crypto for MockCrypto {
         &self,
         _aggregated_signature: AggregatedSignature,
     ) -> Result<(), Box<dyn Error + Send>> {
-        Ok(())
-    }
-}
-
-struct ConsensusMachine {
-    overlord: Arc<Overlord<Message, Detail, ConsensusEngine, MockCrypto>>,
-    handler:  OverlordHandler<Message>,
-    engine:   Arc<ConsensusEngine>,
-}
-
-impl ConsensusMachine {
-    fn new(
-        address: Bytes,
-        authority_list: Vec<Node>,
-        peers: HashMap<Bytes, Sender<OverlordMsg<Message>>>,
-        network: Receiver<OverlordMsg<Message>>,
-        commits: Arc<Mutex<HashMap<u64, Bytes>>>,
-    ) -> Self {
-        let crypto = MockCrypto::new(address.clone());
-        let engine = Arc::new(ConsensusEngine::new(
-            authority_list.clone(),
-            peers,
-            network,
-            commits,
-        ));
-        let overlord = Overlord::new(address, Arc::clone(&engine), crypto);
-        let overlord_handler = overlord.get_handler();
-
-        overlord_handler
-            .send_msg(
-                Context::new(),
-                OverlordMsg::RichStatus(Status {
-                    epoch_id: 1,
-                    interval: Some(INTERVAL),
-                    authority_list,
-                }),
-            )
-            .unwrap();
-
-        Self {
-            overlord: Arc::new(overlord),
-            handler: overlord_handler,
-            engine,
-        }
-    }
-
-    async fn run(
-        &self,
-        interval: u64,
-        timer_config: Option<DurationConfig>,
-    ) -> Result<(), Box<dyn Error + Send>> {
-        let engine = Arc::<ConsensusEngine>::clone(&self.engine);
-        let handler = self.handler.clone();
-
-        thread::spawn(move || loop {
-            if let Ok(msg) = engine.network.recv() {
-                match msg {
-                    OverlordMsg::SignedVote(vote) => {
-                        handler
-                            .send_msg(Context::new(), OverlordMsg::SignedVote(vote))
-                            .unwrap();
-                    }
-                    OverlordMsg::SignedProposal(proposal) => {
-                        handler
-                            .send_msg(Context::new(), OverlordMsg::SignedProposal(proposal))
-                            .unwrap();
-                    }
-                    OverlordMsg::AggregatedVote(agg_vote) => {
-                        handler
-                            .send_msg(Context::new(), OverlordMsg::AggregatedVote(agg_vote))
-                            .unwrap();
-                    }
-                    _ => {}
-                }
-            }
-        });
-
-        self.overlord.run(interval, timer_config).await.unwrap();
-
         Ok(())
     }
 }
@@ -289,6 +210,85 @@ impl Consensus<Message, Detail> for ConsensusEngine {
         msg: OverlordMsg<Message>,
     ) -> Result<(), Box<dyn Error + Send>> {
         self.peers.get(&addr).unwrap().send(msg).unwrap();
+        Ok(())
+    }
+}
+
+struct ConsensusMachine {
+    overlord: Arc<Overlord<Message, Detail, ConsensusEngine, MockCrypto>>,
+    handler:  OverlordHandler<Message>,
+    engine:   Arc<ConsensusEngine>,
+}
+
+impl ConsensusMachine {
+    fn new(
+        address: Bytes,
+        authority_list: Vec<Node>,
+        peers: HashMap<Bytes, Sender<OverlordMsg<Message>>>,
+        network: Receiver<OverlordMsg<Message>>,
+        commits: Arc<Mutex<HashMap<u64, Bytes>>>,
+    ) -> Self {
+        let crypto = MockCrypto::new(address.clone());
+        let engine = Arc::new(ConsensusEngine::new(
+            authority_list.clone(),
+            peers,
+            network,
+            commits,
+        ));
+        let overlord = Overlord::new(address, Arc::clone(&engine), crypto);
+        let overlord_handler = overlord.get_handler();
+
+        overlord_handler
+            .send_msg(
+                Context::new(),
+                OverlordMsg::RichStatus(Status {
+                    epoch_id: 1,
+                    interval: Some(INTERVAL),
+                    authority_list,
+                }),
+            )
+            .unwrap();
+
+        Self {
+            overlord: Arc::new(overlord),
+            handler: overlord_handler,
+            engine,
+        }
+    }
+
+    async fn run(
+        &self,
+        interval: u64,
+        timer_config: Option<DurationConfig>,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        let engine = Arc::<ConsensusEngine>::clone(&self.engine);
+        let handler = self.handler.clone();
+
+        thread::spawn(move || loop {
+            if let Ok(msg) = engine.network.recv() {
+                match msg {
+                    OverlordMsg::SignedVote(vote) => {
+                        handler
+                            .send_msg(Context::new(), OverlordMsg::SignedVote(vote))
+                            .unwrap();
+                    }
+                    OverlordMsg::SignedProposal(proposal) => {
+                        handler
+                            .send_msg(Context::new(), OverlordMsg::SignedProposal(proposal))
+                            .unwrap();
+                    }
+                    OverlordMsg::AggregatedVote(agg_vote) => {
+                        handler
+                            .send_msg(Context::new(), OverlordMsg::AggregatedVote(agg_vote))
+                            .unwrap();
+                    }
+                    _ => {}
+                }
+            }
+        });
+
+        self.overlord.run(interval, timer_config).await.unwrap();
+
         Ok(())
     }
 }
