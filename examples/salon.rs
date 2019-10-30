@@ -22,7 +22,7 @@ lazy_static! {
 
 const SPEAKER_NUM: u8 = 20;
 
-const SPEECH_INTERVAL: u64 = 1000;  //ms
+const SPEECH_INTERVAL: u64 = 1000; // ms
 
 type Channel = (Sender<OverlordMsg<Speech>>, Receiver<OverlordMsg<Speech>>);
 
@@ -114,10 +114,10 @@ impl Crypto for MockCrypto {
 }
 
 struct Brain {
-    speaker_list: Vec<Node>,
+    speaker_list:     Vec<Node>,
     talk_to:          HashMap<Bytes, Sender<OverlordMsg<Speech>>>,
-    hearing:        Receiver<OverlordMsg<Speech>>,
-    consensus_speech:        Arc<Mutex<HashMap<u64, Bytes>>>,
+    hearing:          Receiver<OverlordMsg<Speech>>,
+    consensus_speech: Arc<Mutex<HashMap<u64, Bytes>>>,
 }
 
 impl Brain {
@@ -215,7 +215,7 @@ impl Consensus<Speech, Detail> for Brain {
 struct Speaker {
     overlord: Arc<Overlord<Speech, Detail, Brain, MockCrypto>>,
     handler:  OverlordHandler<Speech>,
-    brain:   Arc<Brain>,
+    brain:    Arc<Brain>,
 }
 
 impl Speaker {
@@ -240,8 +240,8 @@ impl Speaker {
             .send_msg(
                 Context::new(),
                 OverlordMsg::RichStatus(Status {
-                    epoch_id: 1,
-                    interval: Some(SPEECH_INTERVAL),
+                    epoch_id:       1,
+                    interval:       Some(SPEECH_INTERVAL),
                     authority_list: speaker_list,
                 }),
             )
