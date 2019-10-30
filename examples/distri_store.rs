@@ -19,9 +19,9 @@ lazy_static! {
     static ref HASHER_INST: HasherKeccak = HasherKeccak::new();
 }
 
-const NODE_NUM: u8 = 4;
+const NODE_NUM: u8 = 100;
 
-const INTERVAL: u64 = 1000;
+const INTERVAL: u64 = 5000;
 
 type Chan = (Sender<OverlordMsg<Message>>, Receiver<OverlordMsg<Message>>);
 
@@ -52,10 +52,10 @@ struct Detail {
 }
 
 impl Detail {
-    fn from(compact_data: Message) -> Self {
+    fn from(msg: Message) -> Self {
         Detail {
             // TODO: expand your data
-            inner: compact_data.inner,
+            inner: msg.inner,
         }
     }
 }
@@ -131,7 +131,6 @@ impl ConsensusMachine {
     ) -> Self {
         let crypto = MockCrypto::new(address.clone());
         let engine = Arc::new(ConsensusEngine::new(
-            address.clone(),
             authority_list.clone(),
             peers,
             network,
@@ -196,7 +195,6 @@ impl ConsensusMachine {
 }
 
 struct ConsensusEngine {
-    address:        Bytes,
     authority_list: Vec<Node>,
     peers:          HashMap<Bytes, Sender<OverlordMsg<Message>>>,
     network:        Receiver<OverlordMsg<Message>>,
@@ -205,14 +203,12 @@ struct ConsensusEngine {
 
 impl ConsensusEngine {
     fn new(
-        address: Bytes,
         authority_list: Vec<Node>,
         peers: HashMap<Bytes, Sender<OverlordMsg<Message>>>,
         network: Receiver<OverlordMsg<Message>>,
         commits: Arc<Mutex<HashMap<u64, Bytes>>>,
     ) -> ConsensusEngine {
         ConsensusEngine {
-            address,
             authority_list,
             peers,
             network,
@@ -229,7 +225,7 @@ impl Consensus<Message, Detail> for ConsensusEngine {
         _epoch_id: u64,
     ) -> Result<(Message, Hash), Box<dyn Error + Send>> {
         let data = gen_random_bytes();
-        Ok((Message::from(data), self.address.clone()))
+        Ok((Message::from(data.clone()), hash(&data)))
     }
 
     async fn check_epoch(
@@ -237,9 +233,9 @@ impl Consensus<Message, Detail> for ConsensusEngine {
         _ctx: Context,
         _epoch_id: u64,
         _hash: Hash,
-        compact_data: Message,
+        data: Message,
     ) -> Result<Detail, Box<dyn Error + Send>> {
-        Ok(Detail::from(compact_data))
+        Ok(Detail::from(data))
     }
 
     async fn commit(
