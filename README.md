@@ -18,7 +18,7 @@ Detaild intruduction: [中文](./docs/architecture_zh.md)|[English](./docs/archi
 
 ```toml
 [dependencies]
-overlord = { git = "https://github.com/cryptape/overlord.git" }
+overlord = "0.1"
 ```
 
 ### Example
@@ -30,3 +30,7 @@ A distributed system for reaching a consensus on the content of a speech is real
 Run the example by `cargo run --example salon`, and the system will output the agreed speech content in turn. Click [here](./examples/salon.rs) to see the detail.
 
 It will check whether different speakers agree on the content of the speech.
+
+### Projects using Overlord
+
+* [Muta](https://github.com/nervosnetwork/muta), a high-performance blockchain framework.
