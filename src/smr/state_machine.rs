@@ -125,11 +125,11 @@ impl StateMachine {
         source: TriggerSource,
         epoch_id: u64,
     ) -> ConsensusResult<()> {
-        if self.epoch_id > epoch_id {
+        if self.epoch_id != epoch_id || self.round != round {
             return Ok(());
         }
 
-        if self.step > Step::Propose && self.round >= round {
+        if self.step > Step::Propose {
             return Ok(());
         }
 
@@ -141,8 +141,6 @@ impl StateMachine {
         self.check()?;
         if proposal_hash.is_empty() && lock_round.is_some() {
             return Err(ConsensusError::ProposalErr("Invalid lock".to_string()));
-        } else if round > self.round {
-            self.round = round;
         }
 
         // update PoLC
@@ -184,12 +182,14 @@ impl StateMachine {
         source: TriggerSource,
         epoch_id: u64,
     ) -> ConsensusResult<()> {
-        if self.step > Step::Prevote && self.round >= prevote_round {
+        if self.step > Step::Prevote && self.round == prevote_round {
             return Ok(());
         }
 
         if self.epoch_id > epoch_id || self.round > prevote_round {
             return Ok(());
+        } else if prevote_round > self.round {
+            self.round = prevote_round;
         }
 
         info!(
@@ -198,9 +198,6 @@ impl StateMachine {
         );
 
         self.check()?;
-        if prevote_round > self.round {
-            self.round = prevote_round;
-        }
         // A prevote QC from timer which means prevote timeout can not lead to unlock. Therefore,
         // only prevote QCs from state will update the PoLC. If the prevote QC is from timer, throw
         // precommit vote event directly.
@@ -240,7 +237,7 @@ impl StateMachine {
         source: TriggerSource,
         epoch_id: u64,
     ) -> ConsensusResult<()> {
-        if self.step > Step::Precommit && self.round >= precommit_round {
+        if self.step > Step::Precommit && self.round == precommit_round {
             return Ok(());
         }
 
