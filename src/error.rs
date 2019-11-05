@@ -31,14 +31,6 @@ pub enum ConsensusError {
     #[display(fmt = "Precommit error {}", _0)]
     PrecommitErr(String),
     ///
-    #[display(fmt = "Self round is {}, vote round is {}", local, vote)]
-    RoundDiff {
-        ///
-        local: u64,
-        ///
-        vote: u64,
-    },
-    ///
     #[display(fmt = "Self check not pass {}", _0)]
     SelfCheckErr(String),
     ///
@@ -87,9 +79,6 @@ impl PartialEq for ConsensusError {
             | (PrevoteErr(_), PrevoteErr(_))
             | (PrecommitErr(_), PrecommitErr(_))
             | (SelfCheckErr(_), SelfCheckErr(_)) => true,
-            // If it is the following two types of errors, in the judgment, the error type need the
-            // same, and the error information need the same.
-            (RoundDiff { local: m, vote: n }, RoundDiff { local: p, vote: q }) => m == p && n == q,
             (Other(x), Other(y)) | (CorrectnessErr(x), CorrectnessErr(y)) => x == y,
             _ => false,
         }

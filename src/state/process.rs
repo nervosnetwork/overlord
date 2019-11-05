@@ -644,11 +644,10 @@ where
         if self.next_proposer(status.epoch_id)?
             && Instant::now() < self.epoch_start + Duration::from_millis(self.epoch_interval)
         {
-            Delay::new_at(self.epoch_start + Duration::from_millis(self.epoch_interval))
-                .await
-                .map_err(|err| ConsensusError::Other(format!("Overlord delay error {:?}", err)))?;
+            let dur =
+                self.epoch_start + Duration::from_millis(self.epoch_interval) - Instant::now();
+            Delay::new(dur).await;
         }
-
         self.goto_new_epoch(ctx, status, get_auth_flag).await?;
         Ok(())
     }
@@ -1377,7 +1376,7 @@ where
         });
 
         runtime::spawn(async move {
-            let _ = Delay::new(Duration::from_millis(5000)).await;
+            Delay::new(Duration::from_millis(5000)).await;
             if let Err(e) = new_tx.unbounded_send(CHECK_EPOCH_FAILED) {
                 error!(
                     "Overlord: state send check epoch flag failed, epoch ID {}, round {}, error {:?}",
