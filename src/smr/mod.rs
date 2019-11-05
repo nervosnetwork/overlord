@@ -86,7 +86,8 @@ impl SMR {
                 trigger_type: trigger.clone(),
                 source: TriggerSource::State,
                 hash: Hash::new(),
-                round: None,
+                lock_round: None,
+                round: 0u64,
                 epoch_id,
             })
             .map_err(|_| ConsensusError::TriggerSMRErr(trigger.to_string()))

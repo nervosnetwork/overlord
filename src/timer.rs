@@ -143,7 +143,7 @@ impl Timer {
                 if epoch_id < self.epoch_id || round < self.round {
                     return Ok(());
                 }
-                (TriggerType::Proposal, None, epoch_id)
+                (TriggerType::Proposal, round, epoch_id)
             }
 
             SMREvent::PrevoteVote {
@@ -152,7 +152,7 @@ impl Timer {
                 if epoch_id < self.epoch_id {
                     return Ok(());
                 }
-                (TriggerType::PrevoteQC, Some(round), epoch_id)
+                (TriggerType::PrevoteQC, round, epoch_id)
             }
 
             SMREvent::PrecommitVote {
@@ -161,7 +161,7 @@ impl Timer {
                 if epoch_id < self.epoch_id {
                     return Ok(());
                 }
-                (TriggerType::PrecommitQC, Some(round), epoch_id)
+                (TriggerType::PrecommitQC, round, epoch_id)
             }
 
             _ => return Err(ConsensusError::TimerErr("No commit timer".to_string())),
@@ -173,6 +173,7 @@ impl Timer {
             source: TriggerSource::Timer,
             hash: Hash::new(),
             trigger_type,
+            lock_round: None,
             round,
             epoch_id,
         })
@@ -253,11 +254,12 @@ mod test {
         }
     }
 
-    fn gen_output(trigger_type: TriggerType, round: Option<u64>, epoch_id: u64) -> SMRTrigger {
+    fn gen_output(trigger_type: TriggerType, round: u64, epoch_id: u64) -> SMRTrigger {
         SMRTrigger {
             source: TriggerSource::Timer,
             hash: Hash::new(),
             trigger_type,
+            lock_round: None,
             round,
             epoch_id,
         }
@@ -273,7 +275,7 @@ mod test {
                 lock_round:    None,
                 lock_proposal: None,
             },
-            gen_output(TriggerType::Proposal, None, 0),
+            gen_output(TriggerType::Proposal, 0, 0),
         )
         .await;
 
@@ -284,7 +286,7 @@ mod test {
                 round:      0u64,
                 epoch_hash: Hash::new(),
             },
-            gen_output(TriggerType::PrevoteQC, Some(0), 0),
+            gen_output(TriggerType::PrevoteQC, 0, 0),
         )
         .await;
 
@@ -295,7 +297,7 @@ mod test {
                 round:      0u64,
                 epoch_hash: Hash::new(),
             },
-            gen_output(TriggerType::PrecommitQC, Some(0), 0),
+            gen_output(TriggerType::PrecommitQC, 0, 0),
         )
         .await;
     }
@@ -341,9 +343,9 @@ mod test {
         let mut count = 1u32;
         let mut output = Vec::new();
         let predict = vec![
-            gen_output(TriggerType::PrecommitQC, Some(0), 0),
-            gen_output(TriggerType::PrevoteQC, Some(0), 0),
-            gen_output(TriggerType::Proposal, None, 0),
+            gen_output(TriggerType::PrecommitQC, 0, 0),
+            gen_output(TriggerType::PrevoteQC, 0, 0),
+            gen_output(TriggerType::Proposal, 0, 0),
         ];
 
         while let Some(res) = trigger_rx.next().await {

@@ -15,7 +15,7 @@ async fn test_prevote_trigger() {
     let hash = gen_hash();
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(0, Step::Prevote, Hash::new(), None),
-        SMRTrigger::new(hash.clone(), TriggerType::PrevoteQC, Some(0), 0),
+        SMRTrigger::new(hash.clone(), TriggerType::PrevoteQC, None, 0, 0),
         SMREvent::PrecommitVote {
             epoch_id:   0u64,
             round:      0u64,
@@ -31,7 +31,7 @@ async fn test_prevote_trigger() {
     let hash = Hash::new();
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(0, Step::Prevote, Hash::new(), None),
-        SMRTrigger::new(hash.clone(), TriggerType::PrevoteQC, Some(0), 0),
+        SMRTrigger::new(hash.clone(), TriggerType::PrevoteQC, None, 0, 0),
         SMREvent::PrecommitVote {
             epoch_id:   0u64,
             round:      0u64,
@@ -52,7 +52,7 @@ async fn test_prevote_trigger() {
     };
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Prevote, hash.clone(), Some(lock)),
-        SMRTrigger::new(hash, TriggerType::PrevoteQC, Some(1), 0),
+        SMRTrigger::new(hash, TriggerType::PrevoteQC, None, 1u64, 0),
         SMREvent::PrecommitVote {
             epoch_id:   0u64,
             round:      1u64,
@@ -73,7 +73,7 @@ async fn test_prevote_trigger() {
     };
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Prevote, Hash::new(), Some(lock)),
-        SMRTrigger::new(hash, TriggerType::PrevoteQC, Some(1), 0),
+        SMRTrigger::new(hash, TriggerType::PrevoteQC, None, 1, 0),
         SMREvent::PrecommitVote {
             epoch_id:   0u64,
             round:      1u64,
@@ -89,7 +89,7 @@ async fn test_prevote_trigger() {
     let hash = gen_hash();
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Prevote, hash.clone(), None),
-        SMRTrigger::new(Hash::new(), TriggerType::PrevoteQC, Some(1), 0),
+        SMRTrigger::new(Hash::new(), TriggerType::PrevoteQC, None, 1, 0),
         SMREvent::PrecommitVote {
             epoch_id:   0u64,
             round:      1u64,
@@ -106,7 +106,7 @@ async fn test_prevote_trigger() {
     let vote_hash = gen_hash();
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Prevote, hash.clone(), None),
-        SMRTrigger::new(vote_hash.clone(), TriggerType::PrevoteQC, Some(1), 0),
+        SMRTrigger::new(vote_hash.clone(), TriggerType::PrevoteQC, None, 1, 0),
         SMREvent::PrecommitVote {
             epoch_id:   0u64,
             round:      1u64,
@@ -124,7 +124,7 @@ async fn test_prevote_trigger() {
     let lock = Lock::new(0, lock_hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Prevote, lock_hash.clone(), Some(lock)),
-        SMRTrigger::new(hash.clone(), TriggerType::PrevoteQC, Some(1), 0),
+        SMRTrigger::new(hash.clone(), TriggerType::PrevoteQC, None, 1, 0),
         SMREvent::PrecommitVote {
             epoch_id:   0u64,
             round:      1u64,
@@ -142,7 +142,7 @@ async fn test_prevote_trigger() {
     let lock = Lock::new(0, lock_hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Prevote, lock_hash.clone(), Some(lock)),
-        SMRTrigger::new(hash.clone(), TriggerType::PrevoteQC, Some(1), 0),
+        SMRTrigger::new(hash.clone(), TriggerType::PrevoteQC, None, 1, 0),
         SMREvent::PrecommitVote {
             epoch_id:   0u64,
             round:      1u64,
@@ -168,24 +168,8 @@ async fn test_prevote_trigger() {
     //     None,
     // ));
 
-    // Test case 10:
-    //      the prevote round is not equal to self round.
-    // This is an incorrect situation, the process will return round diff err.
-    let hash = gen_hash();
-    test_cases.push(StateMachineTestCase::new(
-        InnerState::new(1, Step::Prevote, Hash::new(), None),
-        SMRTrigger::new(hash, TriggerType::PrevoteQC, Some(2), 0),
-        SMREvent::PrecommitVote {
-            epoch_id:   0u64,
-            round:      1u64,
-            epoch_hash: Hash::new(),
-        },
-        Some(ConsensusError::RoundDiff { local: 1, vote: 2 }),
-        None,
-    ));
-
     for case in test_cases.into_iter() {
-        println!("Prevote test {}/10", index);
+        println!("Prevote test {}/8", index);
         index += 1;
         trigger_test(
             case.base,

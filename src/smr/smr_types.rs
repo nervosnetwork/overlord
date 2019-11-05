@@ -177,8 +177,10 @@ pub struct SMRTrigger {
     pub source: TriggerSource,
     /// SMR trigger hash, the meaning shown above.
     pub hash: Hash,
+    /// SMR trigger lock round that is only for proposal.
+    pub lock_round: Option<u64>,
     /// SMR trigger round, the meaning shown above.
-    pub round: Option<u64>,
+    pub round: u64,
     /// **NOTICE**: This field is only for timer to signed timer's epoch ID. Therefore, the SMR can
     /// filter out the outdated timers.
     pub epoch_id: u64,

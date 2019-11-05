@@ -43,9 +43,13 @@ impl Stream for StateMachine {
                 let trigger_type = msg.trigger_type.clone();
                 let res = match trigger_type {
                     TriggerType::NewEpoch(epoch_id) => self.handle_new_epoch(epoch_id, msg.source),
-                    TriggerType::Proposal => {
-                        self.handle_proposal(msg.hash, msg.round, msg.source, msg.epoch_id)
-                    }
+                    TriggerType::Proposal => self.handle_proposal(
+                        msg.hash,
+                        msg.round,
+                        msg.lock_round,
+                        msg.source,
+                        msg.epoch_id,
+                    ),
                     TriggerType::PrevoteQC => {
                         self.handle_prevote(msg.hash, msg.round, msg.source, msg.epoch_id)
                     }
@@ -116,6 +120,7 @@ impl StateMachine {
     fn handle_proposal(
         &mut self,
         proposal_hash: Hash,
+        round: u64,
         lock_round: Option<u64>,
         source: TriggerSource,
         epoch_id: u64,
@@ -124,7 +129,7 @@ impl StateMachine {
             return Ok(());
         }
 
-        if self.step > Step::Propose {
+        if self.step > Step::Propose && self.round >= round {
             return Ok(());
         }
 
@@ -136,6 +141,8 @@ impl StateMachine {
         self.check()?;
         if proposal_hash.is_empty() && lock_round.is_some() {
             return Err(ConsensusError::ProposalErr("Invalid lock".to_string()));
+        } else if round > self.round {
+            self.round = round;
         }
 
         // update PoLC
@@ -173,16 +180,13 @@ impl StateMachine {
     fn handle_prevote(
         &mut self,
         prevote_hash: Hash,
-        prevote_round: Option<u64>,
+        prevote_round: u64,
         source: TriggerSource,
         epoch_id: u64,
     ) -> ConsensusResult<()> {
-        if self.step > Step::Prevote {
+        if self.step > Step::Prevote && self.round >= prevote_round {
             return Ok(());
         }
-
-        let prevote_round =
-            prevote_round.ok_or_else(|| ConsensusError::PrevoteErr("No vote round".to_string()))?;
 
         if self.epoch_id > epoch_id || self.round > prevote_round {
             return Ok(());
@@ -194,13 +198,15 @@ impl StateMachine {
         );
 
         self.check()?;
+        if prevote_round > self.round {
+            self.round = prevote_round;
+        }
         // A prevote QC from timer which means prevote timeout can not lead to unlock. Therefore,
         // only prevote QCs from state will update the PoLC. If the prevote QC is from timer, throw
         // precommit vote event directly.
         if source == TriggerSource::State {
             // update PoLC
             let vote_round = prevote_round;
-            self.check_round(vote_round)?;
             if let Some(lock) = self.lock.clone() {
                 if vote_round > lock.round {
                     self.update_polc(prevote_hash.clone(), vote_round);
@@ -230,19 +236,18 @@ impl StateMachine {
     fn handle_precommit(
         &mut self,
         precommit_hash: Hash,
-        precommit_round: Option<u64>,
+        precommit_round: u64,
         source: TriggerSource,
         epoch_id: u64,
     ) -> ConsensusResult<()> {
-        if self.step > Step::Precommit {
+        if self.step > Step::Precommit && self.round >= precommit_round {
             return Ok(());
         }
 
-        let precommit_round = precommit_round
-            .ok_or_else(|| ConsensusError::PrevoteErr("No vote round".to_string()))?;
-
         if self.epoch_id > epoch_id || self.round > precommit_round {
             return Ok(());
+        } else if precommit_round > self.round {
+            self.round = precommit_round;
         }
 
         info!(
@@ -251,7 +256,6 @@ impl StateMachine {
         );
 
         self.check()?;
-        self.check_round(precommit_round)?;
         if precommit_hash.is_empty() {
             let (lock_round, lock_proposal) = self
                 .lock
@@ -343,17 +347,6 @@ impl StateMachine {
         self.proposal_hash = proposal_hash;
     }
 
-    /// Check if the given round is equal to self round.
-    fn check_round(&mut self, round: u64) -> ConsensusResult<()> {
-        if self.round != round {
-            return Err(ConsensusError::RoundDiff {
-                local: self.round,
-                vote:  round,
-            });
-        }
-        Ok(())
-    }
-
     /// Do below self checks before each message is processed:
     /// 1. Whenever the lock is some and the proposal hash is empty, is impossible.
     /// 2. As long as there is a lock, the lock and proposal hash must be consistent.
@@ -362,14 +355,6 @@ impl StateMachine {
     #[inline(always)]
     fn check(&mut self) -> ConsensusResult<()> {
         debug!("Overlord: SMR do self check");
-
-        // Whenever self proposal is empty but self lock is some, is not correct.
-        if self.proposal_hash.is_empty() && self.lock.is_some() {
-            return Err(ConsensusError::SelfCheckErr(format!(
-                "Invalid lock, epoch ID {}, round {}",
-                self.epoch_id, self.round
-            )));
-        }
 
         // Lock hash must be same as proposal hash, if has.
         if self.lock.is_some() && self.lock.clone().unwrap().hash != self.proposal_hash {

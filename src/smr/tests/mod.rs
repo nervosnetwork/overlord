@@ -64,13 +64,15 @@ impl SMRTrigger {
         proposal_hash: Hash,
         t_type: TriggerType,
         lock_round: Option<u64>,
+        round: u64,
         epoch_id: u64,
     ) -> Self {
         SMRTrigger {
             trigger_type: t_type,
             source: TriggerSource::State,
             hash: proposal_hash,
-            round: lock_round,
+            lock_round,
+            round,
             epoch_id,
         }
     }

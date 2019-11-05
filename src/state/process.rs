@@ -354,10 +354,11 @@ where
 
         self.state_machine.trigger(SMRTrigger {
             trigger_type: TriggerType::Proposal,
-            source:       TriggerSource::State,
-            hash:         hash.clone(),
-            round:        lock_round,
-            epoch_id:     self.epoch_id,
+            source: TriggerSource::State,
+            hash: hash.clone(),
+            round: self.round,
+            epoch_id: self.epoch_id,
+            lock_round,
         })?;
 
         info!(
@@ -491,10 +492,11 @@ where
 
         self.state_machine.trigger(SMRTrigger {
             trigger_type: TriggerType::Proposal,
-            source:       TriggerSource::State,
-            hash:         hash.clone(),
-            round:        lock_round,
-            epoch_id:     self.epoch_id,
+            source: TriggerSource::State,
+            hash: hash.clone(),
+            round: self.round,
+            epoch_id: self.epoch_id,
+            lock_round,
         })?;
 
         info!(
@@ -764,7 +766,8 @@ where
             trigger_type: vote_type.clone().into(),
             source:       TriggerSource::State,
             hash:         epoch_hash,
-            round:        Some(round),
+            lock_round:   None,
+            round:        self.round,
             epoch_id:     self.epoch_id,
         })?;
 
@@ -894,7 +897,8 @@ where
             trigger_type: qc_type.clone().into(),
             source:       TriggerSource::State,
             hash:         epoch_hash,
-            round:        Some(round),
+            lock_round:   None,
+            round:        self.round,
             epoch_id:     self.epoch_id,
         })?;
 
@@ -932,7 +936,8 @@ where
                     trigger_type: qc.vote_type.clone().into(),
                     source:       TriggerSource::State,
                     hash:         epoch_hash,
-                    round:        Some(self.round),
+                    lock_round:   None,
+                    round:        self.round,
                     epoch_id:     self.epoch_id,
                 })?;
 
@@ -966,7 +971,8 @@ where
                 trigger_type: vote_type.clone().into(),
                 source:       TriggerSource::State,
                 hash:         epoch_hash,
-                round:        Some(self.round),
+                lock_round:   None,
+                round:        self.round,
                 epoch_id:     self.epoch_id,
             })?;
 
