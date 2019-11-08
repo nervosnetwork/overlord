@@ -204,7 +204,7 @@ impl VoteCollector {
 
     pub fn vote_count(&self, epoch_id: u64, round: u64, vote_type: VoteType) -> usize {
         if let Some(vrc) = self.0.get(&epoch_id) {
-            return vrc.vote_count(round, vote_type.clone());
+            return vrc.vote_count(round, vote_type);
         }
         0
     }
@@ -581,7 +581,7 @@ mod test {
 
         votes.insert_vote(hash_01.clone(), signed_vote_01.clone(), addr_01.clone());
 
-        set.insert(addr_01.clone());
+        set.insert(addr_01);
         map.insert(hash_01.clone(), set);
         vec.push(signed_vote_01);
 
@@ -599,7 +599,7 @@ mod test {
         assert!(votes.get_votes(1, 0, VoteType::Prevote, &hash_02).is_err());
 
         votes.insert_vote(hash_01.clone(), signed_vote_02.clone(), addr_02.clone());
-        map.get_mut(&hash_01).unwrap().insert(addr_02.clone());
+        map.get_mut(&hash_01).unwrap().insert(addr_02);
         vec.push(signed_vote_02);
 
         assert_eq!(votes.get_vote_map(1, 0, VoteType::Prevote), Ok(&map));

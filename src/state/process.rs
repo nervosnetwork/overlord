@@ -990,9 +990,7 @@ where
 
         info!(
             "Overlord: state round {}, {:?} vote pool length {}",
-            self.round,
-            vote_type.clone(),
-            len
+            self.round, vote_type, len
         );
 
         for (hash, set) in vote_map.iter() {
@@ -1231,9 +1229,7 @@ where
         {
             return Err(ConsensusError::AggregatedSignatureErr(format!(
                 "{:?} QC of epoch {}, round {} is not above threshold",
-                vote_type.clone(),
-                self.epoch_id,
-                self.round
+                vote_type, self.epoch_id, self.round
             )));
         }
 
