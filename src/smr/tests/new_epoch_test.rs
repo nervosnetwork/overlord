@@ -2,8 +2,8 @@ use crate::smr::smr_types::{Lock, SMREvent, SMRTrigger, Step, TriggerType};
 use crate::smr::tests::{gen_hash, trigger_test, InnerState, StateMachineTestCase};
 use crate::{error::ConsensusError, types::Hash};
 
-#[runtime::test]
-async fn test_new_epoch() {
+#[test]
+fn test_new_epoch() {
     let mut index = 1;
     let mut test_cases: Vec<StateMachineTestCase> = Vec::new();
 
@@ -48,7 +48,7 @@ async fn test_new_epoch() {
     //      In propose step, self proposal is empty but with a lock, goto new epoch.
     // This is an incorrect situation, the process cannot pass self check.
     let hash = gen_hash();
-    let lock = Lock::new(0u64, hash.clone());
+    let lock = Lock::new(0u64, hash);
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(0, Step::Propose, Hash::new(), Some(lock)),
         SMRTrigger::new(Hash::new(), TriggerType::NewEpoch(1), None, 0),
@@ -140,8 +140,7 @@ async fn test_new_epoch() {
             case.output,
             case.err,
             case.should_lock,
-        )
-        .await;
+        );
     }
     println!("New epoch test success");
 }

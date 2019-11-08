@@ -2,6 +2,7 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 use std::{future::Future, pin::Pin};
 
+use async_std::task;
 use derive_more::Display;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::{Stream, StreamExt};
@@ -99,6 +100,14 @@ impl Timer {
         }
     }
 
+    pub fn run(mut self) {
+        task::spawn(async move {
+            loop {
+                self.next().await;
+            }
+        });
+    }
+
     fn set_timer(&mut self, event: SMREvent) -> ConsensusResult<()> {
         let mut is_propose_timer = false;
         match event.clone() {
@@ -129,7 +138,7 @@ impl Timer {
 
         let smr_timer = TimeoutInfo::new(interval, event, self.sender.clone());
 
-        runtime::spawn(async move {
+        task::spawn(async move {
             smr_timer.await;
         });
 
@@ -199,7 +208,7 @@ impl Future for TimeoutInfo {
         match self.timeout.poll_unpin(cx) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(_) => {
-                runtime::spawn(async move {
+                task::spawn(async move {
                     let _ = tx.send(msg).await;
                 });
                 Poll::Ready(())
@@ -225,20 +234,15 @@ impl TimeoutInfo {
 
 #[cfg(test)]
 mod test {
-    use futures::channel::mpsc::unbounded;
-    use futures::stream::StreamExt;
+    use super::*;
 
-    use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
-    use crate::smr::{Event, SMR};
-    use crate::{timer::Timer, types::Hash};
-
-    async fn test_timer_trigger(input: SMREvent, output: SMRTrigger) {
+    fn test_timer_trigger(input: SMREvent, output: SMRTrigger) {
         let (trigger_tx, mut trigger_rx) = unbounded();
         let (event_tx, event_rx) = unbounded();
         let mut timer = Timer::new(Event::new(event_rx), SMR::new(trigger_tx), 3000, None);
         event_tx.unbounded_send(input).unwrap();
 
-        runtime::spawn(async move {
+        task::spawn(async move {
             loop {
                 match timer.next().await {
                     None => break,
@@ -247,10 +251,12 @@ mod test {
             }
         });
 
-        if let Some(res) = trigger_rx.next().await {
-            assert_eq!(res, output);
-            event_tx.unbounded_send(SMREvent::Stop).unwrap();
-        }
+        task::block_on(async {
+            if let Some(res) = trigger_rx.next().await {
+                assert_eq!(res, output);
+                event_tx.unbounded_send(SMREvent::Stop).unwrap();
+            }
+        })
     }
 
     fn gen_output(trigger_type: TriggerType, round: Option<u64>, epoch_id: u64) -> SMRTrigger {
@@ -263,8 +269,8 @@ mod test {
         }
     }
 
-    #[runtime::test]
-    async fn test_correctness() {
+    #[test]
+    fn test_correctness() {
         // Test propose step timer.
         test_timer_trigger(
             SMREvent::NewRoundInfo {
@@ -274,8 +280,7 @@ mod test {
                 lock_proposal: None,
             },
             gen_output(TriggerType::Proposal, None, 0),
-        )
-        .await;
+        );
 
         // Test prevote step timer.
         test_timer_trigger(
@@ -285,8 +290,7 @@ mod test {
                 epoch_hash: Hash::new(),
             },
             gen_output(TriggerType::PrevoteQC, Some(0), 0),
-        )
-        .await;
+        );
 
         // Test precommit step timer.
         test_timer_trigger(
@@ -296,12 +300,11 @@ mod test {
                 epoch_hash: Hash::new(),
             },
             gen_output(TriggerType::PrecommitQC, Some(0), 0),
-        )
-        .await;
+        );
     }
 
-    #[runtime::test]
-    async fn test_order() {
+    #[test]
+    fn test_order() {
         let (trigger_tx, mut trigger_rx) = unbounded();
         let (event_tx, event_rx) = unbounded();
         let mut timer = Timer::new(Event::new(event_rx), SMR::new(trigger_tx), 3000, None);
@@ -325,7 +328,7 @@ mod test {
             epoch_hash: Hash::new(),
         };
 
-        runtime::spawn(async move {
+        task::spawn(async move {
             loop {
                 match timer.next().await {
                     None => break,
@@ -346,15 +349,17 @@ mod test {
             gen_output(TriggerType::Proposal, None, 0),
         ];
 
-        while let Some(res) = trigger_rx.next().await {
-            output.push(res);
-            if count != 3 {
-                count += 1;
-            } else {
-                assert_eq!(predict, output);
-                event_tx.unbounded_send(SMREvent::Stop).unwrap();
-                return;
+        task::block_on(async {
+            while let Some(res) = trigger_rx.next().await {
+                output.push(res);
+                if count != 3 {
+                    count += 1;
+                } else {
+                    assert_eq!(predict, output);
+                    event_tx.unbounded_send(SMREvent::Stop).unwrap();
+                    return;
+                }
             }
-        }
+        })
     }
 }

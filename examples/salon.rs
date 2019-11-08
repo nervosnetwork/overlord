@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use async_std::task;
 use async_trait::async_trait;
 use bytes::Bytes;
 use creep::Context;
@@ -291,8 +292,7 @@ impl Speaker {
     }
 }
 
-#[runtime::main(runtime_tokio::Tokio)]
-async fn main() {
+fn main() {
     let speaker_list: Vec<Node> = (0..SPEAKER_NUM)
         .map(|_| Node::new(gen_random_bytes()))
         .collect();
@@ -322,7 +322,7 @@ async fn main() {
             hearings.get(&name).unwrap().clone(),
             Arc::<Mutex<HashMap<u64, Bytes>>>::clone(&consensus_speech),
         ));
-        runtime::spawn(async move {
+        task::spawn(async move {
             speaker.run(SPEECH_INTERVAL, timer_config()).await.unwrap();
         });
     }

@@ -4,8 +4,8 @@ use crate::{error::ConsensusError, types::Hash};
 
 /// Test state machine handle prevoteQC trigger.
 /// There are a total of *2 × 4 + 2 = 10* test cases.
-#[runtime::test]
-async fn test_prevote_trigger() {
+#[test]
+fn test_prevote_trigger() {
     let mut index = 1;
     let mut test_cases: Vec<StateMachineTestCase> = Vec::new();
 
@@ -88,7 +88,7 @@ async fn test_prevote_trigger() {
     // The output should be precommit vote to the prevote hash which is nil.
     let hash = gen_hash();
     test_cases.push(StateMachineTestCase::new(
-        InnerState::new(1, Step::Prevote, hash.clone(), None),
+        InnerState::new(1, Step::Prevote, hash, None),
         SMRTrigger::new(Hash::new(), TriggerType::PrevoteQC, Some(1), 0),
         SMREvent::PrecommitVote {
             epoch_id:   0u64,
@@ -105,7 +105,7 @@ async fn test_prevote_trigger() {
     let hash = gen_hash();
     let vote_hash = gen_hash();
     test_cases.push(StateMachineTestCase::new(
-        InnerState::new(1, Step::Prevote, hash.clone(), None),
+        InnerState::new(1, Step::Prevote, hash, None),
         SMRTrigger::new(vote_hash.clone(), TriggerType::PrevoteQC, Some(1), 0),
         SMREvent::PrecommitVote {
             epoch_id:   0u64,
@@ -123,12 +123,12 @@ async fn test_prevote_trigger() {
     let lock_hash = gen_hash();
     let lock = Lock::new(0, lock_hash.clone());
     test_cases.push(StateMachineTestCase::new(
-        InnerState::new(1, Step::Prevote, lock_hash.clone(), Some(lock)),
+        InnerState::new(1, Step::Prevote, lock_hash, Some(lock)),
         SMRTrigger::new(hash.clone(), TriggerType::PrevoteQC, Some(1), 0),
         SMREvent::PrecommitVote {
             epoch_id:   0u64,
             round:      1u64,
-            epoch_hash: hash.clone(),
+            epoch_hash: hash,
         },
         None,
         None,
@@ -141,7 +141,7 @@ async fn test_prevote_trigger() {
     let lock_hash = gen_hash();
     let lock = Lock::new(0, lock_hash.clone());
     test_cases.push(StateMachineTestCase::new(
-        InnerState::new(1, Step::Prevote, lock_hash.clone(), Some(lock)),
+        InnerState::new(1, Step::Prevote, lock_hash, Some(lock)),
         SMRTrigger::new(hash.clone(), TriggerType::PrevoteQC, Some(1), 0),
         SMREvent::PrecommitVote {
             epoch_id:   0u64,
@@ -193,8 +193,7 @@ async fn test_prevote_trigger() {
             case.output,
             case.err,
             case.should_lock,
-        )
-        .await;
+        );
     }
     println!("Prevote test success");
 }

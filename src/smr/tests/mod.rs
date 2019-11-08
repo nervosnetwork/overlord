@@ -7,6 +7,7 @@ mod prevote_test;
 /// Test proposal trigger process.
 mod proposal_test;
 
+use async_std::task;
 use futures::channel::mpsc::unbounded;
 use futures::StreamExt;
 use rand::random;
@@ -86,7 +87,7 @@ fn gen_hash() -> Hash {
     Hash::from((0..16).map(|_| random::<u8>()).collect::<Vec<_>>())
 }
 
-async fn trigger_test(
+fn trigger_test(
     base: InnerState,
     input: SMRTrigger,
     output: SMREvent,
@@ -101,27 +102,29 @@ async fn trigger_test(
     state_machine.set_status(base.round, base.step, base.proposal_hash, base.lock);
     trigger_tx.unbounded_send(input).unwrap();
 
-    let res = state_machine.next().await;
-    if res.is_some() {
-        assert_eq!(err, res);
-        return;
-    }
-
-    if let Some(lock) = should_lock {
-        let self_lock = state_machine.get_lock().unwrap();
-        assert_eq!(self_lock.round, lock.0);
-        assert_eq!(self_lock.hash, lock.1);
-    } else {
-        assert!(state_machine.get_lock().is_none());
-    }
-
-    loop {
-        match event.next().await {
-            Some(event) => {
-                assert_eq!(output, event);
-                return;
-            }
-            None => continue,
+    task::block_on(async {
+        let res = state_machine.next().await;
+        if res.is_some() {
+            assert_eq!(err, res);
+            return;
         }
-    }
+
+        if let Some(lock) = should_lock {
+            let self_lock = state_machine.get_lock().unwrap();
+            assert_eq!(self_lock.round, lock.0);
+            assert_eq!(self_lock.hash, lock.1);
+        } else {
+            assert!(state_machine.get_lock().is_none());
+        }
+
+        loop {
+            match event.next().await {
+                Some(event) => {
+                    assert_eq!(output, event);
+                    return;
+                }
+                None => continue,
+            }
+        }
+    })
 }

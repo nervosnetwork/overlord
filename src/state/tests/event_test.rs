@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use async_std::task;
 use crossbeam_channel::unbounded;
 use futures::channel::mpsc::unbounded as fut_unbounded;
 use futures::StreamExt;
@@ -41,7 +42,7 @@ impl<T: Codec> EventTestCase<T> {
     }
 }
 
-async fn handle_event_test(
+fn handle_event_test(
     mut condition: Condition<Pill>,
     input: SMREvent,
     output_msg: OverlordMsg<Pill>,
@@ -60,24 +61,26 @@ async fn handle_event_test(
     assert!(condition.proposal_collector.is_none());
     assert!(condition.vote_collector.is_none());
 
-    state.handle_event(Some(input)).await.unwrap();
-    assert_eq!(msg_rx.recv().unwrap(), output_msg);
+    task::block_on(async {
+        state.handle_event(Some(input)).await.unwrap();
+        assert_eq!(msg_rx.recv().unwrap(), output_msg);
 
-    if let Some(tmp) = output_smr {
-        loop {
-            match smr_rx.next().await {
-                Some(res) => {
-                    assert_eq!(res, tmp);
-                    return;
+        if let Some(tmp) = output_smr {
+            loop {
+                match smr_rx.next().await {
+                    Some(res) => {
+                        assert_eq!(res, tmp);
+                        return;
+                    }
+                    None => continue,
                 }
-                None => continue,
             }
         }
-    }
+    })
 }
 
-#[runtime::test]
-async fn test_handle_event() {
+#[test]
+fn test_handle_event() {
     let mut index = 1;
     let mut test_cases = Vec::new();
 
@@ -140,7 +143,7 @@ async fn test_handle_event() {
     for case in test_cases.into_iter() {
         println!("Handle event test {}/3", index);
         let (condition, input, output_msg, output_smr) = case.flat();
-        handle_event_test(condition, input, output_msg, output_smr).await;
+        handle_event_test(condition, input, output_msg, output_smr);
         index += 1;
     }
     println!("State handle event test success");

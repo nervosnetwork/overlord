@@ -4,8 +4,8 @@ use crate::{error::ConsensusError, types::Hash};
 
 /// Test state machine handle precommitQC trigger.
 /// There are a total of *2 × 4 + 3 = 11* test cases.
-#[runtime::test]
-async fn test_precommit_trigger() {
+#[test]
+fn test_precommit_trigger() {
     let mut index = 1;
     let mut test_cases: Vec<StateMachineTestCase> = Vec::new();
 
@@ -27,7 +27,7 @@ async fn test_precommit_trigger() {
     let hash = Hash::new();
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(0, Step::Precommit, Hash::new(), None),
-        SMRTrigger::new(hash.clone(), TriggerType::PrecommitQC, Some(0), 0),
+        SMRTrigger::new(hash, TriggerType::PrecommitQC, Some(0), 0),
         SMREvent::NewRoundInfo {
             epoch_id:      0u64,
             round:         1u64,
@@ -89,7 +89,7 @@ async fn test_precommit_trigger() {
     //      self proposal is not empty and with a lock, precommit is not nil.
     // This is an incorrect situation, the process can not pass self check.
     let hash = gen_hash();
-    let lock = Lock::new(0, hash.clone());
+    let lock = Lock::new(0, hash);
     let hash_new = gen_hash();
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(0, Step::Precommit, Hash::new(), Some(lock)),
@@ -182,8 +182,7 @@ async fn test_precommit_trigger() {
             case.output,
             case.err,
             case.should_lock,
-        )
-        .await;
+        );
     }
     println!("Precommit test success");
 }

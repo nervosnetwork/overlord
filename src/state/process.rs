@@ -3,6 +3,7 @@ use std::marker::PhantomData;
 use std::time::{Duration, Instant};
 use std::{ops::BitXor, sync::Arc};
 
+use async_std::task;
 use bit_vec::BitVec;
 use bytes::Bytes;
 use creep::Context;
@@ -1348,7 +1349,7 @@ where
         let mempool_tx = new_tx.clone();
         self.check_epoch_rx = new_rx;
 
-        runtime::spawn(async move {
+        task::spawn(async move {
             if let Err(e) =
                 check_current_epoch(ctx, function, tx_signal, epoch_id, hash, epoch).await
             {
@@ -1366,7 +1367,7 @@ where
             }
         });
 
-        runtime::spawn(async move {
+        task::spawn(async move {
             let _ = Delay::new(Duration::from_millis(5000)).await;
             if let Err(e) = new_tx.unbounded_send(CHECK_EPOCH_FAILED) {
                 error!(

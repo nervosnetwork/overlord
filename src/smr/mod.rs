@@ -9,6 +9,7 @@ mod tests;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use async_std::task;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::{FusedStream, Stream, StreamExt};
 use log::error;
@@ -47,7 +48,7 @@ impl SMRProvider {
 
     /// Run SMR module in runtime environment.
     pub fn run(mut self) {
-        runtime::spawn(async move {
+        task::spawn(async move {
             loop {
                 let res = self.state_machine.next().await;
                 if let Some(err) = res {
