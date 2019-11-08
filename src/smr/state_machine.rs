@@ -145,12 +145,12 @@ impl StateMachine {
 
                 if lock_round > lock.round {
                     self.remove_polc();
-                    self.set_proposal(proposal_hash.clone());
+                    self.set_proposal(proposal_hash);
                 } else if lock_round == lock.round && proposal_hash != self.proposal_hash {
                     return Err(ConsensusError::CorrectnessErr("Fork".to_string()));
                 }
             } else {
-                self.set_proposal(proposal_hash.clone());
+                self.set_proposal(proposal_hash);
             }
         } else if self.lock.is_none() {
             self.proposal_hash = proposal_hash;
@@ -203,10 +203,10 @@ impl StateMachine {
             self.check_round(vote_round)?;
             if let Some(lock) = self.lock.clone() {
                 if vote_round > lock.round {
-                    self.update_polc(prevote_hash.clone(), vote_round);
+                    self.update_polc(prevote_hash, vote_round);
                 }
             } else {
-                self.update_polc(prevote_hash.clone(), vote_round);
+                self.update_polc(prevote_hash, vote_round);
             }
         } else if self.lock.is_none() {
             // If the trigger source is timer and does not have a lock, clear the proposal hash.

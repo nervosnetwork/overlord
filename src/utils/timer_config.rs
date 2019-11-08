@@ -30,7 +30,7 @@ impl TimerConfig {
     }
 
     pub fn get_timeout(&self, event: SMREvent) -> ConsensusResult<Duration> {
-        match event.clone() {
+        match event {
             SMREvent::NewRoundInfo { .. } => Ok(self.get_propose_timeout()),
             SMREvent::PrevoteVote { .. } => Ok(self.get_prevote_timeout()),
             SMREvent::PrecommitVote { .. } => Ok(self.get_precommit_timeout()),
