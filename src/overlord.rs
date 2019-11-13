@@ -59,8 +59,8 @@ where
         timer_config: Option<DurationConfig>,
     ) -> ConsensusResult<()> {
         let (mut smr_provider, evt_1, evt_2) = SMR::new();
-        let smr = smr_provider.take_smr();
-        let timer = Timer::new(evt_2, smr.clone(), interval, timer_config);
+        let smr_handler = smr_provider.take_smr();
+        let timer = Timer::new(evt_2, smr_handler.clone(), interval, timer_config);
 
         let (rx, mut state) = {
             let mut state_rx = self.state_rx.write();
@@ -71,7 +71,7 @@ where
 
             let tmp_rx = state_rx.take().unwrap();
             let tmp_state = State::new(
-                smr,
+                smr_handler,
                 address.take().unwrap(),
                 interval,
                 consensus.take().unwrap(),
