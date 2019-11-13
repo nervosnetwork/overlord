@@ -3,14 +3,13 @@ use std::sync::Arc;
 
 use creep::Context;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
-use futures::StreamExt;
 use parking_lot::RwLock;
 
 use crate::error::ConsensusError;
 use crate::state::process::State;
 use crate::types::{Address, OverlordMsg};
 use crate::DurationConfig;
-use crate::{smr::SMRProvider, timer::Timer};
+use crate::{smr::SMR, timer::Timer};
 use crate::{Codec, Consensus, ConsensusResult, Crypto};
 
 type Pile<T> = RwLock<Option<T>>;
@@ -59,9 +58,9 @@ where
         interval: u64,
         timer_config: Option<DurationConfig>,
     ) -> ConsensusResult<()> {
-        let (mut smr_provider, evt_1, evt_2) = SMRProvider::new();
+        let (mut smr_provider, evt_1, evt_2) = SMR::new();
         let smr = smr_provider.take_smr();
-        let mut timer = Timer::new(evt_2, smr.clone(), interval, timer_config);
+        let timer = Timer::new(evt_2, smr.clone(), interval, timer_config);
 
         let (rx, mut state) = {
             let mut state_rx = self.state_rx.write();
@@ -92,11 +91,7 @@ where
         smr_provider.run();
 
         // Run timer.
-        runtime::spawn(async move {
-            loop {
-                timer.next().await;
-            }
-        });
+        timer.run();
 
         // Run state.
         state.run(rx, evt_1).await?;

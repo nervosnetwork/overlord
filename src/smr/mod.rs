@@ -20,19 +20,19 @@ use crate::{error::ConsensusError, ConsensusResult};
 
 ///
 #[derive(Debug)]
-pub struct SMRProvider {
-    smr:           Option<SMR>,
+pub struct SMR {
+    smr_handler:   Option<SMRHandler>,
     state_machine: StateMachine,
 }
 
-impl SMRProvider {
+impl SMR {
     pub fn new() -> (Self, Event, Event) {
         let (tx, rx) = unbounded();
-        let smr = SMR::new(tx);
+        let smr = SMRHandler::new(tx);
         let (state_machine, evt_1, evt_2) = StateMachine::new(rx);
 
-        let provider = SMRProvider {
-            smr: Some(smr),
+        let provider = SMR {
+            smr_handler: Some(smr),
             state_machine,
         };
 
@@ -40,9 +40,9 @@ impl SMRProvider {
     }
 
     /// Take the SMR handler and this function will be called only once.
-    pub fn take_smr(&mut self) -> SMR {
-        assert!(self.smr.is_some());
-        self.smr.take().unwrap()
+    pub fn take_smr(&mut self) -> SMRHandler {
+        assert!(self.smr_handler.is_some());
+        self.smr_handler.take().unwrap()
     }
 
     /// Run SMR module in runtime environment.
@@ -60,14 +60,14 @@ impl SMRProvider {
 
 ///
 #[derive(Clone, Debug)]
-pub struct SMR {
+pub struct SMRHandler {
     tx: UnboundedSender<SMRTrigger>,
 }
 
-impl SMR {
+impl SMRHandler {
     /// Create a new SMR.
     pub fn new(sender: UnboundedSender<SMRTrigger>) -> Self {
-        SMR { tx: sender }
+        SMRHandler { tx: sender }
     }
 
     /// A function to touch off SMR trigger gate.
