@@ -387,7 +387,7 @@ impl StateMachine {
 
         // While in propose step, if self lock is none, self proposal must be empty.
         if (self.step == Step::Propose || self.step == Step::Precommit)
-            && (self.proposal_hash.is_empty().bitxor(self.lock.is_none()))
+            && (self.epoch_hash.is_empty().bitxor(self.lock.is_none()))
         {
             return Err(ConsensusError::SelfCheckErr(format!(
                 "Invalid proposal hash, epoch ID {}, round {}",
