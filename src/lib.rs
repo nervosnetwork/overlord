@@ -158,19 +158,15 @@ impl DurationConfig {
     }
 
     pub(crate) fn get_propose_config(&self) -> (u64, u64) {
-        (self.propose_ratio, self.sum())
+        (self.propose_ratio, 10u64)
     }
 
     pub(crate) fn get_prevote_config(&self) -> (u64, u64) {
-        (self.prevote_ratio, self.sum())
+        (self.prevote_ratio, 10u64)
     }
 
     pub(crate) fn get_precommit_config(&self) -> (u64, u64) {
-        (self.precommit_ratio, self.sum())
-    }
-
-    fn sum(&self) -> u64 {
-        self.propose_ratio + self.prevote_ratio + self.precommit_ratio
+        (self.precommit_ratio, 10u64)
     }
 }
 
@@ -181,8 +177,8 @@ mod test {
     #[test]
     fn test_duration_config() {
         let config = DurationConfig::new(1, 2, 3);
-        assert_eq!(config.get_propose_config(), (1, 6));
-        assert_eq!(config.get_prevote_config(), (2, 6));
-        assert_eq!(config.get_precommit_config(), (3, 6));
+        assert_eq!(config.get_propose_config(), (1, 10));
+        assert_eq!(config.get_prevote_config(), (2, 10));
+        assert_eq!(config.get_precommit_config(), (3, 10));
     }
 }
