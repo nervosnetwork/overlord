@@ -34,3 +34,4 @@ It will check whether different speakers agree on the content of the speech.
 ### Projects using Overlord
 
 * [Muta](https://github.com/nervosnetwork/muta), a high-performance blockchain framework.
+* [Huobi-chain](https://github.com/HuobiGroup/huobi-chain), the next generation high performance public chain for financial infrastructure.
