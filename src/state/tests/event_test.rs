@@ -50,12 +50,12 @@ async fn handle_event_test(
     let (smr_tx, mut smr_rx) = fut_unbounded();
     let (msg_tx, msg_rx) = unbounded();
 
-    let smr = SMRHandler::new(smr_tx);
+    let smr_handler = SMRHandler::new(smr_tx);
     let address = Address::from(vec![0u8]);
     let helper = ConsensusHelper::new(msg_tx);
     let crypto = BlsCrypto::new(Address::from(vec![0u8]));
 
-    let mut state = State::new(smr, address, 3000, Arc::new(helper), crypto);
+    let mut state = State::new(smr_handler, address, 3000, Arc::new(helper), crypto);
     update_state(&mut condition, &mut state);
     assert!(condition.proposal_collector.is_none());
     assert!(condition.vote_collector.is_none());
