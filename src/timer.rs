@@ -7,7 +7,7 @@ use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::{Stream, StreamExt};
 use futures::{FutureExt, SinkExt};
 use futures_timer::Delay;
-use log::{debug, info};
+use log::{debug, error, info};
 
 use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
 use crate::smr::{Event, SMRHandler};
@@ -104,6 +104,16 @@ impl Timer {
         }
     }
 
+    pub fn run(mut self) {
+        runtime::spawn(async move {
+            loop {
+                if let Some(err) = self.next().await {
+                    error!("Overlord: timer error {:?}", err);
+                }
+            }
+        });
+    }
+
     fn set_timer(&mut self, event: SMREvent) -> ConsensusResult<()> {
         let mut is_propose_timer = false;
         match event.clone() {
@@ -181,14 +191,6 @@ impl Timer {
             round,
             epoch_id,
         })
-    }
-
-    pub fn run(mut self) {
-        runtime::spawn(async move {
-            loop {
-                self.next().await;
-            }
-        });
     }
 }
 
