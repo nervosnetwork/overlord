@@ -139,50 +139,34 @@ pub trait Crypto: Send {
 /// The setting of the timeout interval of each step.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct DurationConfig {
-    /// The numerator of the proportion of propose timeout to the epoch interval.
-    pub propose_numerator: u64,
-    /// The denominator of the proportion of propose timeout to the epoch interval.
-    pub propose_denominator: u64,
-    /// The numerator of the proportion of prevote timeout to the epoch interval.
-    pub prevote_numerator: u64,
-    /// The denominator of the proportion of prevote timeout to the epoch interval.
-    pub prevote_denominator: u64,
-    /// The numerator of the proportion of precommit timeout to the epoch interval.
-    pub precommit_numerator: u64,
-    /// The denominator of the proportion of precommit timeout to the epoch interval.
-    pub precommit_denominator: u64,
+    /// The proportion of propose timeout to the epoch interval.
+    pub propose_ratio: u64,
+    /// The proportion of prevote timeout to the epoch interval.
+    pub prevote_ratio: u64,
+    /// The proportion of precommit timeout to the epoch interval.
+    pub precommit_ratio: u64,
 }
 
 impl DurationConfig {
     /// Create a consensus timeout configuration.
-    pub fn new(
-        propose_numerator: u64,
-        propose_denominator: u64,
-        prevote_numerator: u64,
-        prevote_denominator: u64,
-        precommit_numerator: u64,
-        precommit_denominator: u64,
-    ) -> Self {
+    pub fn new(propose_ratio: u64, prevote_ratio: u64, precommit_ratio: u64) -> Self {
         DurationConfig {
-            propose_numerator,
-            propose_denominator,
-            prevote_numerator,
-            prevote_denominator,
-            precommit_numerator,
-            precommit_denominator,
+            propose_ratio,
+            prevote_ratio,
+            precommit_ratio,
         }
     }
 
     pub(crate) fn get_propose_config(&self) -> (u64, u64) {
-        (self.propose_numerator, self.propose_denominator)
+        (self.propose_ratio, 10u64)
     }
 
     pub(crate) fn get_prevote_config(&self) -> (u64, u64) {
-        (self.prevote_numerator, self.prevote_denominator)
+        (self.prevote_ratio, 10u64)
     }
 
     pub(crate) fn get_precommit_config(&self) -> (u64, u64) {
-        (self.precommit_numerator, self.precommit_denominator)
+        (self.precommit_ratio, 10u64)
     }
 }
 
@@ -192,9 +176,9 @@ mod test {
 
     #[test]
     fn test_duration_config() {
-        let config = DurationConfig::new(1, 2, 3, 4, 5, 6);
-        assert_eq!(config.get_propose_config(), (1, 2));
-        assert_eq!(config.get_prevote_config(), (3, 4));
-        assert_eq!(config.get_precommit_config(), (5, 6));
+        let config = DurationConfig::new(1, 2, 3);
+        assert_eq!(config.get_propose_config(), (1, 10));
+        assert_eq!(config.get_prevote_config(), (2, 10));
+        assert_eq!(config.get_precommit_config(), (3, 10));
     }
 }

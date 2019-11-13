@@ -18,7 +18,7 @@ pub struct StateMachine {
     epoch_id:      u64,
     round:         u64,
     step:          Step,
-    proposal_hash: Hash,
+    epoch_hash: Hash,
     lock:          Option<Lock>,
 
     event:   (UnboundedSender<SMREvent>, UnboundedSender<SMREvent>),
@@ -71,13 +71,13 @@ impl StateMachine {
         let (tx_2, rx_2) = unbounded();
 
         let state_machine = StateMachine {
-            epoch_id:      INIT_EPOCH_ID,
-            round:         INIT_ROUND,
-            step:          Step::default(),
-            proposal_hash: Hash::new(),
-            lock:          None,
-            trigger:       trigger_receiver,
-            event:         (tx_1, tx_2),
+            epoch_id:   INIT_EPOCH_ID,
+            round:      INIT_ROUND,
+            step:       Step::default(),
+            epoch_hash: Hash::new(),
+            lock:       None,
+            trigger:    trigger_receiver,
+            event:      (tx_1, tx_2),
         };
 
         (state_machine, Event::new(rx_1), Event::new(rx_2))
@@ -146,21 +146,21 @@ impl StateMachine {
                 if lock_round > lock.round {
                     self.remove_polc();
                     self.set_proposal(proposal_hash);
-                } else if lock_round == lock.round && proposal_hash != self.proposal_hash {
+                } else if lock_round == lock.round && proposal_hash != self.epoch_hash {
                     return Err(ConsensusError::CorrectnessErr("Fork".to_string()));
                 }
             } else {
                 self.set_proposal(proposal_hash);
             }
         } else if self.lock.is_none() {
-            self.proposal_hash = proposal_hash;
+            self.set_proposal(proposal_hash);
         }
 
         // throw prevote vote event
         self.throw_event(SMREvent::PrevoteVote {
             epoch_id:   self.epoch_id,
             round:      self.round,
-            epoch_hash: self.proposal_hash.clone(),
+            epoch_hash: self.epoch_hash.clone(),
         })?;
         self.goto_step(Step::Prevote);
         Ok(())
@@ -210,14 +210,14 @@ impl StateMachine {
             }
         } else if self.lock.is_none() {
             // If the trigger source is timer and does not have a lock, clear the proposal hash.
-            self.proposal_hash.clear();
+            self.epoch_hash.clear();
         }
 
         // throw precommit vote event
         self.throw_event(SMREvent::PrecommitVote {
             epoch_id:   self.epoch_id,
             round:      self.round,
-            epoch_hash: self.proposal_hash.clone(),
+            epoch_hash: self.epoch_hash.clone(),
         })?;
         self.goto_step(Step::Precommit);
         Ok(())
@@ -297,9 +297,9 @@ impl StateMachine {
     fn goto_new_epoch(&mut self, epoch_id: u64) {
         info!("Overlord: SMR goto new epoch: {}", epoch_id);
         self.epoch_id = epoch_id;
-        self.round = 0;
+        self.round = INIT_ROUND;
         self.goto_step(Step::Propose);
-        self.proposal_hash = Hash::new();
+        self.epoch_hash = Hash::new();
         self.lock = None;
     }
 
@@ -307,7 +307,7 @@ impl StateMachine {
     fn goto_next_round(&mut self) {
         info!("Overlord: SMR goto next round {}", self.round + 1);
         self.round += 1;
-        self.proposal_hash.clear();
+        self.epoch_hash = Hash::new();
         self.goto_step(Step::Propose);
     }
 
@@ -340,7 +340,7 @@ impl StateMachine {
     /// Set self proposal hash as the given hash.
     #[inline]
     fn set_proposal(&mut self, proposal_hash: Hash) {
-        self.proposal_hash = proposal_hash;
+        self.epoch_hash = proposal_hash;
     }
 
     /// Check if the given round is equal to self round.
@@ -364,7 +364,7 @@ impl StateMachine {
         debug!("Overlord: SMR do self check");
 
         // Whenever self proposal is empty but self lock is some, is not correct.
-        if self.proposal_hash.is_empty() && self.lock.is_some() {
+        if self.epoch_hash.is_empty() && self.lock.is_some() {
             return Err(ConsensusError::SelfCheckErr(format!(
                 "Invalid lock, epoch ID {}, round {}",
                 self.epoch_id, self.round
@@ -372,7 +372,7 @@ impl StateMachine {
         }
 
         // Lock hash must be same as proposal hash, if has.
-        if self.lock.is_some() && self.lock.clone().unwrap().hash != self.proposal_hash {
+        if self.lock.is_some() && self.lock.clone().unwrap().hash != self.epoch_hash {
             return Err(ConsensusError::SelfCheckErr("Lock".to_string()));
         }
 
@@ -386,7 +386,7 @@ impl StateMachine {
 
         // While in propose step, if self lock is none, self proposal must be empty.
         if (self.step == Step::Propose || self.step == Step::Precommit)
-            && !self.proposal_hash.is_empty()
+            && !self.epoch_hash.is_empty()
             && self.lock.is_none()
         {
             return Err(ConsensusError::SelfCheckErr(format!(

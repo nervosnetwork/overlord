@@ -7,25 +7,25 @@ use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::{Stream, StreamExt};
 use futures::{FutureExt, SinkExt};
 use futures_timer::Delay;
-use log::{debug, info};
+use log::{debug, error, info};
 
 use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
-use crate::smr::{Event, SMR};
+use crate::smr::{Event, SMRHandler};
 use crate::DurationConfig;
-use crate::{error::ConsensusError, ConsensusResult, INIT_ROUND};
+use crate::{error::ConsensusError, ConsensusResult, INIT_EPOCH_ID, INIT_ROUND};
 use crate::{types::Hash, utils::timer_config::TimerConfig};
 
 /// Overlord timer used futures timer which is powered by a timer heap. When monitor a SMR event,
 /// timer will get timeout interval from timer config, then set a delay. When the timeout expires,
 #[derive(Debug)]
 pub struct Timer {
-    config:   TimerConfig,
-    event:    Event,
-    sender:   UnboundedSender<SMREvent>,
-    notify:   UnboundedReceiver<SMREvent>,
-    smr:      SMR,
-    epoch_id: u64,
-    round:    u64,
+    config:        TimerConfig,
+    event:         Event,
+    sender:        UnboundedSender<SMREvent>,
+    notify:        UnboundedReceiver<SMREvent>,
+    state_machine: SMRHandler,
+    epoch_id:      u64,
+    round:         u64,
 }
 
 ///
@@ -81,7 +81,12 @@ impl Stream for Timer {
 }
 
 impl Timer {
-    pub fn new(event: Event, smr: SMR, interval: u64, config: Option<DurationConfig>) -> Self {
+    pub fn new(
+        event: Event,
+        state_machine: SMRHandler,
+        interval: u64,
+        config: Option<DurationConfig>,
+    ) -> Self {
         let (tx, rx) = unbounded();
         let mut timer_config = TimerConfig::new(interval);
         if let Some(tmp) = config {
@@ -90,13 +95,23 @@ impl Timer {
 
         Timer {
             config: timer_config,
-            epoch_id: 0u64,
+            epoch_id: INIT_EPOCH_ID,
             round: INIT_ROUND,
             sender: tx,
             notify: rx,
             event,
-            smr,
+            state_machine,
         }
+    }
+
+    pub fn run(mut self) {
+        runtime::spawn(async move {
+            loop {
+                if let Some(err) = self.next().await {
+                    error!("Overlord: timer error {:?}", err);
+                }
+            }
+        });
     }
 
     fn set_timer(&mut self, event: SMREvent) -> ConsensusResult<()> {
@@ -169,7 +184,7 @@ impl Timer {
 
         debug!("Overlord: timer {:?} time out", event);
 
-        self.smr.trigger(SMRTrigger {
+        self.state_machine.trigger(SMRTrigger {
             source: TriggerSource::Timer,
             hash: Hash::new(),
             trigger_type,
@@ -229,13 +244,18 @@ mod test {
     use futures::stream::StreamExt;
 
     use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
-    use crate::smr::{Event, SMR};
+    use crate::smr::{Event, SMRHandler};
     use crate::{timer::Timer, types::Hash};
 
     async fn test_timer_trigger(input: SMREvent, output: SMRTrigger) {
         let (trigger_tx, mut trigger_rx) = unbounded();
         let (event_tx, event_rx) = unbounded();
-        let mut timer = Timer::new(Event::new(event_rx), SMR::new(trigger_tx), 3000, None);
+        let mut timer = Timer::new(
+            Event::new(event_rx),
+            SMRHandler::new(trigger_tx),
+            3000,
+            None,
+        );
         event_tx.unbounded_send(input).unwrap();
 
         runtime::spawn(async move {
@@ -304,7 +324,12 @@ mod test {
     async fn test_order() {
         let (trigger_tx, mut trigger_rx) = unbounded();
         let (event_tx, event_rx) = unbounded();
-        let mut timer = Timer::new(Event::new(event_rx), SMR::new(trigger_tx), 3000, None);
+        let mut timer = Timer::new(
+            Event::new(event_rx),
+            SMRHandler::new(trigger_tx),
+            3000,
+            None,
+        );
 
         let new_round_event = SMREvent::NewRoundInfo {
             epoch_id:      0,

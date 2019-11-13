@@ -342,5 +342,5 @@ fn hash(bytes: &Bytes) -> Bytes {
 }
 
 fn timer_config() -> Option<DurationConfig> {
-    Some(DurationConfig::new(10, 10, 10, 10, 10, 10))
+    Some(DurationConfig::new(10, 10, 10))
 }

@@ -15,7 +15,7 @@ use parking_lot::Mutex;
 use rlp::encode;
 
 use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
-use crate::smr::{Event, SMR};
+use crate::smr::{Event, SMRHandler};
 use crate::state::collection::{ProposalCollector, VoteCollector};
 use crate::types::{
     Address, AggregatedSignature, AggregatedVote, Commit, Hash, OverlordMsg, PoLC, Proof, Proposal,
@@ -44,7 +44,7 @@ enum MsgType {
 pub struct State<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto> {
     epoch_id:             u64,
     round:                u64,
-    state_machine:        SMR,
+    state_machine:        SMRHandler,
     address:              Address,
     proposals:            ProposalCollector<T>,
     votes:                VoteCollector,
@@ -72,7 +72,13 @@ where
     C: Crypto,
 {
     /// Create a new state struct.
-    pub fn new(smr: SMR, addr: Address, interval: u64, consensus: Arc<F>, crypto: C) -> Self {
+    pub fn new(
+        smr: SMRHandler,
+        addr: Address,
+        interval: u64,
+        consensus: Arc<F>,
+        crypto: C,
+    ) -> Self {
         let (_tx, rx) = unbounded();
 
         State {
@@ -210,7 +216,6 @@ where
         status: Status,
         get_last_flag: bool,
     ) -> ConsensusResult<()> {
-        self.epoch_start = Instant::now();
         let new_epoch_id = status.epoch_id;
         self.epoch_id = new_epoch_id;
         self.round = INIT_ROUND;
@@ -334,7 +339,9 @@ where
             (epoch.to_owned(), hash, Some(polc))
         };
 
-        self.hash_with_epoch.insert(hash.clone(), epoch.clone());
+        self.hash_with_epoch
+            .entry(hash.clone())
+            .or_insert_with(|| epoch.clone());
 
         let proposal = Proposal {
             epoch_id:   self.epoch_id,
@@ -635,19 +642,16 @@ where
             self.round + 1
         );
 
-        let get_auth_flag = status.epoch_id != self.epoch_id + 1;
         let mut auth_list = status.authority_list.clone();
         self.authority.update(&mut auth_list, true);
 
-        if self.next_proposer(status.epoch_id)?
-            && Instant::now() < self.epoch_start + Duration::from_millis(self.epoch_interval)
+        let cost = Instant::now() - self.epoch_start;
+        if self.next_proposer(status.epoch_id)? && cost < Duration::from_millis(self.epoch_interval)
         {
-            Delay::new_at(self.epoch_start + Duration::from_millis(self.epoch_interval))
-                .await
-                .map_err(|err| ConsensusError::Other(format!("Overlord delay error {:?}", err)))?;
+            Delay::new(Duration::from_millis(self.epoch_interval) - cost).await;
         }
 
-        self.goto_new_epoch(ctx, status, get_auth_flag).await?;
+        self.goto_new_epoch(ctx, status, false).await?;
         Ok(())
     }
 
@@ -1367,7 +1371,8 @@ where
         });
 
         runtime::spawn(async move {
-            let _ = Delay::new(Duration::from_millis(5000)).await;
+            Delay::new(Duration::from_millis(5000)).await;
+
             if let Err(e) = new_tx.unbounded_send(CHECK_EPOCH_FAILED) {
                 error!(
                     "Overlord: state send check epoch flag failed, epoch ID {}, round {}, error {:?}",
