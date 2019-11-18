@@ -33,6 +33,7 @@ const FUTURE_ROUND_GAP: u64 = 10;
 enum MsgType {
     #[display(fmt = "Signed Proposal message")]
     SignedProposal,
+
     #[display(fmt = "Signed Vote message")]
     SignedVote,
 }
@@ -44,22 +45,22 @@ enum MsgType {
 /// than `current_epoch - 1`.
 #[derive(Debug)]
 pub struct State<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto> {
-    epoch_id:             u64,
-    round:                u64,
-    state_machine:        SMRHandler,
-    address:              Address,
-    proposals:            ProposalCollector<T>,
-    votes:                VoteCollector,
-    authority:            AuthorityManage,
-    hash_with_epoch:      HashMap<Hash, T>,
-    full_transcation:     Arc<Mutex<HashMap<Hash, bool>>>,
-    check_epoch_rx:       UnboundedReceiver<bool>,
-    is_leader:            bool,
-    leader_address:       Address,
-    last_commit_round:    Option<u64>,
-    last_commit_proposal: Option<Hash>,
-    epoch_start:          Instant,
-    epoch_interval:       u64,
+    epoch_id:          u64,
+    round:             u64,
+    state_machine:     SMRHandler,
+    address:           Address,
+    proposals:         ProposalCollector<T>,
+    votes:             VoteCollector,
+    authority:         AuthorityManage,
+    hash_with_epoch:   HashMap<Hash, T>,
+    full_transcation:  Arc<Mutex<HashMap<Hash, bool>>>,
+    check_epoch_rx:    UnboundedReceiver<bool>,
+    is_leader:         bool,
+    leader_address:    Address,
+    last_commit_round: Option<u64>,
+    last_commit_qc:    Option<AggregatedVote>,
+    epoch_start:       Instant,
+    epoch_interval:    u64,
 
     function: Arc<F>,
     pin_txs:  PhantomData<S>,
@@ -84,22 +85,22 @@ where
         let (_tx, rx) = unbounded();
 
         State {
-            epoch_id:             INIT_EPOCH_ID,
-            round:                INIT_ROUND,
-            state_machine:        smr,
-            address:              addr,
-            proposals:            ProposalCollector::new(),
-            votes:                VoteCollector::new(),
-            authority:            AuthorityManage::new(),
-            hash_with_epoch:      HashMap::new(),
-            full_transcation:     Arc::new(Mutex::new(HashMap::new())),
-            check_epoch_rx:       rx,
-            is_leader:            false,
-            leader_address:       Address::default(),
-            last_commit_round:    None,
-            last_commit_proposal: None,
-            epoch_start:          Instant::now(),
-            epoch_interval:       interval,
+            epoch_id:          INIT_EPOCH_ID,
+            round:             INIT_ROUND,
+            state_machine:     smr,
+            address:           addr,
+            proposals:         ProposalCollector::new(),
+            votes:             VoteCollector::new(),
+            authority:         AuthorityManage::new(),
+            hash_with_epoch:   HashMap::new(),
+            full_transcation:  Arc::new(Mutex::new(HashMap::new())),
+            check_epoch_rx:    rx,
+            is_leader:         false,
+            leader_address:    Address::default(),
+            last_commit_round: None,
+            last_commit_qc:    None,
+            epoch_start:       Instant::now(),
+            epoch_interval:    interval,
 
             function: consensus,
             pin_txs:  PhantomData,
@@ -179,14 +180,17 @@ where
             }
 
             SMREvent::PrevoteVote { epoch_hash, .. } => {
-                if let Err(e) = self.handle_prevote_vote(epoch_hash).await {
+                if let Err(e) = self.handle_vote_event(epoch_hash, VoteType::Prevote).await {
                     error!("Overlord: state handle prevote vote error {:?}", e);
                 }
                 Ok(())
             }
 
             SMREvent::PrecommitVote { epoch_hash, .. } => {
-                if let Err(e) = self.handle_precommit_vote(epoch_hash).await {
+                if let Err(e) = self
+                    .handle_vote_event(epoch_hash, VoteType::Precommit)
+                    .await
+                {
                     error!("Overlord: state handle precommit vote error {:?}", e);
                 }
                 Ok(())
@@ -445,7 +449,7 @@ where
         // Deal with proposal's epoch ID is equal to the current epoch ID - 1 and round is higher
         // than the last commit round. Retransmit prevote vote to the last commit proposal.
         if epoch_id == self.epoch_id - 1 {
-            if let Some((last_round, last_proposal)) = self.last_commit_msg()? {
+            if let Some(last_round) = self.last_commit_round.clone() {
                 if round <= last_round {
                     debug!(
                         "Overlord: state receive an outdated signed proposal, epoch ID {}, round {}", 
@@ -454,14 +458,7 @@ where
                     return Ok(());
                 }
 
-                self.retransmit_vote(
-                    ctx.clone(),
-                    last_round,
-                    last_proposal,
-                    VoteType::Prevote,
-                    proposal.proposer,
-                )
-                .await?;
+                self.retransmit_vote(ctx.clone(), proposal.proposer).await?;
             }
             return Ok(());
         }
@@ -527,23 +524,27 @@ where
         Ok(())
     }
 
-    async fn handle_prevote_vote(&mut self, hash: Hash) -> ConsensusResult<()> {
+    async fn handle_vote_event(&mut self, hash: Hash, vote_type: VoteType) -> ConsensusResult<()> {
+        // If the vote epoch hash is empty, do nothing.
+        if hash.is_empty() {
+            return Ok(());
+        }
+
         info!(
-            "Overlord: state receive prevote vote event epoch ID {}, round {}",
-            self.epoch_id, self.round
+            "Overlord: state receive {:?} vote event epoch ID {}, round {}",
+            vote_type.clone(),
+            self.epoch_id,
+            self.round
         );
 
-        let prevote = Vote {
+        let signed_vote = self.sign_vote(Vote {
             epoch_id:   self.epoch_id,
             round:      self.round,
-            vote_type:  VoteType::Prevote,
+            vote_type:  vote_type.clone(),
             epoch_hash: hash,
             voter:      self.address.clone(),
-        };
+        })?;
 
-        let signed_vote = self.sign_vote(prevote)?;
-
-        // **TODO: write Wal**
         if self.is_leader {
             self.votes
                 .insert_vote(signed_vote.get_hash(), signed_vote, self.address.clone());
@@ -552,36 +553,7 @@ where
                 .await;
         }
 
-        self.vote_process(VoteType::Prevote).await?;
-        Ok(())
-    }
-
-    async fn handle_precommit_vote(&mut self, hash: Hash) -> ConsensusResult<()> {
-        info!(
-            "Overlord: state received precommit vote event epoch ID {}, round {}",
-            self.epoch_id, self.round
-        );
-
-        let precommit = Vote {
-            epoch_id:   self.epoch_id,
-            round:      self.round,
-            vote_type:  VoteType::Precommit,
-            epoch_hash: hash,
-            voter:      self.address.clone(),
-        };
-
-        let signed_vote = self.sign_vote(precommit)?;
-
-        // **TODO: write Wal**
-        if self.is_leader {
-            self.votes
-                .insert_vote(signed_vote.get_hash(), signed_vote, self.address.clone());
-        } else {
-            self.transmit(Context::new(), OverlordMsg::SignedVote(signed_vote))
-                .await;
-        }
-
-        self.vote_process(VoteType::Precommit).await?;
+        self.vote_process(vote_type).await?;
         Ok(())
     }
 
@@ -604,16 +576,12 @@ where
         };
 
         debug!("Overlord: state generate proof");
-        let qc = self
-            .votes
-            .get_qc(epoch, self.round, VoteType::Precommit)?
-            .signature;
-
+        let qc = self.votes.get_qc(epoch, self.round, VoteType::Precommit)?;
         let proof = Proof {
             epoch_id:   epoch,
             round:      self.round,
             epoch_hash: hash.clone(),
-            signature:  qc,
+            signature:  qc.signature.clone(),
         };
         let commit = Commit {
             epoch_id: epoch,
@@ -622,7 +590,7 @@ where
         };
 
         self.last_commit_round = Some(self.round);
-        self.last_commit_proposal = Some(hash);
+        self.last_commit_qc = Some(qc);
         // **TODO: write Wal**
 
         let ctx = Context::new();
@@ -735,8 +703,15 @@ where
             return Ok(());
         }
 
-        // Check whether there is a hash that vote weight is above the threshold. If no hash
-        // achieved this, return directly.
+        // Check if the quorum certificate has generated before check whether there is a hash that
+        // vote weight is above the threshold. If no hash achieved this, return directly.
+        if self
+            .votes
+            .get_qc(epoch_id, round, vote_type.clone())
+            .is_ok()
+        {
+            return Ok(());
+        }
         let epoch_hash = self.counting_vote(vote_type.clone())?;
 
         if epoch_hash.is_none() {
@@ -762,12 +737,10 @@ where
         self.votes.set_qc(qc.clone());
         self.broadcast(ctx, OverlordMsg::AggregatedVote(qc)).await;
 
-        if !epoch_hash.is_empty() {
-            if vote_type == VoteType::Prevote {
-                epoch_hash = self.check_full_txs(epoch_hash).await?;
-            } else if !self.try_get_full_txs(&epoch_hash) {
-                return Ok(());
-            }
+        if vote_type == VoteType::Prevote {
+            epoch_hash = self.check_full_txs(epoch_hash).await?;
+        } else if !self.try_get_full_txs(&epoch_hash) {
+            return Ok(());
         }
 
         info!(
@@ -787,7 +760,6 @@ where
             "Overlord: state trigger SMR epoch ID {}, round {}, type {:?}",
             self.epoch_id, self.round, vote_type,
         );
-
         Ok(())
     }
 
@@ -802,12 +774,12 @@ where
     ///
     /// 3. The QC is equal to the `current epoch ID - 1` and the round is higher than the last
     /// commit round. In this case, check the aggregate signature firstly. If the type of the QC
-    /// is precommit, ignore it. Otherwise, retransmit precommit vote to the last commit proposal.
+    /// is precommit, ignore it. Otherwise, retransmit precommit QC.
     ///
     /// 4. Other cases, return `Ok(())` directly.
     async fn handle_aggregated_vote(
         &mut self,
-        ctx: Context,
+        _ctx: Context,
         aggregated_vote: AggregatedVote,
     ) -> ConsensusResult<()> {
         let epoch_id = aggregated_vote.get_epoch();
@@ -823,10 +795,9 @@ where
             qc_type, epoch_id, round,
         );
 
-        // If the vote epoch ID is lower than the current epoch ID - 1, or the vote epoch ID
-        // is equal to the current epoch ID and the vote round is lower than the current round,
-        // ignore it directly.
-        if epoch_id < self.epoch_id - 1 || (epoch_id == self.epoch_id && round < self.round) {
+        // If the vote epoch ID is lower than the current epoch ID, ignore it directly. If the vote
+        // epoch ID is higher than current epoch ID, save it and return Ok;
+        if epoch_id < self.epoch_id {
             debug!(
                 "Overlord: state receive an outdated QC, epoch ID {}, round {}",
                 epoch_id, round,
@@ -885,6 +856,10 @@ where
                 return Ok(());
             }
         }
+        debug!(
+            "Overlord: state receive a future QC, epoch ID {}, round {}",
+            epoch_id, round,
+        );
 
         let qc_hash = aggregated_vote.epoch_hash.clone();
         self.votes.set_qc(aggregated_vote);
@@ -892,12 +867,15 @@ where
         debug!("Overlord: state check if get full transcations");
 
         let mut epoch_hash = qc_hash;
-        if !epoch_hash.is_empty() {
-            if qc_type == VoteType::Prevote {
-                epoch_hash = self.check_full_txs(epoch_hash).await?;
-            } else if !self.try_get_full_txs(&epoch_hash) {
-                return Ok(());
-            }
+        if qc_type == VoteType::Prevote {
+            epoch_hash = self.check_full_txs(epoch_hash).await?;
+        } else if !self.try_get_full_txs(&epoch_hash) {
+            return Ok(());
+        }
+
+        // If the precommit qc's round is different from self round, bump to the qc's round.
+        if qc_type == VoteType::Precommit && round != self.round {
+            self.round = round;
         }
 
         info!(
@@ -918,7 +896,6 @@ where
             "Overlord: state trigger SMR epoch ID {}, round {}, type {:?}",
             self.epoch_id, self.round, qc_type,
         );
-
         Ok(())
     }
 
@@ -1134,27 +1111,6 @@ where
         Ok(())
     }
 
-    /// Check last commit round and last commit proposal.
-    fn last_commit_msg(&self) -> ConsensusResult<Option<(u64, Hash)>> {
-        debug!("Overlord: state check last commit message");
-        if self
-            .last_commit_round
-            .is_some()
-            .bitxor(self.last_commit_proposal.is_some())
-        {
-            return Err(ConsensusError::Other(
-                "Last commit things conflict".to_string(),
-            ));
-        }
-
-        if self.last_commit_round.is_none() {
-            return Ok(None);
-        }
-        let last_round = self.last_commit_round.clone().unwrap();
-        let last_proposal = self.last_commit_proposal.clone().unwrap();
-        Ok(Some((last_round, last_proposal)))
-    }
-
     /// If self is not the proposer of the epoch ID and round, set leader address as the proposer
     /// address.
     fn is_proposer(&mut self) -> ConsensusResult<bool> {
@@ -1300,39 +1256,20 @@ where
             });
     }
 
-    async fn retransmit_vote(
-        &self,
-        ctx: Context,
-        last_round: u64,
-        hash: Hash,
-        v_type: VoteType,
-        leader_address: Address,
-    ) -> ConsensusResult<()> {
-        let vote = Vote {
-            epoch_id:   self.epoch_id - 1,
-            round:      last_round,
-            epoch_hash: hash,
-            voter:      self.address.clone(),
-            vote_type:  v_type,
-        };
-
+    async fn retransmit_vote(&self, ctx: Context, address: Address) -> ConsensusResult<()> {
         debug!("Overlord: state re-transmit last epoch vote");
-
-        let _ = self
-            .function
-            .transmit_to_relayer(
-                ctx,
-                leader_address,
-                OverlordMsg::SignedVote(self.sign_vote(vote)?),
-            )
-            .await
-            .map_err(|err| {
-                error!(
-                    "Overlord: state transmit message to leader failed {:?}",
-                    err
-                );
-            });
-
+        if let Some(qc) = self.last_commit_qc.clone() {
+            let _ = self
+                .function
+                .transmit_to_relayer(ctx, address, OverlordMsg::AggregatedVote(qc))
+                .await
+                .map_err(|err| {
+                    error!(
+                        "Overlord: state transmit message to leader failed {:?}",
+                        err
+                    );
+                });
+        }
         Ok(())
     }
 

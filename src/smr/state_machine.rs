@@ -5,7 +5,7 @@ use std::task::{Context, Poll};
 use derive_more::Display;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::Stream;
-use log::{debug, error, info};
+use log::{debug, info};
 
 use crate::smr::smr_types::{Lock, SMREvent, SMRTrigger, Step, TriggerSource, TriggerType};
 use crate::{error::ConsensusError, smr::Event, types::Hash};
@@ -121,7 +121,7 @@ impl StateMachine {
         source: TriggerSource,
         epoch_id: u64,
     ) -> ConsensusResult<()> {
-        if self.epoch_id > epoch_id {
+        if self.epoch_id != epoch_id {
             return Ok(());
         }
 
@@ -134,12 +134,22 @@ impl StateMachine {
             proposal_hash, source
         );
 
-        self.check()?;
-        if proposal_hash.is_empty() && lock_round.is_some() {
-            return Err(ConsensusError::ProposalErr("Invalid lock".to_string()));
+        // If the proposal trigger is from timer, goto prevote step directly.
+        if source == TriggerSource::Timer {
+            // This event is for timer to set a prevote timer.
+            self.throw_event(SMREvent::PrevoteVote {
+                epoch_id:   self.epoch_id,
+                round:      self.round,
+                epoch_hash: Hash::new(),
+            })?;
+            self.goto_step(Step::Prevote);
+            return Ok(());
+        } else if proposal_hash.is_empty() {
+            return Err(ConsensusError::ProposalErr("Empty proposal".to_string()));
         }
 
         // update PoLC
+        self.check()?;
         if let Some(lock_round) = lock_round {
             if let Some(lock) = self.lock.clone() {
                 debug!("Overlord: SMR handle proposal with a lock");
@@ -178,14 +188,14 @@ impl StateMachine {
         source: TriggerSource,
         epoch_id: u64,
     ) -> ConsensusResult<()> {
-        if self.step > Step::Prevote {
-            return Ok(());
-        }
-
         let prevote_round =
             prevote_round.ok_or_else(|| ConsensusError::PrevoteErr("No vote round".to_string()))?;
 
-        if self.epoch_id > epoch_id || self.round > prevote_round {
+        if self.epoch_id != epoch_id || self.round != prevote_round {
+            return Ok(());
+        }
+
+        if self.step > Step::Prevote {
             return Ok(());
         }
 
@@ -194,24 +204,31 @@ impl StateMachine {
             prevote_hash, source
         );
 
-        self.check()?;
+        if source == TriggerSource::Timer {
+            // This event is for timer to set a precommit timer.
+            self.throw_event(SMREvent::PrecommitVote {
+                epoch_id:   self.epoch_id,
+                round:      self.round,
+                epoch_hash: Hash::new(),
+            })?;
+            self.goto_step(Step::Precommit);
+            return Ok(());
+        } else if prevote_hash.is_empty() {
+            return Err(ConsensusError::PrevoteErr("Empty qc".to_string()));
+        }
+
         // A prevote QC from timer which means prevote timeout can not lead to unlock. Therefore,
-        // only prevote QCs from state will update the PoLC. If the prevote QC is from timer, throw
-        // precommit vote event directly.
-        if source == TriggerSource::State {
-            // update PoLC
-            let vote_round = prevote_round;
-            self.check_round(vote_round)?;
-            if let Some(lock) = self.lock.clone() {
-                if vote_round > lock.round {
-                    self.update_polc(prevote_hash, vote_round);
-                }
-            } else {
+        // only prevote QCs from state will update the PoLC. If the prevote QC is from timer, goto
+        // precommit step directly.
+        self.check()?;
+        let vote_round = prevote_round;
+        self.check_round(vote_round)?;
+        if let Some(lock) = self.lock.clone() {
+            if vote_round > lock.round {
                 self.update_polc(prevote_hash, vote_round);
             }
-        } else if self.lock.is_none() {
-            // If the trigger source is timer and does not have a lock, clear the proposal hash.
-            self.epoch_hash.clear();
+        } else {
+            self.update_polc(prevote_hash, vote_round);
         }
 
         // throw precommit vote event
@@ -235,14 +252,14 @@ impl StateMachine {
         source: TriggerSource,
         epoch_id: u64,
     ) -> ConsensusResult<()> {
-        if self.step > Step::Precommit {
-            return Ok(());
-        }
-
         let precommit_round = precommit_round
             .ok_or_else(|| ConsensusError::PrevoteErr("No vote round".to_string()))?;
 
-        if self.epoch_id > epoch_id || self.round > precommit_round {
+        if self.epoch_id != epoch_id {
+            return Ok(());
+        }
+
+        if self.step > Step::Precommit {
             return Ok(());
         }
 
@@ -251,15 +268,12 @@ impl StateMachine {
             precommit_hash, source
         );
 
-        self.check()?;
-        self.check_round(precommit_round)?;
-        if precommit_hash.is_empty() {
-            let (lock_round, lock_proposal) = self
-                .lock
-                .clone()
-                .map_or_else(|| (None, None), |lock| (Some(lock.round), Some(lock.hash)));
+        let (lock_round, lock_proposal) = self
+            .lock
+            .clone()
+            .map_or_else(|| (None, None), |lock| (Some(lock.round), Some(lock.hash)));
 
-            // throw new round info event
+        if source == TriggerSource::Timer {
             self.throw_event(SMREvent::NewRoundInfo {
                 epoch_id: self.epoch_id,
                 round: self.round + 1,
@@ -267,17 +281,17 @@ impl StateMachine {
                 lock_proposal,
             })?;
             self.goto_next_round();
-        } else {
-            if let Some(lock) = self.lock.clone() {
-                if lock.hash != precommit_hash {
-                    error!("Overlord: SMR may be fork");
-                    return Err(ConsensusError::CorrectnessErr("Fork".to_string()));
-                }
-            }
-            self.update_polc(precommit_hash.clone(), self.round);
-            self.throw_event(SMREvent::Commit(precommit_hash))?;
-            self.goto_step(Step::Commit);
+            return Ok(());
+        } else if precommit_hash.is_empty() {
+            return Err(ConsensusError::PrecommitErr("Empty qc".to_string()));
         }
+
+        self.check()?;
+        // TODO: is necessary to update PoLC?
+        self.update_polc(precommit_hash.clone(), precommit_round);
+
+        self.throw_event(SMREvent::Commit(precommit_hash))?;
+        self.goto_step(Step::Commit);
         Ok(())
     }
 
