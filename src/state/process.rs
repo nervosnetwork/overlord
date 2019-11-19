@@ -408,11 +408,20 @@ where
         // If the proposal epoch ID is higher than the current epoch ID or proposal epoch ID is
         // equal to the current epoch ID and the proposal round is higher than the current round,
         // cache it until that epoch ID.
-        if epoch_id >= self.epoch_id
-            && self.epoch_id + FUTURE_EPOCH_GAP > epoch_id
-            && round > self.round
-            && self.round + FUTURE_ROUND_GAP > round
-        {
+        if self.epoch_id + FUTURE_EPOCH_GAP < epoch_id {
+            warn!("Overlord: state receive a much higher epoch's proposal.");
+            return Ok(());
+        }
+
+        if round < self.round {
+            debug!("Overlord: state receive an outdated proposal.");
+            return Ok(());
+        } else if self.round + FUTURE_ROUND_GAP < round {
+            warn!("Overlord: state receive a much higher round's proposal.");
+            return Ok(());
+        }
+
+        if epoch_id != self.epoch_id || epoch_id != self.epoch_id - 1 || round != self.round {
             debug!(
                 "Overlord: state receive a future signed proposal, epoch ID {}, round {}",
                 epoch_id, round,
@@ -698,11 +707,20 @@ where
         // entering the epoch. Else if the vote epoch ID is equal to the current epoch ID
         // and the vote round is higher than the current round, cache it until that round
         // and precess it.
-        if epoch_id >= self.epoch_id
-            && self.epoch_id + FUTURE_EPOCH_GAP > epoch_id
-            && round > self.round
-            && self.round + FUTURE_ROUND_GAP > round
-        {
+        if self.epoch_id + FUTURE_EPOCH_GAP < epoch_id {
+            warn!("Overlord: state receive a much higher epoch's vote.");
+            return Ok(());
+        }
+
+        if round < self.round {
+            debug!("Overlord: state receive an outdated vote.");
+            return Ok(());
+        } else if self.round + FUTURE_ROUND_GAP < round {
+            warn!("Overlord: state receive a much higher round's vote.");
+            return Ok(());
+        }
+
+        if epoch_id != self.epoch_id || round != self.round {
             debug!(
                 "Overlord: state receive a future signed vote, epoch ID {}, round {}",
                 epoch_id, round,
