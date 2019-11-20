@@ -676,7 +676,7 @@ where
             vote_type, epoch_id, round,
         );
 
-        // Filter the proposals that do not need to be handed.
+        // Filter the signed votes that do not need to be handed.
         // 1. Outdated proposals
         // 2. Much higher epoch ID
         // 3. Much higher round
