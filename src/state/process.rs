@@ -26,6 +26,8 @@ use crate::{Codec, Consensus, ConsensusResult, Crypto, INIT_EPOCH_ID, INIT_ROUND
 
 const CHECK_EPOCH_SUCCESS: bool = true;
 const CHECK_EPOCH_FAILED: bool = false;
+const FUTURE_EPOCH_GAP: u64 = 5;
+const FUTURE_ROUND_GAP: u64 = 10;
 
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
 enum MsgType {
@@ -245,6 +247,7 @@ where
         // Clear outdated proposals and votes.
         self.proposals.flush(new_epoch_id - 1);
         self.votes.flush(new_epoch_id - 1);
+        self.hash_with_epoch.clear();
 
         // Re-check proposals that have been in the proposal collector, of the current epoch ID.
         if let Some(proposals) = self.proposals.get_epoch_proposals(self.epoch_id) {
@@ -284,8 +287,6 @@ where
         if lock_proposal.is_none() {
             // Clear full transcation signal.
             self.full_transcation = Arc::new(Mutex::new(HashMap::new()));
-            // Clear hash with epoch.
-            self.hash_with_epoch.clear();
         }
 
         // If self is not proposer, check whether it has received current signed proposal before. If
@@ -393,21 +394,30 @@ where
             epoch_id, round,
         );
 
-        // If the proposal epoch ID is lower than the current epoch ID - 1, or the proposal epoch ID
-        // is equal to the current epoch ID and the proposal round is lower than the current round,
-        // ignore it directly.
+        // Filter the proposals that do not need to be handed.
+        // 1. Outdated proposals
+        // 2. Much higher epoch ID
+        // 3. Much higher round
         if epoch_id < self.epoch_id - 1 || (epoch_id == self.epoch_id && round < self.round) {
             debug!(
                 "Overlord: state receive an outdated signed proposal, epoch ID {}, round {}",
                 epoch_id, round,
             );
             return Ok(());
+        } else if self.epoch_id + FUTURE_EPOCH_GAP < epoch_id {
+            warn!("Overlord: state receive a much higher epoch's proposal.");
+            return Ok(());
+        } else if (epoch_id == self.epoch_id && self.round + FUTURE_ROUND_GAP < round)
+            || (epoch_id > self.epoch_id && round > FUTURE_ROUND_GAP)
+        {
+            warn!("Overlord: state receive a much higher round's proposal.");
+            return Ok(());
         }
 
         // If the proposal epoch ID is higher than the current epoch ID or proposal epoch ID is
         // equal to the current epoch ID and the proposal round is higher than the current round,
         // cache it until that epoch ID.
-        if epoch_id > self.epoch_id || (epoch_id == self.epoch_id && round > self.round) {
+        if (epoch_id == self.epoch_id && round != self.round) || epoch_id > self.epoch_id {
             debug!(
                 "Overlord: state receive a future signed proposal, epoch ID {}, round {}",
                 epoch_id, round,
@@ -587,24 +597,10 @@ where
         let content = if let Some(tmp) = self.hash_with_epoch.get(&hash) {
             tmp.to_owned()
         } else {
-            let proposal_vec = self.proposals.get_epoch_proposals(epoch).ok_or_else(|| {
-                ConsensusError::StorageErr(format!("No proposal in epoch ID {}", epoch))
-            })?;
-            let mut res = i64::min_value();
-            for (index, proposal) in proposal_vec.iter().enumerate() {
-                if proposal.proposal.epoch_hash == hash {
-                    res = index as i64;
-                    break;
-                }
-            }
-
-            if res == i64::min_value() {
-                return Err(ConsensusError::Other(format!(
-                    "Lose whole epoch epoch ID {}, round {}",
-                    self.epoch_id, self.round
-                )));
-            }
-            proposal_vec[res as usize].proposal.content.clone()
+            return Err(ConsensusError::Other(format!(
+                "Lose whole epoch epoch ID {}, round {}",
+                self.epoch_id, self.round
+            )));
         };
 
         debug!("Overlord: state generate proof");
@@ -680,16 +676,27 @@ where
             vote_type, epoch_id, round,
         );
 
-        // If the vote epoch ID is lower than the current epoch ID - 1, or the vote epoch ID
-        // is equal to the current epoch ID and the vote round is lower than the current round,
-        // ignore it directly.
-        if epoch_id < self.epoch_id || (epoch_id == self.epoch_id && round < self.round) {
+        // Filter the signed votes that do not need to be handed.
+        // 1. Outdated proposals
+        // 2. Much higher epoch ID
+        // 3. Much higher round
+        if epoch_id < self.epoch_id - 1 || (epoch_id == self.epoch_id && round < self.round) {
             debug!(
                 "Overlord: state receive an outdated signed vote, epoch ID {}, round {}",
                 epoch_id, round,
             );
             return Ok(());
+        } else if self.epoch_id + FUTURE_EPOCH_GAP < epoch_id {
+            warn!("Overlord: state receive a much higher epoch's vote.");
+            return Ok(());
+        } else if (epoch_id == self.epoch_id && self.round + FUTURE_ROUND_GAP < round)
+            || (epoch_id > self.epoch_id && round > FUTURE_ROUND_GAP)
+        {
+            warn!("Overlord: state receive a much higher round's vote.");
+            return Ok(());
         }
+
+        // TODO: handle signed vote with epoch ID == self.epoch_id - 1
 
         // All the votes must pass the verification of signature and address before be saved into
         // vote collector.
@@ -702,20 +709,23 @@ where
             MsgType::SignedVote,
         )?;
         self.verify_address(&vote.voter, true)?;
-        self.votes
-            .insert_vote(signed_vote.get_hash(), signed_vote, vote.voter);
 
         // If the vote epoch ID is higher than the current epoch ID, cache it and rehandle it by
         // entering the epoch. Else if the vote epoch ID is equal to the current epoch ID
         // and the vote round is higher than the current round, cache it until that round
         // and precess it.
-        if epoch_id > self.epoch_id || (epoch_id == self.epoch_id && round > self.round) {
+        if epoch_id != self.epoch_id || round != self.round {
             debug!(
                 "Overlord: state receive a future signed vote, epoch ID {}, round {}",
                 epoch_id, round,
             );
+            self.votes
+                .insert_vote(signed_vote.get_hash(), signed_vote, vote.voter);
             return Ok(());
         }
+
+        self.votes
+            .insert_vote(signed_vote.get_hash(), signed_vote, vote.voter);
 
         if !self.is_leader {
             error!(
@@ -822,7 +832,7 @@ where
                 epoch_id, round,
             );
             return Ok(());
-        } else if epoch_id > self.epoch_id {
+        } else if epoch_id > self.epoch_id && self.epoch_id + FUTURE_EPOCH_GAP > epoch_id {
             debug!(
                 "Overlord: state receive a future QC, epoch ID {}, round {}",
                 epoch_id, round,
@@ -839,7 +849,8 @@ where
             qc_type.clone(),
         )?;
 
-        if epoch_id == self.epoch_id && round > self.round {
+        if epoch_id == self.epoch_id && round > self.round && self.round + FUTURE_ROUND_GAP > round
+        {
             debug!(
                 "Overlord: state receive a future QC, epoch ID {}, round {}",
                 epoch_id, round,

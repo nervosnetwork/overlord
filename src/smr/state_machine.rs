@@ -1,3 +1,4 @@
+use std::ops::BitXor;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -386,8 +387,7 @@ impl StateMachine {
 
         // While in propose step, if self lock is none, self proposal must be empty.
         if (self.step == Step::Propose || self.step == Step::Precommit)
-            && !self.epoch_hash.is_empty()
-            && self.lock.is_none()
+            && (self.epoch_hash.is_empty().bitxor(self.lock.is_none()))
         {
             return Err(ConsensusError::SelfCheckErr(format!(
                 "Invalid proposal hash, epoch ID {}, round {}",
@@ -408,5 +408,18 @@ impl StateMachine {
     #[cfg(test)]
     pub fn get_lock(&mut self) -> Option<Lock> {
         self.lock.clone()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use bytes::Bytes;
+    use std::ops::BitXor;
+
+    #[test]
+    fn test_xor() {
+        let left = Bytes::new();
+        let right: Option<u64> = None;
+        assert_eq!(left.is_empty().bitxor(&right.is_none()), false);
     }
 }
