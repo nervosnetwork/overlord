@@ -394,32 +394,29 @@ where
             epoch_id, round,
         );
 
-        // If the proposal epoch ID is lower than the current epoch ID - 1, or the proposal epoch ID
-        // is equal to the current epoch ID and the proposal round is lower than the current round,
-        // ignore it directly.
+        // Filter the proposals that do not need to be handed.
+        // 1. Outdated proposals
+        // 2. Much higher epoch ID
+        // 3. Much higher round
         if epoch_id < self.epoch_id - 1 || (epoch_id == self.epoch_id && round < self.round) {
             debug!(
                 "Overlord: state receive an outdated signed proposal, epoch ID {}, round {}",
                 epoch_id, round,
             );
             return Ok(());
-        }
-
-        // If the proposal epoch ID is higher than the current epoch ID or proposal epoch ID is
-        // equal to the current epoch ID and the proposal round is higher than the current round,
-        // cache it until that epoch ID.
-        if self.epoch_id + FUTURE_EPOCH_GAP < epoch_id {
+        } else if self.epoch_id + FUTURE_EPOCH_GAP < epoch_id {
             warn!("Overlord: state receive a much higher epoch's proposal.");
             return Ok(());
-        }
-
-        if (epoch_id == self.epoch_id && self.round + FUTURE_ROUND_GAP < round)
-            || round > FUTURE_ROUND_GAP
+        } else if (epoch_id == self.epoch_id && self.round + FUTURE_ROUND_GAP < round)
+            || (epoch_id > self.epoch_id && round > FUTURE_ROUND_GAP)
         {
             warn!("Overlord: state receive a much higher round's proposal.");
             return Ok(());
         }
 
+        // If the proposal epoch ID is higher than the current epoch ID or proposal epoch ID is
+        // equal to the current epoch ID and the proposal round is higher than the current round,
+        // cache it until that epoch ID.
         if epoch_id != self.epoch_id || epoch_id != self.epoch_id - 1 || round != self.round {
             debug!(
                 "Overlord: state receive a future signed proposal, epoch ID {}, round {}",
@@ -679,16 +676,27 @@ where
             vote_type, epoch_id, round,
         );
 
-        // If the vote epoch ID is lower than the current epoch ID - 1, or the vote epoch ID
-        // is equal to the current epoch ID and the vote round is lower than the current round,
-        // ignore it directly.
-        if epoch_id < self.epoch_id || (epoch_id == self.epoch_id && round < self.round) {
+        // Filter the proposals that do not need to be handed.
+        // 1. Outdated proposals
+        // 2. Much higher epoch ID
+        // 3. Much higher round
+        if epoch_id < self.epoch_id - 1 || (epoch_id == self.epoch_id && round < self.round) {
             debug!(
                 "Overlord: state receive an outdated signed vote, epoch ID {}, round {}",
                 epoch_id, round,
             );
             return Ok(());
+        } else if self.epoch_id + FUTURE_EPOCH_GAP < epoch_id {
+            warn!("Overlord: state receive a much higher epoch's vote.");
+            return Ok(());
+        } else if (epoch_id == self.epoch_id && self.round + FUTURE_ROUND_GAP < round)
+            || (epoch_id > self.epoch_id && round > FUTURE_ROUND_GAP)
+        {
+            warn!("Overlord: state receive a much higher round's vote.");
+            return Ok(());
         }
+
+        // TODO: handle signed vote with epoch ID == self.epoch_id - 1
 
         // All the votes must pass the verification of signature and address before be saved into
         // vote collector.
@@ -706,18 +714,6 @@ where
         // entering the epoch. Else if the vote epoch ID is equal to the current epoch ID
         // and the vote round is higher than the current round, cache it until that round
         // and precess it.
-        if self.epoch_id + FUTURE_EPOCH_GAP < epoch_id {
-            warn!("Overlord: state receive a much higher epoch's vote.");
-            return Ok(());
-        }
-
-        if (epoch_id == self.epoch_id && self.round + FUTURE_ROUND_GAP < round)
-            || round > FUTURE_ROUND_GAP
-        {
-            warn!("Overlord: state receive a much higher round's vote.");
-            return Ok(());
-        }
-
         if epoch_id != self.epoch_id || round != self.round {
             debug!(
                 "Overlord: state receive a future signed vote, epoch ID {}, round {}",
