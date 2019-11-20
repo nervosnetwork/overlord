@@ -417,7 +417,7 @@ where
         // If the proposal epoch ID is higher than the current epoch ID or proposal epoch ID is
         // equal to the current epoch ID and the proposal round is higher than the current round,
         // cache it until that epoch ID.
-        if epoch_id != self.epoch_id || epoch_id != self.epoch_id - 1 || round != self.round {
+        if (epoch_id == self.epoch_id && round != self.round) || epoch_id > self.epoch_id {
             debug!(
                 "Overlord: state receive a future signed proposal, epoch ID {}, round {}",
                 epoch_id, round,
