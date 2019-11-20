@@ -413,10 +413,9 @@ where
             return Ok(());
         }
 
-        if round < self.round {
-            debug!("Overlord: state receive an outdated proposal.");
-            return Ok(());
-        } else if self.round + FUTURE_ROUND_GAP < round {
+        if (epoch_id == self.epoch_id && self.round + FUTURE_ROUND_GAP < round)
+            || round > FUTURE_ROUND_GAP
+        {
             warn!("Overlord: state receive a much higher round's proposal.");
             return Ok(());
         }
@@ -712,10 +711,9 @@ where
             return Ok(());
         }
 
-        if round < self.round {
-            debug!("Overlord: state receive an outdated vote.");
-            return Ok(());
-        } else if self.round + FUTURE_ROUND_GAP < round {
+        if (epoch_id == self.epoch_id && self.round + FUTURE_ROUND_GAP < round)
+            || round > FUTURE_ROUND_GAP
+        {
             warn!("Overlord: state receive a much higher round's vote.");
             return Ok(());
         }
