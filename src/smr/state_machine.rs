@@ -191,7 +191,7 @@ impl StateMachine {
         let prevote_round =
             prevote_round.ok_or_else(|| ConsensusError::PrevoteErr("No vote round".to_string()))?;
 
-        if self.epoch_id != epoch_id || self.round != prevote_round {
+        if self.epoch_id != epoch_id {
             return Ok(());
         }
 

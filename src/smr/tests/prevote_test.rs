@@ -25,7 +25,7 @@ async fn test_prevote_trigger() {
         Some((0, hash)),
     ));
 
-    // Test case 01:
+    // Test case 02:
     //      self proposal is not empty and not lock, prevote is nil.
     // The output should be precommit vote to the prevote hash.
     let hash = Hash::new();
@@ -37,7 +37,7 @@ async fn test_prevote_trigger() {
             round:      0u64,
             epoch_hash: hash,
         },
-        None,
+        Some(ConsensusError::PrevoteErr("Empty qc".to_string())),
         None,
     ));
 
@@ -58,7 +58,7 @@ async fn test_prevote_trigger() {
             round:      1u64,
             epoch_hash: lock_hash.clone(),
         },
-        Some(ConsensusError::SelfCheckErr("".to_string())),
+        Some(ConsensusError::PrevoteErr("Empty qc".to_string())),
         Some((0, lock_hash)),
     ));
 
@@ -95,7 +95,7 @@ async fn test_prevote_trigger() {
             round:      1u64,
             epoch_hash: Hash::new(),
         },
-        None,
+        Some(ConsensusError::PrevoteErr("Empty qc".to_string())),
         None,
     ));
 
@@ -130,7 +130,7 @@ async fn test_prevote_trigger() {
             round:      1u64,
             epoch_hash: hash.clone(),
         },
-        None,
+        Some(ConsensusError::PrevoteErr("Empty qc".to_string())),
         None,
     ));
 
@@ -185,7 +185,7 @@ async fn test_prevote_trigger() {
     ));
 
     for case in test_cases.into_iter() {
-        println!("Prevote test {}/10", index);
+        println!("Prevote test {}/9", index);
         index += 1;
         trigger_test(
             case.base,
