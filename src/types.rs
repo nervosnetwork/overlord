@@ -333,9 +333,11 @@ pub(crate) struct Feed<T: Codec> {
 
 /// A verify response.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct VerifyResp {
+pub struct VerifyResp<T: Codec> {
+    /// The epoch ID of the verified epoch.
+    pub epoch_id: u64,
     /// Verified proposal hash.
-    pub(crate) epoch_hash: Hash,
-    /// The verify result.
-    pub(crate) is_pass: bool,
+    pub epoch_hash: Hash,
+    /// If the verify result is passed, this field is `Some`, otherwise it is `None`.
+    pub full_txs: Option<T>,
 }

@@ -3,7 +3,7 @@ use rlp::{Decodable, DecoderError, Encodable, Prototype, Rlp, RlpStream};
 
 use crate::types::{
     Address, AggregatedSignature, AggregatedVote, Commit, Feed, Hash, Node, PoLC, Proof, Proposal,
-    Signature, SignedProposal, SignedVote, Status, VerifyResp, Vote, VoteType,
+    Signature, SignedProposal, SignedVote, Status, Vote, VoteType,
 };
 use crate::Codec;
 
@@ -388,32 +388,6 @@ impl<T: Codec> Decodable for Feed<T> {
     }
 }
 
-// impl Encodable and Decodable trait for VerifyResp
-impl Encodable for VerifyResp {
-    fn rlp_append(&self, s: &mut RlpStream) {
-        s.begin_list(2)
-            .append(&self.epoch_hash.to_vec())
-            .append(&self.is_pass);
-    }
-}
-
-impl Decodable for VerifyResp {
-    fn decode(r: &Rlp) -> Result<Self, DecoderError> {
-        match r.prototype()? {
-            Prototype::List(2) => {
-                let tmp: Vec<u8> = r.val_at(0)?;
-                let epoch_hash = Hash::from(tmp);
-                let is_pass: bool = r.val_at(1)?;
-                Ok(VerifyResp {
-                    epoch_hash,
-                    is_pass,
-                })
-            }
-            _ => Err(DecoderError::RlpInconsistentLengthAndData),
-        }
-    }
-}
-
 #[cfg(test)]
 mod test {
     use std::error::Error;
@@ -426,7 +400,7 @@ mod test {
 
     use crate::types::{
         Address, AggregatedSignature, AggregatedVote, Commit, Feed, Hash, Node, PoLC, Proof,
-        Proposal, Signature, SignedProposal, SignedVote, Status, VerifyResp, Vote, VoteType,
+        Proposal, Signature, SignedProposal, SignedVote, Status, Vote, VoteType,
     };
     use crate::Codec;
 
@@ -570,16 +544,6 @@ mod test {
         }
     }
 
-    impl VerifyResp {
-        fn new(is_pass: bool) -> Self {
-            let epoch_hash = gen_hash();
-            VerifyResp {
-                epoch_hash,
-                is_pass,
-            }
-        }
-    }
-
     fn gen_hash() -> Hash {
         Hash::from((0..16).map(|_| random::<u8>()).collect::<Vec<_>>())
     }
@@ -656,14 +620,5 @@ mod test {
         let feed = Feed::new(Pill::new());
         let res: Feed<Pill> = rlp::decode(&feed.rlp_bytes()).unwrap();
         assert_eq!(feed, res);
-
-        // Test VerifyResp
-        let verify_response = VerifyResp::new(true);
-        let res: VerifyResp = rlp::decode(&verify_response.rlp_bytes()).unwrap();
-        assert_eq!(verify_response, res);
-
-        let verify_response = VerifyResp::new(false);
-        let res: VerifyResp = rlp::decode(&verify_response.rlp_bytes()).unwrap();
-        assert_eq!(verify_response, res);
     }
 }

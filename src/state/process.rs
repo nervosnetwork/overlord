@@ -8,11 +8,10 @@ use bit_vec::BitVec;
 use bytes::Bytes;
 use creep::Context;
 use derive_more::Display;
-use futures::channel::mpsc::{unbounded, UnboundedReceiver};
+use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::{select, StreamExt};
 use futures_timer::Delay;
 use log::{debug, error, info, warn};
-use parking_lot::Mutex;
 use rlp::encode;
 
 use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
@@ -20,13 +19,11 @@ use crate::smr::{Event, SMRHandler};
 use crate::state::collection::{ProposalCollector, VoteCollector};
 use crate::types::{
     Address, AggregatedSignature, AggregatedVote, Commit, Hash, OverlordMsg, PoLC, Proof, Proposal,
-    Signature, SignedProposal, SignedVote, Status, Vote, VoteType,
+    Signature, SignedProposal, SignedVote, Status, VerifyResp, Vote, VoteType,
 };
 use crate::{error::ConsensusError, utils::auth_manage::AuthorityManage};
 use crate::{Codec, Consensus, ConsensusResult, Crypto, INIT_EPOCH_ID, INIT_ROUND};
 
-const CHECK_EPOCH_SUCCESS: bool = true;
-const CHECK_EPOCH_FAILED: bool = false;
 const FUTURE_EPOCH_GAP: u64 = 5;
 const FUTURE_ROUND_GAP: u64 = 10;
 
@@ -46,22 +43,22 @@ enum MsgType {
 /// than `current_epoch - 1`.
 #[derive(Debug)]
 pub struct State<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto> {
-    epoch_id:         u64,
-    round:            u64,
-    state_machine:    SMRHandler,
-    address:          Address,
-    proposals:        ProposalCollector<T>,
-    votes:            VoteCollector,
-    authority:        AuthorityManage,
-    hash_with_epoch:  HashMap<Hash, T>,
-    full_transcation: Arc<Mutex<HashMap<Hash, bool>>>,
-    check_epoch_rx:   UnboundedReceiver<bool>,
-    is_leader:        bool,
-    leader_address:   Address,
-    last_commit_qc:   Option<AggregatedVote>,
-    epoch_start:      Instant,
-    epoch_interval:   u64,
+    epoch_id:            u64,
+    round:               u64,
+    state_machine:       SMRHandler,
+    address:             Address,
+    proposals:           ProposalCollector<T>,
+    votes:               VoteCollector,
+    authority:           AuthorityManage,
+    hash_with_epoch:     HashMap<Hash, T>,
+    is_full_transcation: HashMap<Hash, bool>,
+    is_leader:           bool,
+    leader_address:      Address,
+    last_commit_qc:      Option<AggregatedVote>,
+    epoch_start:         Instant,
+    epoch_interval:      u64,
 
+    resp_tx:  UnboundedSender<VerifyResp<S>>,
     function: Arc<F>,
     pin_txs:  PhantomData<S>,
     util:     C,
@@ -70,7 +67,7 @@ pub struct State<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto> {
 impl<T, S, F, C> State<T, S, F, C>
 where
     T: Codec + 'static,
-    S: Codec,
+    S: Codec + 'static,
     F: Consensus<T, S> + 'static,
     C: Crypto,
 {
@@ -81,43 +78,46 @@ where
         interval: u64,
         consensus: Arc<F>,
         crypto: C,
-    ) -> Self {
-        let (_tx, rx) = unbounded();
+    ) -> (Self, UnboundedReceiver<VerifyResp<S>>) {
+        let (tx, rx) = unbounded();
 
-        State {
-            epoch_id:         INIT_EPOCH_ID,
-            round:            INIT_ROUND,
-            state_machine:    smr,
-            address:          addr,
-            proposals:        ProposalCollector::new(),
-            votes:            VoteCollector::new(),
-            authority:        AuthorityManage::new(),
-            hash_with_epoch:  HashMap::new(),
-            full_transcation: Arc::new(Mutex::new(HashMap::new())),
-            check_epoch_rx:   rx,
-            is_leader:        false,
-            leader_address:   Address::default(),
-            last_commit_qc:   None,
-            epoch_start:      Instant::now(),
-            epoch_interval:   interval,
+        let state = State {
+            epoch_id:            INIT_EPOCH_ID,
+            round:               INIT_ROUND,
+            state_machine:       smr,
+            address:             addr,
+            proposals:           ProposalCollector::new(),
+            votes:               VoteCollector::new(),
+            authority:           AuthorityManage::new(),
+            hash_with_epoch:     HashMap::new(),
+            is_full_transcation: HashMap::new(),
+            is_leader:           false,
+            leader_address:      Address::default(),
+            last_commit_qc:      None,
+            epoch_start:         Instant::now(),
+            epoch_interval:      interval,
 
+            resp_tx:  tx,
             function: consensus,
             pin_txs:  PhantomData,
             util:     crypto,
-        }
+        };
+        (state, rx)
     }
 
     /// Run state module.
     pub async fn run(
         &mut self,
-        mut rx: UnboundedReceiver<(Context, OverlordMsg<T>)>,
+        mut raw_rx: UnboundedReceiver<(Context, OverlordMsg<T>)>,
         mut event: Event,
+        mut verify_resp: UnboundedReceiver<VerifyResp<S>>,
     ) -> ConsensusResult<()> {
         info!("Overlord: state start running");
         loop {
             select! {
-                raw = rx.next() => self.handle_msg(raw).await?,
+                raw = raw_rx.next() => self.handle_msg(raw).await?,
                 evt = event.next() => self.handle_event(evt).await?,
+                res = verify_resp.next() => self.handle_resp(res)?,
             }
         }
     }
@@ -206,6 +206,35 @@ where
         }
     }
 
+    fn handle_resp(&mut self, msg: Option<VerifyResp<S>>) -> ConsensusResult<()> {
+        let resp = msg.ok_or_else(|| ConsensusError::Other("Event sender dropped".to_string()))?;
+        if resp.epoch_id != self.epoch_id {
+            return Ok(());
+        }
+
+        let epoch_hash = resp.epoch_hash.clone();
+        self.is_full_transcation
+            .insert(epoch_hash, resp.full_txs.is_some());
+
+        if let Ok(qc) = self
+            .votes
+            .get_qc(self.epoch_id, self.round, VoteType::Prevote)
+        {
+            if qc.epoch_hash != resp.epoch_hash {
+                return Ok(());
+            }
+
+            self.state_machine.trigger(SMRTrigger {
+                trigger_type: TriggerType::PrevoteQC,
+                source:       TriggerSource::State,
+                hash:         qc.epoch_hash,
+                round:        Some(self.round),
+                epoch_id:     self.epoch_id,
+            })?;
+        }
+        Ok(())
+    }
+
     /// On receiving a rich status will call this method. This status can be either the return value
     /// of the `commit()` interface, or lastest status after the synchronization is completed send
     /// by the overlord handler.
@@ -285,11 +314,6 @@ where
             return Err(ConsensusError::ProposalErr(
                 "Lock round is inconsistent with lock proposal".to_string(),
             ));
-        }
-
-        if lock_proposal.is_none() {
-            // Clear full transcation signal.
-            self.full_transcation = Arc::new(Mutex::new(HashMap::new()));
         }
 
         // If self is not proposer, check whether it has received current signed proposal before. If
@@ -854,9 +878,15 @@ where
 
         debug!("Overlord: state check if get full transcations");
 
-        let mut epoch_hash = qc_hash;
+        let epoch_hash = qc_hash;
         if qc_type == VoteType::Prevote {
-            epoch_hash = self.check_full_txs(epoch_hash).await?;
+            if let Some(res) = self.is_full_transcation.get(&epoch_hash) {
+                if !res {
+                    return Ok(());
+                }
+            } else {
+                return Ok(());
+            }
         } else if !self.try_get_full_txs(&epoch_hash) {
             return Ok(());
         }
@@ -1273,79 +1303,33 @@ where
 
     async fn check_epoch(&mut self, ctx: Context, hash: Hash, epoch: T) {
         let epoch_id = self.epoch_id;
-        let round = self.round;
-        let tx_signal = Arc::clone(&self.full_transcation);
         let function = Arc::clone(&self.function);
-        let (new_tx, new_rx) = unbounded();
-        let mempool_tx = new_tx.clone();
-        self.check_epoch_rx = new_rx;
+        let resp_tx = self.resp_tx.clone();
 
         runtime::spawn(async move {
-            if let Err(e) =
-                check_current_epoch(ctx, function, tx_signal, epoch_id, hash, epoch).await
+            if let Err(e) = check_current_epoch(ctx, function, epoch_id, hash, epoch, resp_tx).await
             {
-                error!(
-                    "Overlord: state check epoch failed, epoch ID {}, round {}, error {:?}",
-                    epoch_id, round, e
-                )
-            }
-
-            if let Err(e) = mempool_tx.unbounded_send(CHECK_EPOCH_SUCCESS) {
-                error!(
-                    "Overlord: state send check epoch flag failed, epoch ID {}, round {}, error {:?}",
-                    epoch_id, round, e
-                );
-            }
-        });
-
-        runtime::spawn(async move {
-            Delay::new(Duration::from_millis(5000)).await;
-
-            if let Err(e) = new_tx.unbounded_send(CHECK_EPOCH_FAILED) {
-                error!(
-                    "Overlord: state send check epoch flag failed, epoch ID {}, round {}, error {:?}",
-                    epoch_id, round, e
-                );
+                error!("Overlord: state check epoch failed: {:?}", e);
             }
         });
     }
 
     async fn check_full_txs(&mut self, hash: Hash) -> ConsensusResult<Hash> {
-        {
-            let map = self.full_transcation.lock();
-            if let Some(res) = map.get(&hash) {
-                if *res {
-                    return Ok(hash.clone());
-                } else {
-                    return Ok(Hash::new());
-                }
-            }
-        }
-
-        let flag =
-            self.check_epoch_rx.next().await.ok_or_else(|| {
-                ConsensusError::ChannelErr("receive check txs result".to_string())
-            })?;
-
-        let epoch_hash = {
-            let mut map = self.full_transcation.lock();
-            map.insert(hash.clone(), flag);
-
-            if flag {
+        let epoch_hash = if let Some(res) = self.is_full_transcation.get(&hash) {
+            if *res {
                 hash
             } else {
-                warn!(
-                    "Overlord: state check that does not get full transitions when handle signed vote"
-                );
                 Hash::new()
             }
+        } else {
+            Hash::new()
         };
+
         Ok(epoch_hash)
     }
 
     fn try_get_full_txs(&self, hash: &Hash) -> bool {
-        let map = self.full_transcation.lock();
-        if let Some(res) = map.get(hash) {
+        if let Some(res) = self.is_full_transcation.get(hash) {
             return *res;
         }
         false
@@ -1374,8 +1358,7 @@ where
 
     #[cfg(test)]
     pub fn set_full_transaction(&mut self, hash: Hash) {
-        let mut map = self.full_transcation.lock();
-        map.insert(hash, true);
+        self.is_full_transcation.insert(hash, true);
     }
 
     #[cfg(test)]
@@ -1387,27 +1370,28 @@ where
 async fn check_current_epoch<U: Consensus<T, S>, T: Codec, S: Codec>(
     ctx: Context,
     function: Arc<U>,
-    tx_signal: Arc<Mutex<HashMap<Hash, bool>>>,
     epoch_id: u64,
     hash: Hash,
     epoch: T,
+    tx: UnboundedSender<VerifyResp<S>>,
 ) -> ConsensusResult<()> {
-    {
-        let map = tx_signal.lock();
-        if let Some(res) = map.get(&hash) {
-            info!("Overlord: state check epoch {}", res);
-            return Ok(());
-        }
-    }
-
-    let transactions = function
+    let txs = if let Ok(res) = function
         .check_epoch(ctx, epoch_id, hash.clone(), epoch)
-        .await;
+        .await
+    {
+        Some(res)
+    } else {
+        None
+    };
 
-    let res = transactions.is_ok();
-    let mut map = tx_signal.lock();
-    map.insert(hash, res);
-    info!("Overlord: state check epoch {}", res);
+    info!("Overlord: state check epoch {}", txs.is_some());
+
+    tx.unbounded_send(VerifyResp {
+        epoch_id,
+        epoch_hash: hash,
+        full_txs: txs,
+    })
+    .map_err(|e| ConsensusError::ChannelErr(e.to_string()))?;
     // TODO: write Wal
     Ok(())
 }
