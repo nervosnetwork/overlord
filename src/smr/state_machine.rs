@@ -259,10 +259,6 @@ impl StateMachine {
             return Ok(());
         }
 
-        if self.step > Step::Precommit {
-            return Ok(());
-        }
-
         info!(
             "Overlord: SMR triggered by precommit QC hash {:?}, from {:?}",
             precommit_hash, source
@@ -287,9 +283,7 @@ impl StateMachine {
         }
 
         self.check()?;
-        // TODO: is necessary to update PoLC?
-        self.update_polc(precommit_hash.clone(), precommit_round);
-
+        self.check_polc(precommit_hash.clone(), precommit_round)?;
         self.throw_event(SMREvent::Commit(precommit_hash))?;
         self.goto_step(Step::Commit);
         Ok(())
@@ -305,6 +299,23 @@ impl StateMachine {
             .1
             .unbounded_send(event.clone())
             .map_err(|_| ConsensusError::ThrowEventErr(format!("{}", event)))?;
+        Ok(())
+    }
+
+    // Check PoLC when triggered precommit QC by state. If the epoch hash of the QC is equal to self
+    // lock, change self round and do commit, otherwise, it may be fork.
+    fn check_polc(&mut self, hash: Hash, round: u64) -> ConsensusResult<()> {
+        if let Some(lock) = self.lock.as_mut() {
+            if lock.hash != hash {
+                return Err(ConsensusError::CorrectnessErr("Fork".to_string()));
+            } else {
+                lock.round = round;
+            }
+        } else {
+            self.lock = Some(Lock { hash, round });
+        }
+
+        self.round = round;
         Ok(())
     }
 

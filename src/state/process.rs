@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::time::{Duration, Instant};
@@ -45,22 +46,21 @@ enum MsgType {
 /// than `current_epoch - 1`.
 #[derive(Debug)]
 pub struct State<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto> {
-    epoch_id:          u64,
-    round:             u64,
-    state_machine:     SMRHandler,
-    address:           Address,
-    proposals:         ProposalCollector<T>,
-    votes:             VoteCollector,
-    authority:         AuthorityManage,
-    hash_with_epoch:   HashMap<Hash, T>,
-    full_transcation:  Arc<Mutex<HashMap<Hash, bool>>>,
-    check_epoch_rx:    UnboundedReceiver<bool>,
-    is_leader:         bool,
-    leader_address:    Address,
-    last_commit_round: Option<u64>,
-    last_commit_qc:    Option<AggregatedVote>,
-    epoch_start:       Instant,
-    epoch_interval:    u64,
+    epoch_id:         u64,
+    round:            u64,
+    state_machine:    SMRHandler,
+    address:          Address,
+    proposals:        ProposalCollector<T>,
+    votes:            VoteCollector,
+    authority:        AuthorityManage,
+    hash_with_epoch:  HashMap<Hash, T>,
+    full_transcation: Arc<Mutex<HashMap<Hash, bool>>>,
+    check_epoch_rx:   UnboundedReceiver<bool>,
+    is_leader:        bool,
+    leader_address:   Address,
+    last_commit_qc:   Option<AggregatedVote>,
+    epoch_start:      Instant,
+    epoch_interval:   u64,
 
     function: Arc<F>,
     pin_txs:  PhantomData<S>,
@@ -85,22 +85,21 @@ where
         let (_tx, rx) = unbounded();
 
         State {
-            epoch_id:          INIT_EPOCH_ID,
-            round:             INIT_ROUND,
-            state_machine:     smr,
-            address:           addr,
-            proposals:         ProposalCollector::new(),
-            votes:             VoteCollector::new(),
-            authority:         AuthorityManage::new(),
-            hash_with_epoch:   HashMap::new(),
-            full_transcation:  Arc::new(Mutex::new(HashMap::new())),
-            check_epoch_rx:    rx,
-            is_leader:         false,
-            leader_address:    Address::default(),
-            last_commit_round: None,
-            last_commit_qc:    None,
-            epoch_start:       Instant::now(),
-            epoch_interval:    interval,
+            epoch_id:         INIT_EPOCH_ID,
+            round:            INIT_ROUND,
+            state_machine:    smr,
+            address:          addr,
+            proposals:        ProposalCollector::new(),
+            votes:            VoteCollector::new(),
+            authority:        AuthorityManage::new(),
+            hash_with_epoch:  HashMap::new(),
+            full_transcation: Arc::new(Mutex::new(HashMap::new())),
+            check_epoch_rx:   rx,
+            is_leader:        false,
+            leader_address:   Address::default(),
+            last_commit_qc:   None,
+            epoch_start:      Instant::now(),
+            epoch_interval:   interval,
 
             function: consensus,
             pin_txs:  PhantomData,
@@ -449,17 +448,7 @@ where
         // Deal with proposal's epoch ID is equal to the current epoch ID - 1 and round is higher
         // than the last commit round. Retransmit prevote vote to the last commit proposal.
         if epoch_id == self.epoch_id - 1 {
-            if let Some(last_round) = self.last_commit_round.clone() {
-                if round <= last_round {
-                    debug!(
-                        "Overlord: state receive an outdated signed proposal, epoch ID {}, round {}", 
-                        epoch_id, round,
-                    );
-                    return Ok(());
-                }
-
-                self.retransmit_vote(ctx.clone(), proposal.proposer).await?;
-            }
+            self.retransmit_qc(ctx.clone(), proposal.proposer).await?;
             return Ok(());
         }
 
@@ -589,7 +578,6 @@ where
             proof,
         };
 
-        self.last_commit_round = Some(self.round);
         self.last_commit_qc = Some(qc);
         // **TODO: write Wal**
 
@@ -631,6 +619,11 @@ where
         ctx: Context,
         signed_vote: SignedVote,
     ) -> ConsensusResult<()> {
+        if signed_vote.vote.epoch_hash.is_empty() {
+            warn!("Overlord: state receive an empty signed vote");
+            return Ok(());
+        }
+
         let epoch_id = signed_vote.get_epoch();
         let round = signed_vote.get_round();
         let vote_type = if signed_vote.is_prevote() {
@@ -664,8 +657,6 @@ where
             return Ok(());
         }
 
-        // TODO: handle signed vote with epoch ID == self.epoch_id - 1
-
         // All the votes must pass the verification of signature and address before be saved into
         // vote collector.
         let signature = signed_vote.signature.clone();
@@ -677,6 +668,11 @@ where
             MsgType::SignedVote,
         )?;
         self.verify_address(&vote.voter, true)?;
+
+        if epoch_id == self.epoch_id {
+            self.retransmit_qc(ctx, vote.voter).await?;
+            return Ok(());
+        }
 
         // If the vote epoch ID is higher than the current epoch ID, cache it and rehandle it by
         // entering the epoch. Else if the vote epoch ID is equal to the current epoch ID
@@ -782,6 +778,11 @@ where
         _ctx: Context,
         aggregated_vote: AggregatedVote,
     ) -> ConsensusResult<()> {
+        if aggregated_vote.epoch_hash.is_empty() {
+            warn!("Overlord: state receive an empty aggregated vote");
+            return Ok(());
+        }
+
         let epoch_id = aggregated_vote.get_epoch();
         let round = aggregated_vote.get_round();
         let qc_type = if aggregated_vote.is_prevote_qc() {
@@ -797,19 +798,29 @@ where
 
         // If the vote epoch ID is lower than the current epoch ID, ignore it directly. If the vote
         // epoch ID is higher than current epoch ID, save it and return Ok;
-        if epoch_id < self.epoch_id {
-            debug!(
-                "Overlord: state receive an outdated QC, epoch ID {}, round {}",
-                epoch_id, round,
-            );
-            return Ok(());
-        } else if epoch_id > self.epoch_id && self.epoch_id + FUTURE_EPOCH_GAP > epoch_id {
-            debug!(
-                "Overlord: state receive a future QC, epoch ID {}, round {}",
-                epoch_id, round,
-            );
-            self.votes.set_qc(aggregated_vote);
-            return Ok(());
+        match epoch_id.cmp(&self.epoch_id) {
+            Ordering::Less => {
+                debug!(
+                    "Overlord: state receive an outdated QC, epoch ID {}, round {}",
+                    epoch_id, round,
+                );
+                return Ok(());
+            }
+
+            Ordering::Greater => {
+                if self.epoch_id + FUTURE_EPOCH_GAP > epoch_id {
+                    debug!(
+                        "Overlord: state receive a future QC, epoch ID {}, round {}",
+                        epoch_id, round,
+                    );
+                    self.votes.set_qc(aggregated_vote);
+                } else {
+                    warn!("Overlord: state receive a much higher aggregated vote");
+                }
+                return Ok(());
+            }
+
+            Ordering::Equal => (),
         }
 
         // Verify aggregate signature and check the sum of the voting weights corresponding to the
@@ -820,7 +831,10 @@ where
             qc_type.clone(),
         )?;
 
-        if epoch_id == self.epoch_id && round > self.round && self.round + FUTURE_ROUND_GAP > round
+        if qc_type == VoteType::Prevote
+            && epoch_id == self.epoch_id
+            && round > self.round
+            && self.round + FUTURE_ROUND_GAP > round
         {
             debug!(
                 "Overlord: state receive a future QC, epoch ID {}, round {}",
@@ -830,32 +844,6 @@ where
             return Ok(());
         }
 
-        // Deal with QC's epoch ID is equal to the current epoch ID - 1 and round is higher than the
-        // last commit round. If the QC is a prevoteQC, ignore it. Retransmit precommit vote to the
-        // last commit proposal.
-        if epoch_id == self.epoch_id - 1 {
-            if let Some((last_round, last_proposal)) = self.last_commit_msg()? {
-                if round <= last_round || qc_type == VoteType::Precommit {
-                    debug!(
-                        "Overlord: state receive an outdated QC, epoch ID {}, round {}",
-                        epoch_id, round,
-                    );
-                    return Ok(());
-                }
-
-                self.retransmit_vote(
-                    ctx,
-                    last_round,
-                    last_proposal,
-                    VoteType::Precommit,
-                    aggregated_vote.leader,
-                )
-                .await?;
-                return Ok(());
-            } else {
-                return Ok(());
-            }
-        }
         debug!(
             "Overlord: state receive a future QC, epoch ID {}, round {}",
             epoch_id, round,
@@ -1066,10 +1054,6 @@ where
 
     fn re_check_votes(&mut self, votes: Vec<SignedVote>) -> ConsensusResult<()> {
         debug!("Overlord: state re-check future signed votes");
-        if votes.is_empty() {
-            return Ok(());
-        }
-
         for sv in votes.into_iter() {
             let signature = sv.signature.clone();
             let vote = sv.vote.clone();
@@ -1092,10 +1076,6 @@ where
 
     fn re_check_qcs(&mut self, qcs: Vec<AggregatedVote>) -> ConsensusResult<()> {
         debug!("Overlord: state re-check future QCs");
-        if qcs.is_empty() {
-            return Ok(());
-        }
-
         for qc in qcs.into_iter() {
             if self
                 .verify_aggregated_signature(
@@ -1256,7 +1236,7 @@ where
             });
     }
 
-    async fn retransmit_vote(&self, ctx: Context, address: Address) -> ConsensusResult<()> {
+    async fn retransmit_qc(&self, ctx: Context, address: Address) -> ConsensusResult<()> {
         debug!("Overlord: state re-transmit last epoch vote");
         if let Some(qc) = self.last_commit_qc.clone() {
             let _ = self
