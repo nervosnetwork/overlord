@@ -1,6 +1,5 @@
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
-use std::marker::PhantomData;
 use std::time::{Duration, Instant};
 use std::{ops::BitXor, sync::Arc};
 
@@ -60,7 +59,6 @@ pub struct State<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto> {
 
     resp_tx:  UnboundedSender<VerifyResp<S>>,
     function: Arc<F>,
-    pin_txs:  PhantomData<S>,
     util:     C,
 }
 
@@ -99,7 +97,6 @@ where
 
             resp_tx:  tx,
             function: consensus,
-            pin_txs:  PhantomData,
             util:     crypto,
         };
         (state, rx)
