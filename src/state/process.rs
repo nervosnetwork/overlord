@@ -690,7 +690,7 @@ where
         )?;
         self.verify_address(&vote.voter, true)?;
 
-        if epoch_id == self.epoch_id {
+        if epoch_id == self.epoch_id - 1 {
             self.retransmit_qc(ctx, vote.voter).await?;
             return Ok(());
         }
