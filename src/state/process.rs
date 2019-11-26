@@ -211,16 +211,23 @@ where
 
         let epoch_hash = resp.epoch_hash.clone();
         self.is_full_transcation
-            .insert(epoch_hash, resp.full_txs.is_some());
+            .insert(epoch_hash.clone(), resp.full_txs.is_some());
 
-        if let Ok(qc) = self
-            .votes
-            .get_qc(self.epoch_id, self.round, VoteType::Prevote)
+        if let Some(qc) =
+            self.votes
+                .get_qc_by_hash(self.epoch_id, epoch_hash.clone(), VoteType::Precommit)
         {
-            if qc.epoch_hash != resp.epoch_hash {
-                return Ok(());
-            }
-
+            self.state_machine.trigger(SMRTrigger {
+                trigger_type: TriggerType::PrecommitQC,
+                source:       TriggerSource::State,
+                hash:         qc.epoch_hash,
+                round:        Some(self.round),
+                epoch_id:     self.epoch_id,
+            })?;
+        } else if let Some(qc) =
+            self.votes
+                .get_qc_by_hash(self.epoch_id, epoch_hash, VoteType::Prevote)
+        {
             self.state_machine.trigger(SMRTrigger {
                 trigger_type: TriggerType::PrevoteQC,
                 source:       TriggerSource::State,
@@ -355,7 +362,7 @@ where
             // Create PoLC by prevoteQC.
             let qc = self
                 .votes
-                .get_qc(self.epoch_id, round, VoteType::Prevote)
+                .get_qc_by_id(self.epoch_id, round, VoteType::Prevote)
                 .map_err(|err| ConsensusError::ProposalErr(format!("{:?} when propose", err)))?;
             let polc = PoLC {
                 lock_round: round,
@@ -586,7 +593,14 @@ where
         };
 
         debug!("Overlord: state generate proof");
-        let qc = self.votes.get_qc(epoch, self.round, VoteType::Precommit)?;
+        let qc = self
+            .votes
+            .get_qc_by_hash(epoch, hash.clone(), VoteType::Precommit);
+        if qc.is_none() {
+            return Err(ConsensusError::StorageErr("Lose precommit QC".to_string()));
+        }
+
+        let qc = qc.unwrap();
         let proof = Proof {
             epoch_id:   epoch,
             round:      self.round,
@@ -659,11 +673,8 @@ where
         );
 
         if epoch_id != self.epoch_id - 1
-            || !self.is_leader
-            || epoch_id != self.epoch_id
-            || round != self.round
+            && (!self.is_leader || epoch_id != self.epoch_id || round != self.round)
         {
-            // TODO: a warn level log
             return Ok(());
         }
 
@@ -688,7 +699,7 @@ where
         // vote weight is above the threshold. If no hash achieved this, return directly.
         if self
             .votes
-            .get_qc(epoch_id, round, vote_type.clone())
+            .get_qc_by_id(epoch_id, round, vote_type.clone())
             .is_ok()
         {
             return Ok(());
@@ -796,7 +807,7 @@ where
             }
 
             Ordering::Greater => {
-                if self.epoch_id + FUTURE_EPOCH_GAP > epoch_id {
+                if self.epoch_id + FUTURE_EPOCH_GAP > epoch_id && round < FUTURE_ROUND_GAP {
                     debug!(
                         "Overlord: state receive a future QC, epoch ID {}, round {}",
                         epoch_id, round,
@@ -832,14 +843,6 @@ where
             return Ok(());
         }
 
-        if round != self.round {
-            info!(
-                "Overlord: state round bump from {} to {}",
-                self.round, round
-            );
-            self.round = round;
-        }
-
         info!(
             "Overlord: state trigger SMR {:?} QC epoch ID {}, round {}",
             qc_type, self.epoch_id, self.round
@@ -871,7 +874,7 @@ where
         if !self.is_leader {
             if let Ok(qc) = self
                 .votes
-                .get_qc(self.epoch_id, self.round, vote_type.clone())
+                .get_qc_by_id(self.epoch_id, self.round, vote_type.clone())
             {
                 let mut epoch_hash = qc.epoch_hash.clone();
                 if !epoch_hash.is_empty() {

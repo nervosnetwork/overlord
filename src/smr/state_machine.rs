@@ -230,7 +230,7 @@ impl StateMachine {
             self.update_polc(prevote_hash, vote_round);
         }
 
-        if self.round != vote_round {
+        if self.round > vote_round {
             self.round = vote_round;
         }
 
