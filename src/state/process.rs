@@ -658,23 +658,12 @@ where
             vote_type, epoch_id, round,
         );
 
-        // Filter the signed votes that do not need to be handed.
-        // 1. Outdated proposals
-        // 2. Much higher epoch ID
-        // 3. Much higher round
-        if epoch_id < self.epoch_id - 1 || (epoch_id == self.epoch_id && round < self.round) {
-            debug!(
-                "Overlord: state receive an outdated signed vote, epoch ID {}, round {}",
-                epoch_id, round,
-            );
-            return Ok(());
-        } else if self.epoch_id + FUTURE_EPOCH_GAP < epoch_id {
-            warn!("Overlord: state receive a much higher epoch's vote.");
-            return Ok(());
-        } else if (epoch_id == self.epoch_id && self.round + FUTURE_ROUND_GAP < round)
-            || (epoch_id > self.epoch_id && round > FUTURE_ROUND_GAP)
+        if epoch_id != self.epoch_id - 1
+            || !self.is_leader
+            || epoch_id != self.epoch_id
+            || round != self.round
         {
-            warn!("Overlord: state receive a much higher round's vote.");
+            // TODO: a warn level log
             return Ok(());
         }
 
@@ -695,31 +684,6 @@ where
             return Ok(());
         }
 
-        // If the vote epoch ID is higher than the current epoch ID, cache it and rehandle it by
-        // entering the epoch. Else if the vote epoch ID is equal to the current epoch ID
-        // and the vote round is higher than the current round, cache it until that round
-        // and precess it.
-        if epoch_id != self.epoch_id || round != self.round {
-            debug!(
-                "Overlord: state receive a future signed vote, epoch ID {}, round {}",
-                epoch_id, round,
-            );
-            self.votes
-                .insert_vote(signed_vote.get_hash(), signed_vote, vote.voter);
-            return Ok(());
-        }
-
-        self.votes
-            .insert_vote(signed_vote.get_hash(), signed_vote, vote.voter);
-
-        if !self.is_leader {
-            error!(
-                "Overlord: state is not leader but receive signed vote round {}",
-                self.round
-            );
-            return Ok(());
-        }
-
         // Check if the quorum certificate has generated before check whether there is a hash that
         // vote weight is above the threshold. If no hash achieved this, return directly.
         if self
@@ -729,6 +693,9 @@ where
         {
             return Ok(());
         }
+
+        self.votes
+            .insert_vote(signed_vote.get_hash(), signed_vote, vote.voter);
         let epoch_hash = self.counting_vote(vote_type.clone())?;
 
         if epoch_hash.is_none() {
@@ -844,6 +811,12 @@ where
             Ordering::Equal => (),
         }
 
+        // State do not handle outdated prevote QC.
+        if qc_type == VoteType::Prevote && round < self.round {
+            debug!("Overlord: state receive a outdated prevote qc.");
+            return Ok(());
+        }
+
         // Verify aggregate signature and check the sum of the voting weights corresponding to the
         // hash exceeds the threshold.
         self.verify_aggregated_signature(
@@ -852,44 +825,18 @@ where
             qc_type.clone(),
         )?;
 
-        if qc_type == VoteType::Prevote
-            && epoch_id == self.epoch_id
-            && round > self.round
-            && self.round + FUTURE_ROUND_GAP > round
-        {
-            debug!(
-                "Overlord: state receive a future QC, epoch ID {}, round {}",
-                epoch_id, round,
-            );
-            self.votes.set_qc(aggregated_vote);
-            return Ok(());
-        }
-
-        debug!(
-            "Overlord: state receive a future QC, epoch ID {}, round {}",
-            epoch_id, round,
-        );
-
+        // Check if the epoch hash has been verified.
         let qc_hash = aggregated_vote.epoch_hash.clone();
         self.votes.set_qc(aggregated_vote);
-
-        debug!("Overlord: state check if get full transcations");
-
-        let epoch_hash = qc_hash;
-        if qc_type == VoteType::Prevote {
-            if let Some(res) = self.is_full_transcation.get(&epoch_hash) {
-                if !res {
-                    return Ok(());
-                }
-            } else {
-                return Ok(());
-            }
-        } else if !self.try_get_full_txs(&epoch_hash) {
+        if !self.try_get_full_txs(&qc_hash) {
             return Ok(());
         }
 
-        // If the precommit qc's round is different from self round, bump to the qc's round.
-        if qc_type == VoteType::Precommit && round != self.round {
+        if round != self.round {
+            info!(
+                "Overlord: state round bump from {} to {}",
+                self.round, round
+            );
             self.round = round;
         }
 
@@ -901,7 +848,7 @@ where
         self.state_machine.trigger(SMRTrigger {
             trigger_type: qc_type.clone().into(),
             source:       TriggerSource::State,
-            hash:         epoch_hash,
+            hash:         qc_hash,
             round:        Some(round),
             epoch_id:     self.epoch_id,
         })?;
@@ -1326,6 +1273,7 @@ where
     }
 
     fn try_get_full_txs(&self, hash: &Hash) -> bool {
+        debug!("Overlord: state check if get full transcations");
         if let Some(res) = self.is_full_transcation.get(hash) {
             return *res;
         }

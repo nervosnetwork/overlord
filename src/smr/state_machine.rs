@@ -103,7 +103,7 @@ impl StateMachine {
         // throw new round info event
         self.throw_event(SMREvent::NewRoundInfo {
             epoch_id:      self.epoch_id,
-            round:         0u64,
+            round:         INIT_ROUND,
             lock_round:    None,
             lock_proposal: None,
         })?;
@@ -222,13 +222,16 @@ impl StateMachine {
         // precommit step directly.
         self.check()?;
         let vote_round = prevote_round;
-        self.check_round(vote_round)?;
         if let Some(lock) = self.lock.clone() {
             if vote_round > lock.round {
                 self.update_polc(prevote_hash, vote_round);
             }
         } else {
             self.update_polc(prevote_hash, vote_round);
+        }
+
+        if self.round != vote_round {
+            self.round = vote_round;
         }
 
         // throw precommit vote event
@@ -367,17 +370,6 @@ impl StateMachine {
     #[inline]
     fn set_proposal(&mut self, proposal_hash: Hash) {
         self.epoch_hash = proposal_hash;
-    }
-
-    /// Check if the given round is equal to self round.
-    fn check_round(&mut self, round: u64) -> ConsensusResult<()> {
-        if self.round != round {
-            return Err(ConsensusError::RoundDiff {
-                local: self.round,
-                vote:  round,
-            });
-        }
-        Ok(())
     }
 
     /// Do below self checks before each message is processed:

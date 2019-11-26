@@ -168,24 +168,8 @@ async fn test_prevote_trigger() {
     //     None,
     // ));
 
-    // Test case 10:
-    //      the prevote round is not equal to self round.
-    // This is an incorrect situation, the process will return round diff err.
-    let hash = gen_hash();
-    test_cases.push(StateMachineTestCase::new(
-        InnerState::new(1, Step::Prevote, Hash::new(), None),
-        SMRTrigger::new(hash, TriggerType::PrevoteQC, Some(2), 0),
-        SMREvent::PrecommitVote {
-            epoch_id:   0u64,
-            round:      1u64,
-            epoch_hash: Hash::new(),
-        },
-        Some(ConsensusError::RoundDiff { local: 1, vote: 2 }),
-        None,
-    ));
-
     for case in test_cases.into_iter() {
-        println!("Prevote test {}/9", index);
+        println!("Prevote test {}/8", index);
         index += 1;
         trigger_test(
             case.base,
