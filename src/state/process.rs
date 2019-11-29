@@ -380,7 +380,7 @@ where
     }
 
     /// This function only handle signed proposals which epoch ID and round are equal to current.
-    /// Others will be ignored or storaged in the proposal collector.
+    /// Others will be ignored or stored in the proposal collector.
     async fn handle_signed_proposal(
         &mut self,
         ctx: Context,
@@ -390,7 +390,7 @@ where
         let round = signed_proposal.proposal.round;
 
         info!(
-            "Overlod: state receive a signed proposal epoch ID {}, round {}",
+            "Overlord: state receive a signed proposal epoch ID {}, round {}",
             epoch_id, round,
         );
 
@@ -476,7 +476,7 @@ where
                 proposal.epoch_id == self.epoch_id,
             )? {
                 return Err(ConsensusError::AggregatedSignatureErr(format!(
-                    "aggregate signature below two thrids, proposal of epoch ID {:?}, round {:?}",
+                    "aggregate signature below two thirds, proposal of epoch ID {:?}, round {:?}",
                     proposal.epoch_id, proposal.round
                 )));
             }
@@ -515,7 +515,7 @@ where
         })?;
 
         info!(
-            "Overlord: state tigger SMR epoch ID {}, round {}, type {:?}",
+            "Overlord: state trigger SMR epoch ID {}, round {}, type {:?}",
             self.epoch_id,
             self.round,
             TriggerType::Proposal
@@ -924,8 +924,8 @@ where
 
     /// On handling the signed vote, some signed votes and quorum certificates might have
     /// been cached in the vote collector. So it should check whether there is votes or quorum
-    /// certificates exsits or not. If self node is not the leader, check if there is prevoteQC
-    /// exits. If self node is the leader, check if there is signed prevote vote exsits. It
+    /// certificates exists or not. If self node is not the leader, check if there is prevoteQC
+    /// exits. If self node is the leader, check if there is signed prevote vote exists. It
     /// should be noted that when self is the leader, and the vote type is prevote, the process
     /// should be the same as the handle signed vote.
     async fn vote_process(&mut self, vote_type: VoteType) -> ConsensusResult<()> {
@@ -1483,11 +1483,11 @@ async fn check_current_epoch<U: Consensus<T, S>, T: Codec, S: Codec>(
         }
     }
 
-    let transcations = function
+    let transactions = function
         .check_epoch(ctx, epoch_id, hash.clone(), epoch)
         .await;
 
-    let res = transcations.is_ok();
+    let res = transactions.is_ok();
     let mut map = tx_signal.lock();
     map.insert(hash, res);
     info!("Overlord: state check epoch {}", res);
