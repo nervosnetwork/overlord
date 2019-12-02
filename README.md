@@ -1,8 +1,8 @@
 # Overlord
 
-[![CircleCI](https://circleci.com/gh/cryptape/overlord.svg?style=svg)](https://circleci.com/gh/cryptape/overlord)
+[![TravisCI](https://travis-ci.com/nervosnetwork/overlord.svg?branch=master)](https://travis-ci.com/nervosnetwork/overlord)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE.md)
-[![Minimum rustc version](https://img.shields.io/badge/rustc-1.40+-informational.svg)](https://github.com/cryptape/overlord/blob/master/rust-toolchain)
+[![Minimum rustc version](https://img.shields.io/badge/rustc-1.40+-informational.svg)](https://github.com/nervosnetwork/overlord/blob/master/rust-toolchain)
 
 Overlord consensus protocol.
 
