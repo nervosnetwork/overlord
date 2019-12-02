@@ -23,8 +23,8 @@ matrix:
   include:
   - rust: nightly
 
-install: ./devtools/ci/install.sh
-script: ./devtools/ci/script.sh
+install: ./ci/install.sh
+script: ./ci/script.sh
 
 env:
   global:
