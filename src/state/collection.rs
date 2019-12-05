@@ -164,7 +164,7 @@ impl VoteCollector {
     }
 
     /// Get a quorum certificate with the given epoch, round and type.
-    pub fn get_qc(
+    pub fn get_qc_by_id(
         &mut self,
         epoch: u64,
         round: u64,
@@ -172,13 +172,24 @@ impl VoteCollector {
     ) -> ConsensusResult<AggregatedVote> {
         self.0
             .get_mut(&epoch)
-            .and_then(|vrc| vrc.get_qc(round, qc_type.clone()))
+            .and_then(|vrc| vrc.get_qc_by_id(round, qc_type.clone()))
             .ok_or_else(|| {
                 ConsensusError::StorageErr(format!(
                     "Can not get {:?} qc epoch ID {}, round {}",
                     qc_type, epoch, round
                 ))
             })
+    }
+
+    pub fn get_qc_by_hash(
+        &mut self,
+        epoch: u64,
+        hash: Hash,
+        qc_type: VoteType,
+    ) -> Option<AggregatedVote> {
+        self.0
+            .get_mut(&epoch)
+            .and_then(|vrc| vrc.get_qc_by_hash(hash, qc_type))
     }
 
     /// Get all votes and quorum certificates of the given epoch ID.
@@ -192,7 +203,7 @@ impl VoteCollector {
                 let mut votes = Vec::new();
                 let mut qcs = Vec::new();
 
-                for (_, rc) in vrc.0.iter_mut() {
+                for (_, rc) in vrc.general.iter_mut() {
                     votes.append(&mut rc.prevote.get_all_votes());
                     votes.append(&mut rc.precommit.get_all_votes());
                     qcs.append(&mut rc.qc.get_all_qcs());
@@ -218,22 +229,33 @@ impl VoteCollector {
 /// A struct to collect votes in each round.  It stores each round votes and the corresponding votes
 /// in a `HashMap`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct VoteRoundCollector(HashMap<u64, RoundCollector>);
+struct VoteRoundCollector {
+    general:    HashMap<u64, RoundCollector>,
+    qc_by_hash: HashMap<Hash, QuorumCertificate>,
+}
 
 impl VoteRoundCollector {
     fn new() -> Self {
-        VoteRoundCollector(HashMap::new())
+        VoteRoundCollector {
+            general:    HashMap::new(),
+            qc_by_hash: HashMap::new(),
+        }
     }
 
     fn insert_vote(&mut self, hash: Hash, vote: SignedVote, addr: Address) {
-        self.0
+        self.general
             .entry(vote.get_round())
             .or_insert_with(RoundCollector::new)
             .insert_vote(hash, vote, addr);
     }
 
     fn set_qc(&mut self, qc: AggregatedVote) {
-        self.0
+        self.qc_by_hash
+            .entry(qc.epoch_hash.clone())
+            .or_insert_with(QuorumCertificate::new)
+            .set_quorum_certificate(qc.clone());
+
+        self.general
             .entry(qc.get_round())
             .or_insert_with(RoundCollector::new)
             .set_qc(qc);
@@ -244,7 +266,7 @@ impl VoteRoundCollector {
         round: u64,
         vote_type: VoteType,
     ) -> Option<&HashMap<Hash, HashSet<Address>>> {
-        self.0.get_mut(&round).and_then(|rc| {
+        self.general.get_mut(&round).and_then(|rc| {
             let res = rc.get_vote_map(vote_type);
             if res.is_empty() {
                 return None;
@@ -259,17 +281,26 @@ impl VoteRoundCollector {
         vote_type: VoteType,
         hash: &Hash,
     ) -> Option<Vec<SignedVote>> {
-        self.0
+        self.general
             .get_mut(&round)
             .and_then(|rc| rc.get_votes(vote_type, hash))
     }
 
-    fn get_qc(&mut self, round: u64, qc_type: VoteType) -> Option<AggregatedVote> {
-        self.0.get_mut(&round).and_then(|rc| rc.get_qc(qc_type))
+    fn get_qc_by_id(&mut self, round: u64, qc_type: VoteType) -> Option<AggregatedVote> {
+        self.general
+            .get_mut(&round)
+            .and_then(|rc| rc.get_qc(qc_type))
+    }
+
+    fn get_qc_by_hash(&self, hash: Hash, qc_type: VoteType) -> Option<AggregatedVote> {
+        if let Some(qcs) = self.qc_by_hash.get(&hash) {
+            return qcs.get_quorum_certificate(qc_type);
+        }
+        None
     }
 
     fn vote_count(&self, round: u64, vote_type: VoteType) -> usize {
-        if let Some(rc) = self.0.get(&round) {
+        if let Some(rc) = self.general.get(&round) {
             return rc.vote_count(vote_type);
         }
         0
@@ -354,7 +385,7 @@ impl QuorumCertificate {
         }
     }
 
-    fn get_quorum_certificate(&mut self, qc_type: VoteType) -> Option<AggregatedVote> {
+    fn get_quorum_certificate(&self, qc_type: VoteType) -> Option<AggregatedVote> {
         match qc_type {
             VoteType::Prevote => self.prevote.clone(),
             VoteType::Precommit => self.precommit.clone(),

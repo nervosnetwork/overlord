@@ -55,7 +55,7 @@ async fn handle_event_test(
     let helper = ConsensusHelper::new(msg_tx);
     let crypto = BlsCrypto::new(Address::from(vec![0u8]));
 
-    let mut state = State::new(smr_handler, address, 3000, Arc::new(helper), crypto);
+    let (mut state, _rx) = State::new(smr_handler, address, 3000, Arc::new(helper), crypto);
     update_state(&mut condition, &mut state);
     assert!(condition.proposal_collector.is_none());
     assert!(condition.vote_collector.is_none());

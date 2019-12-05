@@ -34,7 +34,7 @@ async fn test_precommit_trigger() {
             lock_round:    None,
             lock_proposal: None,
         },
-        None,
+        Some(ConsensusError::PrecommitErr("Empty qc".to_string())),
         None,
     ));
 
@@ -68,7 +68,7 @@ async fn test_precommit_trigger() {
             lock_round:    Some(0),
             lock_proposal: Some(hash.clone()),
         },
-        None,
+        Some(ConsensusError::PrecommitErr("Empty qc".to_string())),
         Some((0, hash)),
     ));
 
@@ -81,7 +81,7 @@ async fn test_precommit_trigger() {
         InnerState::new(0, Step::Precommit, Hash::new(), Some(lock)),
         SMRTrigger::new(Hash::new(), TriggerType::PrecommitQC, Some(0), 0),
         SMREvent::Commit(hash.clone()),
-        Some(ConsensusError::SelfCheckErr("".to_string())),
+        Some(ConsensusError::PrecommitErr("Empty qc".to_string())),
         Some((0, hash)),
     ));
 
@@ -128,20 +128,7 @@ async fn test_precommit_trigger() {
             lock_round:    None,
             lock_proposal: None,
         },
-        Some(ConsensusError::SelfCheckErr("".to_string())),
-        Some((0, hash)),
-    ));
-
-    // Test case 09:
-    //      the precommit round is not equal to self round.
-    // This is an incorrect situation, the process will return round diff err.
-    let hash = gen_hash();
-    let lock = Lock::new(0, hash.clone());
-    test_cases.push(StateMachineTestCase::new(
-        InnerState::new(0, Step::Precommit, hash.clone(), Some(lock)),
-        SMRTrigger::new(hash.clone(), TriggerType::PrecommitQC, Some(1), 0),
-        SMREvent::Commit(hash.clone()),
-        Some(ConsensusError::RoundDiff { local: 0, vote: 1 }),
+        Some(ConsensusError::PrecommitErr("Empty qc".to_string())),
         Some((0, hash)),
     ));
 
@@ -174,7 +161,7 @@ async fn test_precommit_trigger() {
     ));
 
     for case in test_cases.into_iter() {
-        println!("Precommit test {}/11", index);
+        println!("Precommit test {}/9", index);
         index += 1;
         trigger_test(
             case.base,

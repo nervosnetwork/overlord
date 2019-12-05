@@ -39,7 +39,7 @@ async fn test_proposal_trigger() {
             round:      0u64,
             epoch_hash: hash,
         },
-        None,
+        Some(ConsensusError::ProposalErr("Empty qc".to_string())),
         None,
     ));
 
@@ -124,7 +124,7 @@ async fn test_proposal_trigger() {
             round:      1u64,
             epoch_hash: hash,
         },
-        Some(ConsensusError::SelfCheckErr("".to_string())),
+        Some(ConsensusError::ProposalErr("Empty qc".to_string())),
         None,
     ));
 
@@ -141,7 +141,7 @@ async fn test_proposal_trigger() {
             round:      1u64,
             epoch_hash: hash,
         },
-        Some(ConsensusError::SelfCheckErr("".to_string())),
+        Some(ConsensusError::ProposalErr("Empty qc".to_string())),
         None,
     ));
 
@@ -160,7 +160,7 @@ async fn test_proposal_trigger() {
             round:      1u64,
             epoch_hash: hash,
         },
-        Some(ConsensusError::SelfCheckErr("".to_string())),
+        Some(ConsensusError::ProposalErr("Empty qc".to_string())),
         None,
     ));
 
@@ -179,7 +179,7 @@ async fn test_proposal_trigger() {
             round:      1u64,
             epoch_hash: hash,
         },
-        Some(ConsensusError::SelfCheckErr("".to_string())),
+        Some(ConsensusError::ProposalErr("Empty qc".to_string())),
         None,
     ));
 
@@ -198,7 +198,7 @@ async fn test_proposal_trigger() {
             round:      1u64,
             epoch_hash: hash,
         },
-        Some(ConsensusError::SelfCheckErr("".to_string())),
+        Some(ConsensusError::ProposalErr("Empty qc".to_string())),
         None,
     ));
 
@@ -236,7 +236,7 @@ async fn test_proposal_trigger() {
             round:      1u64,
             epoch_hash: lock_hash.clone(),
         },
-        None,
+        Some(ConsensusError::ProposalErr("Empty qc".to_string())),
         Some((0, lock_hash)),
     ));
 
