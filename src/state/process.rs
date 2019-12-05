@@ -425,35 +425,7 @@ where
             epoch_id, round,
         );
 
-        // Filter the proposals that do not need to be handed.
-        // 1. Outdated proposals
-        // 2. Much higher epoch ID
-        // 3. Much higher round
-        if epoch_id < self.epoch_id - 1 || (epoch_id == self.epoch_id && round < self.round) {
-            debug!(
-                "Overlord: state receive an outdated signed proposal, epoch ID {}, round {}",
-                epoch_id, round,
-            );
-            return Ok(());
-        } else if self.epoch_id + FUTURE_EPOCH_GAP < epoch_id {
-            warn!("Overlord: state receive a much higher epoch's proposal.");
-            return Ok(());
-        } else if (epoch_id == self.epoch_id && self.round + FUTURE_ROUND_GAP < round)
-            || (epoch_id > self.epoch_id && round > FUTURE_ROUND_GAP)
-        {
-            warn!("Overlord: state receive a much higher round's proposal.");
-            return Ok(());
-        }
-
-        // If the proposal epoch ID is higher than the current epoch ID or proposal epoch ID is
-        // equal to the current epoch ID and the proposal round is higher than the current round,
-        // cache it until that epoch ID.
-        if (epoch_id == self.epoch_id && round != self.round) || epoch_id > self.epoch_id {
-            debug!(
-                "Overlord: state receive a future signed proposal, epoch ID {}, round {}",
-                epoch_id, round,
-            );
-            self.proposals.insert(epoch_id, round, signed_proposal)?;
+        if self.filter_signed_proposal(epoch_id, round, &signed_proposal)? {
             return Ok(());
         }
 
@@ -1283,16 +1255,52 @@ where
         false
     }
 
+    /// Filter the proposals that do not need to be handed.
+    /// 1. Outdated proposals
+    /// 2. A much higher epoch ID which is larger than the FUTURE_EPOCH_GAP
+    /// 3. A much higher round which is larger than the FUTURE_ROUND_GAP
+    fn filter_signed_proposal(
+        &mut self,
+        epoch_id: u64,
+        round: u64,
+        signed_proposal: &SignedProposal<T>,
+    ) -> ConsensusResult<bool> {
+        if epoch_id < self.epoch_id - 1 || (epoch_id == self.epoch_id && round < self.round) {
+            debug!(
+                "Overlord: state receive an outdated signed proposal, epoch ID {}, round {}",
+                epoch_id, round,
+            );
+            return Ok(true);
+        } else if self.epoch_id + FUTURE_EPOCH_GAP < epoch_id {
+            warn!("Overlord: state receive a much higher epoch's proposal.");
+            return Ok(true);
+        } else if (epoch_id == self.epoch_id && self.round + FUTURE_ROUND_GAP < round)
+            || (epoch_id > self.epoch_id && round > FUTURE_ROUND_GAP)
+        {
+            warn!("Overlord: state receive a much higher round's proposal.");
+            return Ok(true);
+        }
+
+        // If the proposal epoch ID is higher than the current epoch ID or proposal epoch ID is
+        // equal to the current epoch ID and the proposal round is higher than the current round,
+        // cache it until that epoch ID.
+        if (epoch_id == self.epoch_id && round != self.round) || epoch_id > self.epoch_id {
+            debug!(
+                "Overlord: state receive a future signed proposal, epoch ID {}, round {}",
+                epoch_id, round,
+            );
+            self.proposals
+                .insert(epoch_id, round, signed_proposal.clone())?;
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
     #[cfg(test)]
     pub fn set_condition(&mut self, epoch_id: u64, round: u64) {
         self.epoch_id = epoch_id;
         self.round = round;
     }
-
-    // #[cfg(test)]
-    // pub fn set_authority(&mut self, mut authority: Vec<Node>) {
-    //     self.authority.update(&mut authority, false);
-    // }
 
     #[cfg(test)]
     pub fn set_proposal_collector(&mut self, collector: ProposalCollector<T>) {
