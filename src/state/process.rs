@@ -274,7 +274,7 @@ where
             "Overlord: state receive verify response epoch ID {:?}, hash {:?}",
             resp.epoch_id, epoch_hash
         );
-        
+
         self.is_full_transcation
             .insert(epoch_hash.clone(), resp.full_txs.is_some());
 

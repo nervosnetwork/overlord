@@ -263,6 +263,10 @@ impl StateMachine {
             return Ok(());
         }
 
+        if self.step > Step::Precommit {
+            return Ok(());
+        }
+
         info!(
             "Overlord: SMR triggered by precommit QC hash {:?}, from {:?}",
             precommit_hash, source
