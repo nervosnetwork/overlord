@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
+use std::string::ToString;
 use std::time::{Duration, Instant};
 use std::{ops::BitXor, sync::Arc};
 
@@ -11,7 +12,9 @@ use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::{select, StreamExt};
 use futures_timer::Delay;
 use log::{debug, error, info, warn};
+use moodyblues_sdk::trace;
 use rlp::encode;
+use serde_json::json;
 
 use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
 use crate::smr::{Event, SMRHandler};
@@ -130,6 +133,14 @@ where
         match raw {
             OverlordMsg::SignedProposal(sp) => {
                 if let Err(e) = self.handle_signed_proposal(ctx.clone(), sp).await {
+                    trace::error(
+                        "handle signed proposal".to_string(),
+                        Some(json!({
+                            "epoch_id": self.epoch_id,
+                            "round": self.round,
+                        })),
+                    );
+
                     error!("Overlord: state handle signed proposal error {:?}", e);
                 }
                 Ok(())
@@ -137,6 +148,14 @@ where
 
             OverlordMsg::AggregatedVote(av) => {
                 if let Err(e) = self.handle_aggregated_vote(ctx.clone(), av).await {
+                    trace::error(
+                        "handle aggregated vote".to_string(),
+                        Some(json!({
+                            "epoch_id": self.epoch_id,
+                            "round": self.round,
+                        })),
+                    );
+
                     error!("Overlord: state handle aggregated vote error {:?}", e);
                 }
                 Ok(())
@@ -144,6 +163,14 @@ where
 
             OverlordMsg::SignedVote(sv) => {
                 if let Err(e) = self.handle_signed_vote(ctx.clone(), sv).await {
+                    trace::error(
+                        "handle signed vote".to_string(),
+                        Some(json!({
+                            "epoch_id": self.epoch_id,
+                            "round": self.round,
+                        })),
+                    );
+
                     error!("Overlord: state handle signed vote error {:?}", e);
                 }
                 Ok(())
@@ -170,6 +197,15 @@ where
                     .handle_new_round(round, lock_round, lock_proposal)
                     .await
                 {
+                    trace::error(
+                        "handle new round".to_string(),
+                        Some(json!({
+                            "epoch_id": self.epoch_id,
+                            "round": round,
+                            "is lock": lock_round.is_some(),
+                        })),
+                    );
+
                     error!("Overlord: state handle new round error {:?}", e);
                 }
                 Ok(())
@@ -177,6 +213,14 @@ where
 
             SMREvent::PrevoteVote { epoch_hash, .. } => {
                 if let Err(e) = self.handle_vote_event(epoch_hash, VoteType::Prevote).await {
+                    trace::error(
+                        "handle prevote vote event".to_string(),
+                        Some(json!({
+                            "epoch_id": self.epoch_id,
+                            "round": self.round,
+                        })),
+                    );
+
                     error!("Overlord: state handle prevote vote error {:?}", e);
                 }
                 Ok(())
@@ -187,6 +231,14 @@ where
                     .handle_vote_event(epoch_hash, VoteType::Precommit)
                     .await
                 {
+                    trace::error(
+                        "handle precommit vote event".to_string(),
+                        Some(json!({
+                            "epoch_id": self.epoch_id,
+                            "round": self.round,
+                        })),
+                    );
+
                     error!("Overlord: state handle precommit vote error {:?}", e);
                 }
                 Ok(())
@@ -194,6 +246,14 @@ where
 
             SMREvent::Commit(hash) => {
                 if let Err(e) = self.handle_commit(hash).await {
+                    trace::error(
+                        "handle commit event".to_string(),
+                        Some(json!({
+                            "epoch_id": self.epoch_id,
+                            "round": self.round,
+                        })),
+                    );
+
                     error!("Overlord: state handle commit error {:?}", e);
                 }
                 Ok(())
@@ -259,6 +319,8 @@ where
         self.round = INIT_ROUND;
         info!("Overlord: state goto new epoch {}", self.epoch_id);
 
+        trace::start_epoch(new_epoch_id);
+
         // Update epoch ID and authority list.
         self.epoch_start = Instant::now();
         let mut auth_list = status.authority_list;
@@ -311,6 +373,8 @@ where
         lock_proposal: Option<Hash>,
     ) -> ConsensusResult<()> {
         info!("Overlord: state goto new round {}", round);
+        trace::start_round(round);
+
         self.round = round;
         self.is_leader = false;
 
@@ -343,6 +407,7 @@ where
         // certificate form proposal collector and vote collector. Some necessary checks should be
         // done by doing this. These things consititute a Proposal. Then sign it and broadcast it to
         // other nodes.
+        trace::start_step("become leader".to_string());
         self.is_leader = true;
         let ctx = Context::new();
         let (epoch, hash, polc) = if lock_round.is_none() {
@@ -429,6 +494,15 @@ where
             return Ok(());
         }
 
+        trace::receive_proposal(
+            "Receive signed proposal".to_string(),
+            epoch_id,
+            round,
+            hex::encode(signed_proposal.proposal.proposer.clone()),
+            hex::encode(signed_proposal.proposal.epoch_hash.clone()),
+            None,
+        );
+
         //  Verify proposal signature.
         let proposal = signed_proposal.proposal.clone();
         let signature = signed_proposal.signature.clone();
@@ -508,7 +582,6 @@ where
         );
 
         debug!("Overlord: state check the whole epoch");
-
         self.check_epoch(ctx, hash, epoch).await;
         Ok(())
     }
@@ -524,6 +597,17 @@ where
             vote_type.clone(),
             self.epoch_id,
             self.round
+        );
+
+        let tmp_type: String = vote_type.to_string();
+        trace::custom(
+            "receive vote event".to_string(),
+            Some(json!({
+                "epoch_id": self.epoch_id,
+                "round": self.round,
+                "vote type": tmp_type,
+                "vote hash": hex::encode(hash.clone()),
+            })),
         );
 
         let signed_vote = self.sign_vote(Vote {
@@ -552,9 +636,17 @@ where
             self.epoch_id, self.round
         );
 
+        trace::custom(
+            "receive commit event".to_string(),
+            Some(json!({
+                "epoch_id": self.epoch_id,
+                "round": self.round,
+                "epoch hash": hex::encode(hash.clone()),
+            })),
+        );
+
         debug!("Overlord: state get origin epoch");
         let epoch = self.epoch_id;
-
         let content = if let Some(tmp) = self.hash_with_epoch.get(&hash) {
             tmp.to_owned()
         } else {
@@ -649,6 +741,16 @@ where
         {
             return Ok(());
         }
+
+        let tmp_type: String = vote_type.to_string();
+        trace::receive_vote(
+            "receive signed vote".to_string(),
+            epoch_id,
+            round,
+            hex::encode(signed_vote.vote.voter.clone()),
+            hex::encode(signed_vote.vote.epoch_hash.clone()),
+            Some(json!({ "vote type": tmp_type })),
+        );
 
         // All the votes must pass the verification of signature and address before be saved into
         // vote collector.
@@ -799,6 +901,15 @@ where
             debug!("Overlord: state receive a outdated prevote qc.");
             return Ok(());
         }
+
+        trace::receive_vote(
+            "receive aggregated vote".to_string(),
+            epoch_id,
+            round,
+            hex::encode(aggregated_vote.leader.clone()),
+            hex::encode(aggregated_vote.epoch_hash.clone()),
+            Some(json!({ "qc type": qc_type.to_string() })),
+        );
 
         // Verify aggregate signature and check the sum of the voting weights corresponding to the
         // hash exceeds the threshold.
@@ -1175,9 +1286,18 @@ where
 
         let _ = self
             .function
-            .transmit_to_relayer(ctx, self.leader_address.clone(), msg)
+            .transmit_to_relayer(ctx, self.leader_address.clone(), msg.clone())
             .await
             .map_err(|err| {
+                trace::error(
+                    "transmit message to leader".to_string(),
+                    Some(json!({
+                        "epoch_id": self.epoch_id,
+                        "round": self.round,
+                        "message type": msg.to_string(),
+                    })),
+                );
+
                 error!(
                     "Overlord: state transmit message to leader failed {:?}",
                     err
@@ -1193,6 +1313,14 @@ where
                 .transmit_to_relayer(ctx, address, OverlordMsg::AggregatedVote(qc))
                 .await
                 .map_err(|err| {
+                    trace::error(
+                        "retransmit qc to leader".to_string(),
+                        Some(json!({
+                            "epoch_id": self.epoch_id,
+                            "round": self.round,
+                        })),
+                    );
+
                     error!(
                         "Overlord: state transmit message to leader failed {:?}",
                         err
@@ -1210,13 +1338,19 @@ where
 
         let _ = self
             .function
-            .broadcast_to_other(ctx, msg)
+            .broadcast_to_other(ctx, msg.clone())
             .await
             .map_err(|err| {
-                error!(
-                    "Overlord: state transmit message to leader failed {:?}",
-                    err
+                trace::error(
+                    "broadcast message".to_string(),
+                    Some(json!({
+                        "epoch_id": self.epoch_id,
+                        "round": self.round,
+                        "message type": msg.to_string(),
+                    })),
                 );
+
+                error!("Overlord: state broadcast message failed {:?}", err);
             });
     }
 
@@ -1225,9 +1359,27 @@ where
         let function = Arc::clone(&self.function);
         let resp_tx = self.resp_tx.clone();
 
+        trace::custom(
+            "check epoch".to_string(),
+            Some(json!({
+                "epoch ID": epoch_id,
+                "round": self.round,
+                "epoch hash": hex::encode(hash.clone())
+            })),
+        );
+
         runtime::spawn(async move {
-            if let Err(e) = check_current_epoch(ctx, function, epoch_id, hash, epoch, resp_tx).await
+            if let Err(e) =
+                check_current_epoch(ctx, function, epoch_id, hash.clone(), epoch, resp_tx).await
             {
+                trace::error(
+                    "check epoch".to_string(),
+                    Some(json!({
+                        "epoch_id": epoch_id,
+                        "hash": hex::encode(hash),
+                    })),
+                );
+
                 error!("Overlord: state check epoch failed: {:?}", e);
             }
         });
