@@ -703,12 +703,10 @@ where
         self.authority.update(&mut auth_list, true);
 
         let cost = Instant::now() - self.epoch_start;
-        println!("{:?}, {:?}", cost, Instant::now());
         if self.next_proposer(status.epoch_id)? && cost < Duration::from_millis(self.epoch_interval)
         {
             Delay::new(Duration::from_millis(self.epoch_interval) - cost).await;
         }
-        println!("{:?}", Instant::now());
 
         self.goto_new_epoch(ctx, status, false).await?;
         Ok(())

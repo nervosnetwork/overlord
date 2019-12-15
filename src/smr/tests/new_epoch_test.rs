@@ -40,7 +40,7 @@ async fn test_new_epoch() {
             lock_round:    None,
             lock_proposal: None,
         },
-        None,
+        Some(ConsensusError::SelfCheckErr("".to_string())),
         None,
     ));
 
