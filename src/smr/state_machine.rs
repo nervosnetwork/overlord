@@ -328,6 +328,7 @@ impl StateMachine {
         info!("Overlord: SMR goto new epoch: {}", epoch_id);
         self.epoch_id = epoch_id;
         self.round = INIT_ROUND;
+        trace::start_step((Step::Propose).to_string());
         self.goto_step(Step::Propose);
         self.epoch_hash = Hash::new();
         self.lock = None;
