@@ -134,7 +134,7 @@ where
             OverlordMsg::SignedProposal(sp) => {
                 if let Err(e) = self.handle_signed_proposal(ctx.clone(), sp).await {
                     trace::error(
-                        "handle signed proposal".to_string(),
+                        "handle_signed_proposal".to_string(),
                         Some(json!({
                             "epoch_id": self.epoch_id,
                             "round": self.round,
@@ -149,7 +149,7 @@ where
             OverlordMsg::AggregatedVote(av) => {
                 if let Err(e) = self.handle_aggregated_vote(ctx.clone(), av).await {
                     trace::error(
-                        "handle aggregated vote".to_string(),
+                        "handle_aggregated_vote".to_string(),
                         Some(json!({
                             "epoch_id": self.epoch_id,
                             "round": self.round,
@@ -164,7 +164,7 @@ where
             OverlordMsg::SignedVote(sv) => {
                 if let Err(e) = self.handle_signed_vote(ctx.clone(), sv).await {
                     trace::error(
-                        "handle signed vote".to_string(),
+                        "handle_signed_vote".to_string(),
                         Some(json!({
                             "epoch_id": self.epoch_id,
                             "round": self.round,
@@ -198,7 +198,7 @@ where
                     .await
                 {
                     trace::error(
-                        "handle new round".to_string(),
+                        "handle_new_round".to_string(),
                         Some(json!({
                             "epoch_id": self.epoch_id,
                             "round": round,
@@ -214,7 +214,7 @@ where
             SMREvent::PrevoteVote { epoch_hash, .. } => {
                 if let Err(e) = self.handle_vote_event(epoch_hash, VoteType::Prevote).await {
                     trace::error(
-                        "handle prevote vote event".to_string(),
+                        "handle_prevote_vote".to_string(),
                         Some(json!({
                             "epoch_id": self.epoch_id,
                             "round": self.round,
@@ -232,7 +232,7 @@ where
                     .await
                 {
                     trace::error(
-                        "handle precommit vote event".to_string(),
+                        "handle_precommit_vote".to_string(),
                         Some(json!({
                             "epoch_id": self.epoch_id,
                             "round": self.round,
@@ -247,7 +247,7 @@ where
             SMREvent::Commit(hash) => {
                 if let Err(e) = self.handle_commit(hash).await {
                     trace::error(
-                        "handle commit event".to_string(),
+                        "handle_commit_event".to_string(),
                         Some(json!({
                             "epoch_id": self.epoch_id,
                             "round": self.round,
@@ -407,7 +407,7 @@ where
         // certificate form proposal collector and vote collector. Some necessary checks should be
         // done by doing this. These things consititute a Proposal. Then sign it and broadcast it to
         // other nodes.
-        trace::start_step("become leader".to_string());
+        trace::start_step("become_leader".to_string());
         self.is_leader = true;
         let ctx = Context::new();
         let (epoch, hash, polc) = if lock_round.is_none() {
@@ -495,7 +495,7 @@ where
         }
 
         trace::receive_proposal(
-            "Receive signed proposal".to_string(),
+            "receive_signed_proposal".to_string(),
             epoch_id,
             round,
             hex::encode(signed_proposal.proposal.proposer.clone()),
@@ -601,7 +601,7 @@ where
 
         let tmp_type: String = vote_type.to_string();
         trace::custom(
-            "receive vote event".to_string(),
+            "receive_vote_event".to_string(),
             Some(json!({
                 "epoch_id": self.epoch_id,
                 "round": self.round,
@@ -637,7 +637,7 @@ where
         );
 
         trace::custom(
-            "receive commit event".to_string(),
+            "receive_commit_event".to_string(),
             Some(json!({
                 "epoch_id": self.epoch_id,
                 "round": self.round,
@@ -744,7 +744,7 @@ where
 
         let tmp_type: String = vote_type.to_string();
         trace::receive_vote(
-            "receive signed vote".to_string(),
+            "receive_signed_vote".to_string(),
             epoch_id,
             round,
             hex::encode(signed_vote.vote.voter.clone()),
@@ -903,7 +903,7 @@ where
         }
 
         trace::receive_vote(
-            "receive aggregated vote".to_string(),
+            "receive_aggregated_vote".to_string(),
             epoch_id,
             round,
             hex::encode(aggregated_vote.leader.clone()),
@@ -1290,7 +1290,7 @@ where
             .await
             .map_err(|err| {
                 trace::error(
-                    "transmit message to leader".to_string(),
+                    "transmit_message_to_leader".to_string(),
                     Some(json!({
                         "epoch_id": self.epoch_id,
                         "round": self.round,
@@ -1314,7 +1314,7 @@ where
                 .await
                 .map_err(|err| {
                     trace::error(
-                        "retransmit qc to leader".to_string(),
+                        "retransmit_qc_to_leader".to_string(),
                         Some(json!({
                             "epoch_id": self.epoch_id,
                             "round": self.round,
@@ -1342,7 +1342,7 @@ where
             .await
             .map_err(|err| {
                 trace::error(
-                    "broadcast message".to_string(),
+                    "broadcast_message".to_string(),
                     Some(json!({
                         "epoch_id": self.epoch_id,
                         "round": self.round,
@@ -1360,7 +1360,7 @@ where
         let resp_tx = self.resp_tx.clone();
 
         trace::custom(
-            "check epoch".to_string(),
+            "check_epoch".to_string(),
             Some(json!({
                 "epoch ID": epoch_id,
                 "round": self.round,
@@ -1373,7 +1373,7 @@ where
                 check_current_epoch(ctx, function, epoch_id, hash.clone(), epoch, resp_tx).await
             {
                 trace::error(
-                    "check epoch".to_string(),
+                    "check_epoch".to_string(),
                     Some(json!({
                         "epoch_id": epoch_id,
                         "hash": hex::encode(hash),
