@@ -255,7 +255,9 @@ async fn test_proposal_trigger() {
             round:      1u64,
             epoch_hash: lock_hash.clone(),
         },
-        None,
+        Some(ConsensusError::SelfCheckErr(
+            "Invalid proposal hash".to_string(),
+        )),
         Some((0, lock_hash)),
     ));
 
@@ -294,7 +296,9 @@ async fn test_proposal_trigger() {
             round:      2u64,
             epoch_hash: lock_hash.clone(),
         },
-        None,
+        Some(ConsensusError::SelfCheckErr(
+            "Invalid proposal hash".to_string(),
+        )),
         Some((1, lock_hash)),
     ));
 
@@ -314,7 +318,9 @@ async fn test_proposal_trigger() {
             round:      3u64,
             epoch_hash: hash,
         },
-        None,
+        Some(ConsensusError::SelfCheckErr(
+            "Invalid proposal hash".to_string(),
+        )),
         None,
     ));
 
@@ -333,29 +339,9 @@ async fn test_proposal_trigger() {
             round:      2u64,
             epoch_hash: lock_hash.clone(),
         },
-        None,
-        Some((1, lock_hash)),
-    ));
-
-    // Test case 16:
-    //      self proposal is not empty and self is lock,
-    //      proposal is not nil and with a lock.
-    //      proposal lock round is equal to self lock round. However, proposal hash is ne self
-    //      lock hash.
-    // This is extremely dangerous because it can lead to fork. The process will return
-    // correctness err.
-    let hash = gen_hash();
-    let lock_hash = gen_hash();
-    let lock = Lock::new(1, lock_hash.clone());
-    test_cases.push(StateMachineTestCase::new(
-        InnerState::new(2, Step::Propose, lock_hash.clone(), Some(lock)),
-        SMRTrigger::new(hash, TriggerType::Proposal, Some(1), 0),
-        SMREvent::PrevoteVote {
-            epoch_id:   0u64,
-            round:      2u64,
-            epoch_hash: lock_hash.clone(),
-        },
-        Some(ConsensusError::CorrectnessErr("Fork".to_string())),
+        Some(ConsensusError::SelfCheckErr(
+            "Invalid proposal hash".to_string(),
+        )),
         Some((1, lock_hash)),
     ));
 

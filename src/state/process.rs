@@ -113,6 +113,7 @@ where
         mut verify_resp: UnboundedReceiver<VerifyResp<S>>,
     ) -> ConsensusResult<()> {
         info!("Overlord: state start running");
+
         loop {
             select! {
                 raw = raw_rx.next() => self.handle_msg(raw).await?,
@@ -270,6 +271,11 @@ where
         }
 
         let epoch_hash = resp.epoch_hash.clone();
+        info!(
+            "Overlord: state receive verify response epoch ID {:?}, hash {:?}",
+            resp.epoch_id, epoch_hash
+        );
+
         self.is_full_transcation
             .insert(epoch_hash.clone(), resp.full_txs.is_some());
 
@@ -807,7 +813,10 @@ where
         self.broadcast(ctx, OverlordMsg::AggregatedVote(qc)).await;
 
         if vote_type == VoteType::Prevote {
-            epoch_hash = self.check_full_txs(epoch_hash).await?;
+            match self.check_full_txs(epoch_hash) {
+                Some(tmp) => epoch_hash = tmp,
+                None => return Ok(()),
+            }
         } else if !self.try_get_full_txs(&epoch_hash) {
             return Ok(());
         }
@@ -962,7 +971,10 @@ where
                 let mut epoch_hash = qc.epoch_hash.clone();
                 if !epoch_hash.is_empty() {
                     if vote_type == VoteType::Prevote {
-                        epoch_hash = self.check_full_txs(epoch_hash).await?;
+                        match self.check_full_txs(epoch_hash) {
+                            Some(tmp) => epoch_hash = tmp,
+                            None => return Ok(()),
+                        }
                     } else if !self.try_get_full_txs(&epoch_hash) {
                         return Ok(());
                     }
@@ -991,7 +1003,10 @@ where
 
             if !epoch_hash.is_empty() {
                 if vote_type == VoteType::Prevote {
-                    epoch_hash = self.check_full_txs(epoch_hash).await?;
+                    match self.check_full_txs(epoch_hash) {
+                        Some(tmp) => epoch_hash = tmp,
+                        None => return Ok(()),
+                    }
                 } else if !self.try_get_full_txs(&epoch_hash) {
                     return Ok(());
                 }
@@ -1385,18 +1400,13 @@ where
         });
     }
 
-    async fn check_full_txs(&mut self, hash: Hash) -> ConsensusResult<Hash> {
-        let epoch_hash = if let Some(res) = self.is_full_transcation.get(&hash) {
+    fn check_full_txs(&mut self, hash: Hash) -> Option<Hash> {
+        if let Some(res) = self.is_full_transcation.get(&hash) {
             if *res {
-                hash
-            } else {
-                Hash::new()
+                return Some(hash);
             }
-        } else {
-            Hash::new()
-        };
-
-        Ok(epoch_hash)
+        }
+        None
     }
 
     fn try_get_full_txs(&self, hash: &Hash) -> bool {
