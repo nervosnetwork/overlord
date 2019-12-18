@@ -113,9 +113,13 @@ fn gen_signed_vote(epoch_id: u64, round: u64, vote_type: VoteType, hash: Hash) -
         round,
         vote_type,
         epoch_hash: hash,
-        voter: Address::from(vec![0u8]),
     };
-    SignedVote { signature, vote }
+
+    SignedVote {
+        voter: Address::from(vec![0u8]),
+        signature,
+        vote,
+    }
 }
 
 fn gen_commit(epoch_id: u64, round: u64, signature: Signature) -> Commit<Pill> {

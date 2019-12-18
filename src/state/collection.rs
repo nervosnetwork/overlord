@@ -545,11 +545,11 @@ mod test {
             round,
             vote_type,
             epoch_hash: hash,
-            voter: addr,
         };
 
         SignedVote {
             signature: gen_signature(),
+            voter: addr,
             vote,
         }
     }

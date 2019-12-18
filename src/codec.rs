@@ -171,20 +171,27 @@ impl Decodable for AggregatedVote {
 // impl Encodable and Decodable trait for SignedVote
 impl Encodable for SignedVote {
     fn rlp_append(&self, s: &mut RlpStream) {
-        s.begin_list(2)
+        s.begin_list(3)
             .append(&self.signature.to_vec())
-            .append(&self.vote);
+            .append(&self.vote)
+            .append(&self.voter.to_vec());
     }
 }
 
 impl Decodable for SignedVote {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         match r.prototype()? {
-            Prototype::List(2) => {
+            Prototype::List(3) => {
                 let tmp: Vec<u8> = r.val_at(0)?;
                 let signature = Signature::from(tmp);
                 let vote = r.val_at(1)?;
-                Ok(SignedVote { signature, vote })
+                let tmp: Vec<u8> = r.val_at(2)?;
+                let voter = Address::from(tmp);
+                Ok(SignedVote {
+                    signature,
+                    vote,
+                    voter,
+                })
             }
             _ => Err(DecoderError::RlpInconsistentLengthAndData),
         }
@@ -195,33 +202,29 @@ impl Decodable for SignedVote {
 impl Encodable for Vote {
     fn rlp_append(&self, s: &mut RlpStream) {
         let vote_type: u8 = self.vote_type.clone().into();
-        s.begin_list(5)
+        s.begin_list(4)
             .append(&self.epoch_id)
             .append(&self.round)
             .append(&vote_type)
-            .append(&self.epoch_hash.to_vec())
-            .append(&self.voter.to_vec());
+            .append(&self.epoch_hash.to_vec());
     }
 }
 
 impl Decodable for Vote {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         match r.prototype()? {
-            Prototype::List(5) => {
+            Prototype::List(4) => {
                 let epoch_id: u64 = r.val_at(0)?;
                 let round: u64 = r.val_at(1)?;
                 let tmp: u8 = r.val_at(2)?;
                 let vote_type = VoteType::from(tmp);
                 let tmp: Vec<u8> = r.val_at(3)?;
                 let epoch_hash = Hash::from(tmp);
-                let tmp: Vec<u8> = r.val_at(4)?;
-                let voter = Address::from(tmp);
                 Ok(Vote {
                     epoch_id,
                     round,
                     vote_type,
                     epoch_hash,
-                    voter,
                 })
             }
             _ => Err(DecoderError::RlpInconsistentLengthAndData),
@@ -470,6 +473,7 @@ mod test {
             SignedVote {
                 signature: gen_signature(),
                 vote:      Vote::new(vote_type),
+                voter:     gen_address(),
             }
         }
     }
@@ -494,7 +498,6 @@ mod test {
                 round:      random::<u64>(),
                 vote_type:  VoteType::from(vote_type),
                 epoch_hash: gen_hash(),
-                voter:      gen_address(),
             }
         }
     }
