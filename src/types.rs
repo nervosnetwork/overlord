@@ -154,6 +154,8 @@ pub struct SignedVote {
     pub signature: Bytes,
     /// A vote.
     pub vote: Vote,
+    /// Voter address.
+    pub voter: Address,
 }
 
 impl SignedVote {
@@ -235,8 +237,6 @@ pub struct Vote {
     pub vote_type: VoteType,
     /// Epoch hash of the vote.
     pub epoch_hash: Hash,
-    /// Voter address.
-    pub voter: Address,
 }
 
 /// A commit.

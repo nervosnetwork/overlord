@@ -621,7 +621,6 @@ where
             round:      self.round,
             vote_type:  vote_type.clone(),
             epoch_hash: hash,
-            voter:      self.address.clone(),
         })?;
 
         if self.is_leader {
@@ -753,7 +752,7 @@ where
             "receive_signed_vote".to_string(),
             epoch_id,
             round,
-            hex::encode(signed_vote.vote.voter.clone()),
+            hex::encode(signed_vote.voter.clone()),
             hex::encode(signed_vote.vote.epoch_hash.clone()),
             Some(json!({ "vote type": tmp_type })),
         );
@@ -761,17 +760,18 @@ where
         // All the votes must pass the verification of signature and address before be saved into
         // vote collector.
         let signature = signed_vote.signature.clone();
+        let voter = signed_vote.voter.clone();
         let vote = signed_vote.vote.clone();
         self.verify_signature(
             self.util.hash(Bytes::from(encode(&vote))),
             signature,
-            &vote.voter,
+            &voter,
             MsgType::SignedVote,
         )?;
-        self.verify_address(&vote.voter, true)?;
+        self.verify_address(&voter, true)?;
 
         if epoch_id == self.epoch_id - 1 {
-            self.retransmit_qc(ctx, vote.voter).await?;
+            self.retransmit_qc(ctx, voter).await?;
             return Ok(());
         }
 
@@ -786,7 +786,7 @@ where
         }
 
         self.votes
-            .insert_vote(signed_vote.get_hash(), signed_vote, vote.voter);
+            .insert_vote(signed_vote.get_hash(), signed_vote, voter);
         let epoch_hash = self.counting_vote(vote_type.clone())?;
 
         if epoch_hash.is_none() {
@@ -1076,7 +1076,7 @@ where
         let mut voters = Vec::with_capacity(len);
         for vote in votes.into_iter() {
             signatures.push(vote.signature);
-            voters.push(vote.vote.voter);
+            voters.push(vote.voter);
         }
 
         let set = voters.iter().cloned().collect::<HashSet<_>>();
@@ -1131,19 +1131,20 @@ where
         debug!("Overlord: state re-check future signed votes");
         for sv in votes.into_iter() {
             let signature = sv.signature.clone();
+            let voter = sv.voter.clone();
             let vote = sv.vote.clone();
 
             if self
                 .verify_signature(
                     self.util.hash(Bytes::from(encode(&vote))),
                     signature,
-                    &vote.voter,
+                    &voter,
                     MsgType::SignedVote,
                 )
                 .is_ok()
-                && self.verify_address(&vote.voter, true).is_ok()
+                && self.verify_address(&voter, true).is_ok()
             {
-                self.votes.insert_vote(sv.get_hash(), sv, vote.voter);
+                self.votes.insert_vote(sv.get_hash(), sv, voter);
             }
         }
         Ok(())
@@ -1205,7 +1206,12 @@ where
             .util
             .sign(self.util.hash(Bytes::from(encode(&vote))))
             .map_err(|err| ConsensusError::CryptoErr(format!("{:?}", err)))?;
-        Ok(SignedVote { signature, vote })
+
+        Ok(SignedVote {
+            voter: self.address.clone(),
+            signature,
+            vote,
+        })
     }
 
     fn aggregate_signatures(
