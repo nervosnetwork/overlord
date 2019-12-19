@@ -140,8 +140,9 @@ impl Crypto for BlsCrypto {
         &self,
         _signature: Signature,
         _hash: Hash,
-    ) -> Result<Address, Box<dyn Error + Send>> {
-        Ok(self.0.clone())
+        _voter: Address,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        Ok(())
     }
 
     fn aggregate_signatures(
@@ -155,6 +156,7 @@ impl Crypto for BlsCrypto {
     fn verify_aggregated_signature(
         &self,
         _aggregate_signature: AggregatedSignature,
+        _voters: Vec<Address>,
     ) -> Result<(), Box<dyn Error + Send>> {
         Ok(())
     }
