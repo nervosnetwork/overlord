@@ -3,7 +3,7 @@ use std::error::Error;
 use async_trait::async_trait;
 use bincode::{deserialize, serialize};
 use blake2b_simd::blake2b;
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use creep::Context;
 use crossbeam_channel::Sender;
 use overlord::types::{
@@ -57,7 +57,7 @@ impl Consensus<Pill, Pill> for ConsensusHelper<Pill> {
         epoch_id: u64,
     ) -> Result<(Pill, Hash), Box<dyn Error + Send>> {
         let epoch = Pill::new(epoch_id);
-        let hash = Bytes::from(blake2b(epoch.clone().encode()?.as_ref()).as_bytes());
+        let hash = BytesMut::from(blake2b(epoch.clone().encode()?.as_ref()).as_bytes()).freeze();
         Ok((epoch, hash))
     }
 

@@ -5,7 +5,7 @@ use std::thread;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use creep::Context;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use hasher::{Hasher, HasherKeccak};
@@ -340,7 +340,7 @@ fn gen_random_bytes() -> Bytes {
 fn hash(bytes: &Bytes) -> Bytes {
     let mut out = [0u8; 32];
     out.copy_from_slice(&HASHER_INST.digest(bytes));
-    Bytes::from(&out[..])
+    BytesMut::from(&out[..]).freeze()
 }
 
 fn timer_config() -> Option<DurationConfig> {
