@@ -99,15 +99,17 @@ impl Crypto for MockCrypto {
 
     fn verify_signature(
         &self,
-        signature: Bytes,
+        _signature: Bytes,
         _hash: Bytes,
-    ) -> Result<Bytes, Box<dyn Error + Send>> {
-        Ok(signature)
+        _voter: Bytes,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        Ok(())
     }
 
     fn verify_aggregated_signature(
         &self,
         _aggregated_signature: AggregatedSignature,
+        _voters: Vec<Bytes>,
     ) -> Result<(), Box<dyn Error + Send>> {
         Ok(())
     }

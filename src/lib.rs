@@ -127,12 +127,14 @@ pub trait Crypto: Send {
         &self,
         signature: Signature,
         hash: Hash,
-    ) -> Result<Address, Box<dyn Error + Send>>;
+        voter: Address,
+    ) -> Result<(), Box<dyn Error + Send>>;
 
     /// Verify an aggregated signature.
     fn verify_aggregated_signature(
         &self,
         aggregate_signature: AggregatedSignature,
+        voters: Vec<Address>,
     ) -> Result<(), Box<dyn Error + Send>>;
 }
 

@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use bit_vec::BitVec;
-use bytes::Bytes;
 use derive_more::Display;
 
 use crate::error::ConsensusError;
@@ -71,11 +70,24 @@ impl AuthorityManage {
 
     /// Calculate whether the sum of vote weights from bitmap is above 2/3. Return `Err` when
     /// `is_current` is `false`, and the when last epoch ID's authority management is `None`.
-    pub fn is_above_threshold(&self, bitmap: Bytes, is_current: bool) -> ConsensusResult<bool> {
+    pub fn is_above_threshold(&self, bitmap: &[u8], is_current: bool) -> ConsensusResult<bool> {
         if is_current {
             self.current.is_above_threshold(bitmap)
         } else if let Some(auth_list) = self.last.clone() {
             auth_list.is_above_threshold(bitmap)
+        } else {
+            Err(ConsensusError::Other(
+                "There is no authority list cache of last epoch".to_string(),
+            ))
+        }
+    }
+
+    /// According the given bitmap to get the voters address to verify aggregated vote.
+    pub fn get_voters(&self, bitmap: &[u8], is_current: bool) -> ConsensusResult<Vec<Address>> {
+        if is_current {
+            self.current.get_voters(bitmap)
+        } else if let Some(auth_list) = self.last.clone() {
+            auth_list.get_voters(bitmap)
         } else {
             Err(ConsensusError::Other(
                 "There is no authority list cache of last epoch".to_string(),
@@ -184,7 +196,7 @@ impl EpochAuthorityManage {
     }
 
     /// Calculate whether the sum of vote weights from bitmap is above 2/3.
-    fn is_above_threshold(&self, bitmap: Bytes) -> ConsensusResult<bool> {
+    fn is_above_threshold(&self, bitmap: &[u8]) -> ConsensusResult<bool> {
         let bitmap = BitVec::from_bytes(&bitmap);
         let mut acc = 0u64;
 
@@ -202,6 +214,17 @@ impl EpochAuthorityManage {
         }
 
         Ok(acc * 3 > self.vote_weight_sum * 2)
+    }
+
+    fn get_voters(&self, bitmap: &[u8]) -> ConsensusResult<Vec<Address>> {
+        let bitmap = BitVec::from_bytes(bitmap);
+        let voters = bitmap
+            .iter()
+            .zip(self.address.iter())
+            .filter(|node| node.0)
+            .map(|node| node.1.clone())
+            .collect::<Vec<_>>();
+        Ok(voters)
     }
 
     /// If the given address is in the current authority list.
@@ -348,26 +371,26 @@ mod test {
 
         for i in 0..4 {
             let bit_map = gen_bitmap(4, vec![i]);
-            let res = authority.is_above_threshold(Bytes::from(bit_map.to_bytes()), true);
+            let res = authority.is_above_threshold(Bytes::from(bit_map.to_bytes()).as_ref(), true);
             assert_eq!(res.unwrap(), false);
         }
 
         let tmp = vec![vec![1, 2], vec![1, 3], vec![2, 3], vec![0, 1], vec![0, 2]];
         for i in tmp.into_iter() {
             let bit_map = gen_bitmap(4, i);
-            let res = authority.is_above_threshold(Bytes::from(bit_map.to_bytes()), true);
+            let res = authority.is_above_threshold(Bytes::from(bit_map.to_bytes()).as_ref(), true);
             assert_eq!(res.unwrap(), false);
         }
 
         let tmp = vec![vec![0, 1, 2], vec![0, 1, 3], vec![1, 2, 3]];
         for i in tmp.into_iter() {
             let bit_map = gen_bitmap(4, i);
-            let res = authority.is_above_threshold(Bytes::from(bit_map.to_bytes()), true);
+            let res = authority.is_above_threshold(Bytes::from(bit_map.to_bytes()).as_ref(), true);
             assert_eq!(res.unwrap(), true);
         }
 
         let bit_map = gen_bitmap(4, vec![0, 1, 2, 3]);
-        let res = authority.is_above_threshold(Bytes::from(bit_map.to_bytes()), true);
+        let res = authority.is_above_threshold(Bytes::from(bit_map.to_bytes()).as_ref(), true);
         assert_eq!(res.unwrap(), true);
     }
 
@@ -390,6 +413,22 @@ mod test {
         }
     }
 
+    #[test]
+    fn test_get_voters() {
+        let auth_list = (0..4).map(|_| gen_address()).collect::<Vec<_>>();
+        let bitmap = BitVec::from_bytes(&[0b1010_0000]);
+        let voters = bitmap
+            .iter()
+            .zip(auth_list.iter())
+            .filter(|node| node.0)
+            .map(|node| node.1.clone())
+            .collect::<Vec<_>>();
+
+        assert_eq!(voters.len(), 2);
+        assert_eq!(voters[0], auth_list[0]);
+        assert_eq!(voters[1], auth_list[2]);
+    }
+
     #[bench]
     fn bench_update(b: &mut Bencher) {
         let mut auth_list = gen_auth_list(10);
@@ -404,6 +443,6 @@ mod test {
         authority.update(&mut auth_list, false);
         let bitmap = BitVec::from_elem(10, true);
         let vote_bitmap = Bytes::from(bitmap.to_bytes());
-        b.iter(|| authority.is_above_threshold(vote_bitmap.clone(), true));
+        b.iter(|| authority.is_above_threshold(&vote_bitmap, true));
     }
 }

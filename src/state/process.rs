@@ -538,7 +538,7 @@ where
             debug!("Overlord: state receive a signed proposal with a lock");
 
             if !self.authority.is_above_threshold(
-                polc.lock_votes.signature.address_bitmap.clone(),
+                &polc.lock_votes.signature.address_bitmap,
                 proposal.epoch_id == self.epoch_id,
             )? {
                 return Err(ConsensusError::AggregatedSignatureErr(format!(
@@ -547,8 +547,12 @@ where
                 )));
             }
 
+            let voters = self.authority.get_voters(
+                &polc.lock_votes.signature.address_bitmap,
+                proposal.epoch_id == self.epoch_id,
+            )?;
             self.util
-                .verify_aggregated_signature(polc.lock_votes.signature)
+                .verify_aggregated_signature(polc.lock_votes.signature, voters)
                 .map_err(|err| {
                     ConsensusError::AggregatedSignatureErr(format!(
                         "{:?} proposal of epoch ID {:?}, round {:?}",
@@ -1235,29 +1239,24 @@ where
         msg_type: MsgType,
     ) -> ConsensusResult<()> {
         debug!("Overlord: state verify a signature");
-        let addr = self.util.verify_signature(signature, hash).map_err(|err| {
-            ConsensusError::CryptoErr(format!("{:?} signature error {:?}", msg_type, err))
-        })?;
-
-        if address != &addr {
-            return Err(ConsensusError::CryptoErr(format!(
-                "{:?} signature wrong",
-                msg_type
-            )));
-        }
+        self.util
+            .verify_signature(signature, hash, address.to_owned())
+            .map_err(|err| {
+                ConsensusError::CryptoErr(format!("{:?} signature error {:?}", msg_type, err))
+            })?;
         Ok(())
     }
 
     fn verify_aggregated_signature(
         &self,
         signature: AggregatedSignature,
-        epoch: u64,
+        epoch_id: u64,
         vote_type: VoteType,
     ) -> ConsensusResult<()> {
         debug!("Overlord: state verify an aggregated signature");
         if !self
             .authority
-            .is_above_threshold(signature.address_bitmap.clone(), epoch == self.epoch_id)?
+            .is_above_threshold(&signature.address_bitmap, epoch_id == self.epoch_id)?
         {
             return Err(ConsensusError::AggregatedSignatureErr(format!(
                 "{:?} QC of epoch {}, round {} is not above threshold",
@@ -1265,8 +1264,11 @@ where
             )));
         }
 
+        let voters = self
+            .authority
+            .get_voters(&signature.address_bitmap, epoch_id == self.epoch_id)?;
         self.util
-            .verify_aggregated_signature(signature)
+            .verify_aggregated_signature(signature, voters)
             .map_err(|err| {
                 ConsensusError::AggregatedSignatureErr(format!(
                     "{:?} aggregate signature error {:?}",
