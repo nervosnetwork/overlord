@@ -552,7 +552,11 @@ where
                 proposal.epoch_id == self.epoch_id,
             )?;
             self.util
-                .verify_aggregated_signature(polc.lock_votes.signature, voters)
+                .verify_aggregated_signature(
+                    polc.lock_votes.signature.signature,
+                    proposal.epoch_hash.clone(),
+                    voters,
+                )
                 .map_err(|err| {
                     ConsensusError::AggregatedSignatureErr(format!(
                         "{:?} proposal of epoch ID {:?}, round {:?}",
@@ -928,6 +932,7 @@ where
         // hash exceeds the threshold.
         self.verify_aggregated_signature(
             aggregated_vote.signature.clone(),
+            aggregated_vote.epoch_hash.clone(),
             epoch_id,
             qc_type.clone(),
         )?;
@@ -1160,6 +1165,7 @@ where
             if self
                 .verify_aggregated_signature(
                     qc.signature.clone(),
+                    qc.epoch_hash.clone(),
                     self.epoch_id,
                     qc.vote_type.clone(),
                 )
@@ -1250,6 +1256,7 @@ where
     fn verify_aggregated_signature(
         &self,
         signature: AggregatedSignature,
+        hash: Hash,
         epoch_id: u64,
         vote_type: VoteType,
     ) -> ConsensusResult<()> {
@@ -1268,7 +1275,7 @@ where
             .authority
             .get_voters(&signature.address_bitmap, epoch_id == self.epoch_id)?;
         self.util
-            .verify_aggregated_signature(signature, voters)
+            .verify_aggregated_signature(signature.signature, hash, voters)
             .map_err(|err| {
                 ConsensusError::AggregatedSignatureErr(format!(
                     "{:?} aggregate signature error {:?}",
