@@ -332,7 +332,7 @@ impl StateMachine {
         info!("Overlord: SMR goto new epoch: {}", epoch_id);
         self.epoch_id = epoch_id;
         self.round = INIT_ROUND;
-        trace::start_step((Step::Propose).to_string());
+        trace::start_step((Step::Propose).to_string(), self.round, epoch_id);
         self.goto_step(Step::Propose);
         self.epoch_hash = Hash::new();
         self.lock = None;
@@ -350,7 +350,7 @@ impl StateMachine {
     #[inline]
     fn goto_step(&mut self, step: Step) {
         debug!("Overlord: SMR goto step {:?}", step);
-        trace::start_step(step.clone().to_string());
+        trace::start_step(step.clone().to_string(), self.round, self.epoch_id);
         self.step = step;
     }
 

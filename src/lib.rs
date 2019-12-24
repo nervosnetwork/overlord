@@ -141,9 +141,9 @@ pub trait Crypto: Send {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct DurationConfig {
     /// The proportion of propose timeout to the epoch interval.
-    pub propose_ratio: u64,
+    pub propose_ratio:   u64,
     /// The proportion of prevote timeout to the epoch interval.
-    pub prevote_ratio: u64,
+    pub prevote_ratio:   u64,
     /// The proportion of precommit timeout to the epoch interval.
     pub precommit_ratio: u64,
 }

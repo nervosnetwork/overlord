@@ -174,14 +174,14 @@ pub struct SMRTrigger {
     /// SMR trigger type.
     pub trigger_type: TriggerType,
     /// SMR trigger source.
-    pub source: TriggerSource,
+    pub source:       TriggerSource,
     /// SMR trigger hash, the meaning shown above.
-    pub hash: Hash,
+    pub hash:         Hash,
     /// SMR trigger round, the meaning shown above.
-    pub round: Option<u64>,
+    pub round:        Option<u64>,
     /// **NOTICE**: This field is only for timer to signed timer's epoch ID. Therefore, the SMR can
     /// filter out the outdated timers.
-    pub epoch_id: u64,
+    pub epoch_id:     u64,
 }
 
 /// An inner lock struct.
@@ -190,5 +190,5 @@ pub struct Lock {
     /// Lock round.
     pub round: u64,
     /// Lock hash.
-    pub hash: Hash,
+    pub hash:  Hash,
 }

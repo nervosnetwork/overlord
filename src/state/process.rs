@@ -379,7 +379,7 @@ where
         lock_proposal: Option<Hash>,
     ) -> ConsensusResult<()> {
         info!("Overlord: state goto new round {}", round);
-        trace::start_round(round);
+        trace::start_round(round, self.epoch_id);
 
         self.round = round;
         self.is_leader = false;
@@ -413,7 +413,7 @@ where
         // certificate form proposal collector and vote collector. Some necessary checks should be
         // done by doing this. These things consititute a Proposal. Then sign it and broadcast it to
         // other nodes.
-        trace::start_step("become_leader".to_string());
+        trace::start_step("become_leader".to_string(), self.round, self.epoch_id);
         self.is_leader = true;
         let ctx = Context::new();
         let (epoch, hash, polc) = if lock_round.is_none() {
