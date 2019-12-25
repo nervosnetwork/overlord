@@ -1074,9 +1074,10 @@ where
         epoch_hash: Hash,
         vote_type: VoteType,
     ) -> ConsensusResult<AggregatedVote> {
-        let votes =
+        let mut votes =
             self.votes
                 .get_votes(self.epoch_id, self.round, vote_type.clone(), &epoch_hash)?;
+        votes.sort();
 
         debug!("Overlord: state build aggregated signature");
 
@@ -1271,9 +1272,11 @@ where
             )));
         }
 
-        let voters = self
+        let mut voters = self
             .authority
             .get_voters(&signature.address_bitmap, epoch_id == self.epoch_id)?;
+        voters.sort();
+
         self.util
             .verify_aggregated_signature(signature.signature, hash, voters)
             .map_err(|err| {

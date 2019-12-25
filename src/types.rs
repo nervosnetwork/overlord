@@ -158,6 +158,18 @@ pub struct SignedVote {
     pub voter:     Address,
 }
 
+impl PartialOrd for SignedVote {
+    fn partial_cmp(&self, other: &SignedVote) -> Option<Ordering> {
+        Some(self.voter.cmp(&other.voter))
+    }
+}
+
+impl Ord for SignedVote {
+    fn cmp(&self, other: &SignedVote) -> Ordering {
+        self.voter.cmp(&other.voter)
+    }
+}
+
 impl SignedVote {
     /// Get the epoch ID of the signed vote.
     pub fn get_epoch(&self) -> u64 {
