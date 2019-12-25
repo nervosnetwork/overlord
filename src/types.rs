@@ -235,6 +235,16 @@ impl AggregatedVote {
     pub fn is_prevote_qc(&self) -> bool {
         self.vote_type == VoteType::Prevote
     }
+
+    ///
+    pub fn to_vote(&self) -> Vote {
+        Vote {
+            epoch_id:   self.epoch_id,
+            round:      self.round,
+            vote_type:  self.vote_type.clone(),
+            epoch_hash: self.epoch_hash.clone(),
+        }
+    }
 }
 
 /// A vote.

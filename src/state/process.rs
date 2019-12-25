@@ -932,7 +932,7 @@ where
         // hash exceeds the threshold.
         self.verify_aggregated_signature(
             aggregated_vote.signature.clone(),
-            aggregated_vote.epoch_hash.clone(),
+            aggregated_vote.to_vote(),
             epoch_id,
             qc_type.clone(),
         )?;
@@ -1166,7 +1166,7 @@ where
             if self
                 .verify_aggregated_signature(
                     qc.signature.clone(),
-                    qc.epoch_hash.clone(),
+                    qc.to_vote(),
                     self.epoch_id,
                     qc.vote_type.clone(),
                 )
@@ -1257,7 +1257,7 @@ where
     fn verify_aggregated_signature(
         &self,
         signature: AggregatedSignature,
-        hash: Hash,
+        vote: Vote,
         epoch_id: u64,
         vote_type: VoteType,
     ) -> ConsensusResult<()> {
@@ -1278,7 +1278,11 @@ where
         voters.sort();
 
         self.util
-            .verify_aggregated_signature(signature.signature, hash, voters)
+            .verify_aggregated_signature(
+                signature.signature,
+                self.util.hash(Bytes::from(encode(&vote))),
+                voters,
+            )
             .map_err(|err| {
                 ConsensusError::AggregatedSignatureErr(format!(
                     "{:?} aggregate signature error {:?}",
