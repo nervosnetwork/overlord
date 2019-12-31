@@ -275,6 +275,15 @@ where
             "Overlord: state receive verify response epoch ID {:?}, hash {:?}",
             resp.epoch_id, epoch_hash
         );
+        
+        trace::custom(
+            "check_epoch_response".to_string(),
+            Some(json!({
+                "epoch_id": self.epoch_id,
+                "hash": epoch_hash,
+                "is_pass": true,
+            })),
+        );
 
         self.is_full_transcation
             .insert(epoch_hash.clone(), resp.full_txs.is_some());
