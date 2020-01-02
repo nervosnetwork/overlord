@@ -275,7 +275,7 @@ where
             "Overlord: state receive verify response epoch ID {:?}, hash {:?}",
             resp.epoch_id, epoch_hash
         );
-        
+
         trace::custom(
             "check_epoch_response".to_string(),
             Some(json!({
