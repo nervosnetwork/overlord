@@ -116,7 +116,7 @@ pub struct SignedProposal<T: Codec> {
     /// Signature of the proposal.
     pub signature: Bytes,
     /// A proposal.
-    pub proposal:  Proposal<T>,
+    pub proposal: Proposal<T>,
 }
 
 /// A proposal
@@ -124,17 +124,17 @@ pub struct SignedProposal<T: Codec> {
 #[display(fmt = "Proposal epoch ID {}, round {}", epoch_id, round)]
 pub struct Proposal<T: Codec> {
     /// Epoch ID of the proposal.
-    pub epoch_id:   u64,
+    pub epoch_id: u64,
     /// Round of the proposal.
-    pub round:      u64,
+    pub round: u64,
     /// Proposal content.
-    pub content:    T,
+    pub content: T,
     /// Proposal epoch hash.
     pub epoch_hash: Hash,
     /// Optional field. If the proposal has a PoLC, this contains the lock round and lock votes.
-    pub lock:       Option<PoLC>,
+    pub lock: Option<PoLC>,
     /// Proposer address.
-    pub proposer:   Address,
+    pub proposer: Address,
 }
 
 /// A PoLC.
@@ -153,9 +153,9 @@ pub struct SignedVote {
     /// Signature of the vote.
     pub signature: Bytes,
     /// A vote.
-    pub vote:      Vote,
+    pub vote: Vote,
     /// Voter address.
-    pub voter:     Address,
+    pub voter: Address,
 }
 
 impl PartialOrd for SignedVote {
@@ -196,7 +196,7 @@ impl SignedVote {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct AggregatedSignature {
     /// Aggregated signature.
-    pub signature:      Signature,
+    pub signature: Signature,
     /// Voter address bit map.
     pub address_bitmap: Bytes,
 }
@@ -252,11 +252,11 @@ impl AggregatedVote {
 #[display(fmt = "{:?} vote epoch ID {}, round {}", vote_type, epoch_id, round)]
 pub struct Vote {
     /// Epoch ID of the vote.
-    pub epoch_id:   u64,
+    pub epoch_id: u64,
     /// Round of the vote.
-    pub round:      u64,
+    pub round: u64,
     /// Type of the vote.
-    pub vote_type:  VoteType,
+    pub vote_type: VoteType,
     /// Epoch hash of the vote.
     pub epoch_hash: Hash,
 }
@@ -268,22 +268,22 @@ pub struct Commit<T: Codec> {
     /// Epoch ID of the commit.
     pub epoch_id: u64,
     /// Commit content.
-    pub content:  T,
+    pub content: T,
     /// The consensus proof.
-    pub proof:    Proof,
+    pub proof: Proof,
 }
 
 /// A Proof.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Proof {
     /// Epoch ID of the proof.
-    pub epoch_id:   u64,
+    pub epoch_id: u64,
     /// Round of the proof.
-    pub round:      u64,
+    pub round: u64,
     /// Epoch hash of the proof.
     pub epoch_hash: Hash,
     /// Aggregated signature of the proof.
-    pub signature:  AggregatedSignature,
+    pub signature: AggregatedSignature,
 }
 
 /// A rich status.
@@ -291,9 +291,9 @@ pub struct Proof {
 #[display(fmt = "Rich status epoch ID {}", epoch_id)]
 pub struct Status {
     /// New epoch ID.
-    pub epoch_id:       u64,
+    pub epoch_id: u64,
     /// New block interval.
-    pub interval:       Option<u64>,
+    pub interval: Option<u64>,
     /// New authority list.
     pub authority_list: Vec<Node>,
 }
@@ -302,11 +302,11 @@ pub struct Status {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Node {
     /// Node address.
-    pub address:        Address,
+    pub address: Address,
     /// The propose weight of the node.
     pub propose_weight: u8,
     /// The vote weight of the node.
-    pub vote_weight:    u8,
+    pub vote_weight: u8,
 }
 
 impl PartialOrd for Node {
@@ -346,9 +346,9 @@ impl Node {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Feed<T: Codec> {
     /// Epoch ID of the proposal.
-    pub(crate) epoch_id:   u64,
+    pub(crate) epoch_id: u64,
     /// Feed content.
-    pub(crate) content:    T,
+    pub(crate) content: T,
     /// The epoch hash.
     pub(crate) epoch_hash: Hash,
 }
@@ -357,9 +357,9 @@ pub(crate) struct Feed<T: Codec> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VerifyResp<T: Codec> {
     /// The epoch ID of the verified epoch.
-    pub epoch_id:   u64,
+    pub epoch_id: u64,
     /// Verified proposal hash.
     pub epoch_hash: Hash,
     /// If the verify result is passed, this field is `Some`, otherwise it is `None`.
-    pub full_txs:   Option<T>,
+    pub full_txs: Option<T>,
 }

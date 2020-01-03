@@ -36,7 +36,7 @@ pub enum ConsensusError {
         ///
         local: u64,
         ///
-        vote:  u64,
+        vote: u64,
     },
     ///
     #[display(fmt = "Self check not pass {}", _0)]
