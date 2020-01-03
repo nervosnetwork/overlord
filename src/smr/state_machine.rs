@@ -342,7 +342,6 @@ impl StateMachine {
     fn goto_next_round(&mut self) {
         info!("Overlord: SMR goto next round {}", self.round + 1);
         self.round += 1;
-        self.epoch_hash = Hash::new();
         self.goto_step(Step::Propose);
     }
 
