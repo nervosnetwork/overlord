@@ -7,9 +7,7 @@ use creep::Context;
 use crossbeam_channel::Sender;
 use serde::{Deserialize, Serialize};
 
-use crate::types::{
-    Address, AggregatedSignature, Commit, Hash, Node, OverlordMsg, Signature, Status,
-};
+use crate::types::{Address, Commit, Hash, Node, OverlordMsg, Signature, Status};
 use crate::{Codec, Consensus, Crypto};
 
 use super::gen_auth_list;
@@ -149,7 +147,8 @@ impl Crypto for BlsCrypto {
 
     fn verify_aggregated_signature(
         &self,
-        _aggregate_signature: AggregatedSignature,
+        _aggregate_signature: Signature,
+        _hash: Hash,
         _voters: Vec<Address>,
     ) -> Result<(), Box<dyn Error + Send>> {
         Ok(())

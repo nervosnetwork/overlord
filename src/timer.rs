@@ -225,13 +225,8 @@ impl Future for TimeoutInfo {
 
 impl TimeoutInfo {
     fn new(interval: Duration, event: SMREvent, tx: UnboundedSender<SMREvent>) -> Self {
-        // let mut delay = Delay::new_handle(Instant::now(), TimerHandle::default());
-        // delay.reset(interval);
-
-        let delay = Delay::new(interval);
-
         TimeoutInfo {
-            timeout: delay,
+            timeout: Delay::new(interval),
             info:    event,
             sender:  tx,
         }

@@ -276,6 +276,15 @@ where
             resp.epoch_id, epoch_hash
         );
 
+        trace::custom(
+            "check_epoch_response".to_string(),
+            Some(json!({
+                "epoch_id": self.epoch_id,
+                "hash": epoch_hash,
+                "is_pass": true,
+            })),
+        );
+
         self.is_full_transcation
             .insert(epoch_hash.clone(), resp.full_txs.is_some());
 
@@ -379,7 +388,7 @@ where
         lock_proposal: Option<Hash>,
     ) -> ConsensusResult<()> {
         info!("Overlord: state goto new round {}", round);
-        trace::start_round(round);
+        trace::start_round(round, self.epoch_id);
 
         self.round = round;
         self.is_leader = false;
@@ -413,7 +422,7 @@ where
         // certificate form proposal collector and vote collector. Some necessary checks should be
         // done by doing this. These things consititute a Proposal. Then sign it and broadcast it to
         // other nodes.
-        trace::start_step("become_leader".to_string());
+        trace::start_step("become_leader".to_string(), self.round, self.epoch_id);
         self.is_leader = true;
         let ctx = Context::new();
         let (epoch, hash, polc) = if lock_round.is_none() {
@@ -552,7 +561,11 @@ where
                 proposal.epoch_id == self.epoch_id,
             )?;
             self.util
-                .verify_aggregated_signature(polc.lock_votes.signature, voters)
+                .verify_aggregated_signature(
+                    polc.lock_votes.signature.signature,
+                    proposal.epoch_hash.clone(),
+                    voters,
+                )
                 .map_err(|err| {
                     ConsensusError::AggregatedSignatureErr(format!(
                         "{:?} proposal of epoch ID {:?}, round {:?}",
@@ -928,6 +941,7 @@ where
         // hash exceeds the threshold.
         self.verify_aggregated_signature(
             aggregated_vote.signature.clone(),
+            aggregated_vote.to_vote(),
             epoch_id,
             qc_type.clone(),
         )?;
@@ -1069,9 +1083,10 @@ where
         epoch_hash: Hash,
         vote_type: VoteType,
     ) -> ConsensusResult<AggregatedVote> {
-        let votes =
+        let mut votes =
             self.votes
                 .get_votes(self.epoch_id, self.round, vote_type.clone(), &epoch_hash)?;
+        votes.sort();
 
         debug!("Overlord: state build aggregated signature");
 
@@ -1160,6 +1175,7 @@ where
             if self
                 .verify_aggregated_signature(
                     qc.signature.clone(),
+                    qc.to_vote(),
                     self.epoch_id,
                     qc.vote_type.clone(),
                 )
@@ -1250,6 +1266,7 @@ where
     fn verify_aggregated_signature(
         &self,
         signature: AggregatedSignature,
+        vote: Vote,
         epoch_id: u64,
         vote_type: VoteType,
     ) -> ConsensusResult<()> {
@@ -1264,11 +1281,17 @@ where
             )));
         }
 
-        let voters = self
+        let mut voters = self
             .authority
             .get_voters(&signature.address_bitmap, epoch_id == self.epoch_id)?;
+        voters.sort();
+
         self.util
-            .verify_aggregated_signature(signature, voters)
+            .verify_aggregated_signature(
+                signature.signature,
+                self.util.hash(Bytes::from(encode(&vote))),
+                voters,
+            )
             .map_err(|err| {
                 ConsensusError::AggregatedSignatureErr(format!(
                     "{:?} aggregate signature error {:?}",

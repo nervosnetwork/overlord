@@ -6,9 +6,7 @@ use blake2b_simd::blake2b;
 use bytes::{Bytes, BytesMut};
 use creep::Context;
 use crossbeam_channel::Sender;
-use overlord::types::{
-    Address, AggregatedSignature, Commit, Hash, Node, OverlordMsg, Signature, Status,
-};
+use overlord::types::{Address, Commit, Hash, Node, OverlordMsg, Signature, Status};
 use overlord::{Codec, Consensus, Crypto};
 use rand::random;
 use serde::{Deserialize, Serialize};
@@ -155,7 +153,8 @@ impl Crypto for BlsCrypto {
 
     fn verify_aggregated_signature(
         &self,
-        _aggregate_signature: AggregatedSignature,
+        _aggregate_signature: Signature,
+        _hash: Hash,
         _voters: Vec<Address>,
     ) -> Result<(), Box<dyn Error + Send>> {
         Ok(())

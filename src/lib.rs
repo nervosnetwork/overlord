@@ -37,9 +37,7 @@ use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ConsensusError;
-use crate::types::{
-    Address, AggregatedSignature, Commit, Hash, Node, OverlordMsg, Signature, Status,
-};
+use crate::types::{Address, Commit, Hash, Node, OverlordMsg, Signature, Status};
 
 /// Overlord consensus result.
 pub type ConsensusResult<T> = ::std::result::Result<T, ConsensusError>;
@@ -133,7 +131,8 @@ pub trait Crypto: Send {
     /// Verify an aggregated signature.
     fn verify_aggregated_signature(
         &self,
-        aggregate_signature: AggregatedSignature,
+        aggregate_signature: Signature,
+        msg_hash: Hash,
         voters: Vec<Address>,
     ) -> Result<(), Box<dyn Error + Send>>;
 }

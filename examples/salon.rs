@@ -13,7 +13,7 @@ use lazy_static::lazy_static;
 use rand::random;
 use serde::{Deserialize, Serialize};
 
-use overlord::types::{AggregatedSignature, Commit, Hash, Node, OverlordMsg, Status};
+use overlord::types::{Commit, Hash, Node, OverlordMsg, Status};
 use overlord::{Codec, Consensus, Crypto, DurationConfig, Overlord, OverlordHandler};
 
 lazy_static! {
@@ -108,7 +108,8 @@ impl Crypto for MockCrypto {
 
     fn verify_aggregated_signature(
         &self,
-        _aggregated_signature: AggregatedSignature,
+        _aggregated_signature: Bytes,
+        _hash: Bytes,
         _voters: Vec<Bytes>,
     ) -> Result<(), Box<dyn Error + Send>> {
         Ok(())
