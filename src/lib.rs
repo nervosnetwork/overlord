@@ -105,6 +105,16 @@ pub trait Codec: Clone + Debug + Send + PartialEq + Eq {
     fn decode(data: Bytes) -> Result<Self, Box<dyn Error + Send>>;
 }
 
+/// Trait for save and load wal information.
+#[async_trait]
+pub trait Wal {
+    /// Save wal information.
+    async fn save(&mut self, info: Bytes) -> Result<(), Box<dyn Error + Send>>;
+
+    /// Load wal information.
+    async fn load(&mut self) -> Result<Option<Bytes>, Box<dyn Error + Send>>;
+}
+
 /// Trait for some crypto methods.
 pub trait Crypto: Send {
     /// Hash a message bytes.

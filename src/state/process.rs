@@ -16,15 +16,17 @@ use moodyblues_sdk::trace;
 use rlp::encode;
 use serde_json::json;
 
-use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
+use crate::error::ConsensusError;
+use crate::smr::smr_types::{SMREvent, SMRTrigger, Step, TriggerSource, TriggerType};
 use crate::smr::{Event, SMRHandler};
 use crate::state::collection::{ProposalCollector, VoteCollector};
 use crate::types::{
-    Address, AggregatedSignature, AggregatedVote, Commit, Hash, OverlordMsg, PoLC, Proof, Proposal,
-    Signature, SignedProposal, SignedVote, Status, VerifyResp, Vote, VoteType,
+    Address, AggregatedSignature, AggregatedVote, Commit, Hash, Node, OverlordMsg, PoLC, Proof,
+    Proposal, Signature, SignedProposal, SignedVote, Status, VerifyResp, Vote, VoteType,
 };
-use crate::{error::ConsensusError, utils::auth_manage::AuthorityManage};
-use crate::{Codec, Consensus, ConsensusResult, Crypto, INIT_EPOCH_ID, INIT_ROUND};
+use crate::utils::auth_manage::AuthorityManage;
+use crate::wal::{WalInfo, WalLock};
+use crate::{Codec, Consensus, ConsensusResult, Crypto, Wal, INIT_EPOCH_ID, INIT_ROUND};
 
 const FUTURE_EPOCH_GAP: u64 = 5;
 const FUTURE_ROUND_GAP: u64 = 10;
@@ -44,7 +46,7 @@ enum MsgType {
 /// round. The `votes` field saves all signed votes and quorum certificates which epoch ID is higher
 /// than `current_epoch - 1`.
 #[derive(Debug)]
-pub struct State<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto> {
+pub struct State<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto, W: Wal> {
     epoch_id:            u64,
     round:               u64,
     state_machine:       SMRHandler,
@@ -63,24 +65,30 @@ pub struct State<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto> {
     resp_tx:  UnboundedSender<VerifyResp<S>>,
     function: Arc<F>,
     util:     C,
+    wal:      W,
 }
 
-impl<T, S, F, C> State<T, S, F, C>
+impl<T, S, F, C, W> State<T, S, F, C, W>
 where
     T: Codec + 'static,
     S: Codec + 'static,
     F: Consensus<T, S> + 'static,
     C: Crypto,
+    W: Wal,
 {
     /// Create a new state struct.
     pub fn new(
         smr: SMRHandler,
         addr: Address,
         interval: u64,
+        mut authority_list: Vec<Node>,
         consensus: Arc<F>,
         crypto: C,
+        wal_engine: W,
     ) -> (Self, UnboundedReceiver<VerifyResp<S>>) {
         let (tx, rx) = unbounded();
+        let mut auth = AuthorityManage::new();
+        auth.update(&mut authority_list, false);
 
         let state = State {
             epoch_id:            INIT_EPOCH_ID,
@@ -89,7 +97,7 @@ where
             address:             addr,
             proposals:           ProposalCollector::new(),
             votes:               VoteCollector::new(),
-            authority:           AuthorityManage::new(),
+            authority:           auth,
             hash_with_epoch:     HashMap::new(),
             is_full_transcation: HashMap::new(),
             is_leader:           false,
@@ -101,7 +109,9 @@ where
             resp_tx:  tx,
             function: consensus,
             util:     crypto,
+            wal:      wal_engine,
         };
+
         (state, rx)
     }
 
@@ -113,6 +123,7 @@ where
         mut verify_resp: UnboundedReceiver<VerifyResp<S>>,
     ) -> ConsensusResult<()> {
         info!("Overlord: state start running");
+        self.start_with_wal().await?;
 
         loop {
             select! {
@@ -212,8 +223,15 @@ where
                 Ok(())
             }
 
-            SMREvent::PrevoteVote { epoch_hash, .. } => {
-                if let Err(e) = self.handle_vote_event(epoch_hash, VoteType::Prevote).await {
+            SMREvent::PrevoteVote {
+                epoch_hash,
+                lock_round,
+                ..
+            } => {
+                if let Err(e) = self
+                    .handle_vote_event(epoch_hash, VoteType::Prevote, lock_round)
+                    .await
+                {
                     trace::error(
                         "handle_prevote_vote".to_string(),
                         Some(json!({
@@ -227,9 +245,13 @@ where
                 Ok(())
             }
 
-            SMREvent::PrecommitVote { epoch_hash, .. } => {
+            SMREvent::PrecommitVote {
+                epoch_hash,
+                lock_round,
+                ..
+            } => {
                 if let Err(e) = self
-                    .handle_vote_event(epoch_hash, VoteType::Precommit)
+                    .handle_vote_event(epoch_hash, VoteType::Precommit, lock_round)
                     .await
                 {
                     trace::error(
@@ -298,6 +320,7 @@ where
                 hash:         qc.epoch_hash,
                 round:        Some(self.round),
                 epoch_id:     self.epoch_id,
+                wal_info:     None,
             })?;
         } else if let Some(qc) =
             self.votes
@@ -309,6 +332,7 @@ where
                 hash:         qc.epoch_hash,
                 round:        Some(self.round),
                 epoch_id:     self.epoch_id,
+                wal_info:     None,
             })?;
         }
         Ok(())
@@ -399,6 +423,28 @@ where
             ));
         }
 
+        // Save wal info in propose step.
+        let lock = if lock_round.is_none() {
+            None
+        } else {
+            let round = lock_round.clone().unwrap();
+            let qc = self
+                .votes
+                .get_qc_by_id(self.epoch_id, round, VoteType::Prevote)
+                .map_err(|err| ConsensusError::ProposalErr(format!("{:?} when propose", err)))?;
+            let content = self
+                .hash_with_epoch
+                .get(&qc.epoch_hash)
+                .ok_or_else(|| ConsensusError::Other("lose whole epoch".to_string()))?;
+
+            Some(WalLock {
+                lock_round: round,
+                lock_votes: qc,
+                content:    content.clone(),
+            })
+        };
+        self.save_wal(Step::Propose, lock).await?;
+
         // If self is not proposer, check whether it has received current signed proposal before. If
         // has, then handle it.
         if !self.is_proposer()? {
@@ -477,6 +523,7 @@ where
             hash:         hash.clone(),
             round:        lock_round,
             epoch_id:     self.epoch_id,
+            wal_info:     None,
         })?;
 
         info!(
@@ -595,6 +642,7 @@ where
             hash:         hash.clone(),
             round:        lock_round,
             epoch_id:     self.epoch_id,
+            wal_info:     None,
         })?;
 
         info!(
@@ -609,9 +657,38 @@ where
         Ok(())
     }
 
-    async fn handle_vote_event(&mut self, hash: Hash, vote_type: VoteType) -> ConsensusResult<()> {
+    async fn handle_vote_event(
+        &mut self,
+        hash: Hash,
+        vote_type: VoteType,
+        lock_round: Option<u64>,
+    ) -> ConsensusResult<()> {
         // If the vote epoch hash is empty, do nothing.
         if hash.is_empty() {
+            // If SMR is trigger by timer, the wal step should be the next step.
+            let step = match vote_type {
+                VoteType::Prevote => Step::Precommit,
+                VoteType::Precommit => Step::Propose,
+            };
+            let round = lock_round.unwrap();
+            let lock = if lock_round.is_some() {
+                let qc = self
+                    .votes
+                    .get_qc_by_id(self.epoch_id, round, VoteType::Prevote)?;
+                let content = self
+                    .hash_with_epoch
+                    .get(&hash)
+                    .ok_or_else(|| ConsensusError::Other("lose whole epoch".to_string()))?;
+
+                Some(WalLock {
+                    lock_round: round,
+                    lock_votes: qc,
+                    content:    content.clone(),
+                })
+            } else {
+                None
+            };
+            self.save_wal(step, lock).await?;
             return Ok(());
         }
 
@@ -622,13 +699,12 @@ where
             self.round
         );
 
-        let tmp_type: String = vote_type.to_string();
         trace::custom(
             "receive_vote_event".to_string(),
             Some(json!({
                 "epoch_id": self.epoch_id,
                 "round": self.round,
-                "vote type": tmp_type,
+                "vote type": vote_type.clone().to_string(),
                 "vote hash": hex::encode(hash.clone()),
             })),
         );
@@ -648,7 +724,7 @@ where
                 .await;
         }
 
-        self.vote_process(vote_type).await?;
+        self.vote_process(vote_type, lock_round).await?;
         Ok(())
     }
 
@@ -699,8 +775,17 @@ where
             proof,
         };
 
-        self.last_commit_qc = Some(qc);
-        // **TODO: write Wal**
+        self.last_commit_qc = Some(qc.clone());
+        let content = self
+            .hash_with_epoch
+            .get(&hash)
+            .ok_or_else(|| ConsensusError::Other("lose whole epoch".to_string()))?;
+        let polc = Some(WalLock {
+            lock_round: self.round,
+            lock_votes: qc,
+            content:    content.clone(),
+        });
+        self.save_wal(Step::Commit, polc).await?;
 
         let ctx = Context::new();
         let status = self
@@ -848,6 +933,7 @@ where
             hash:         epoch_hash,
             round:        Some(round),
             epoch_id:     self.epoch_id,
+            wal_info:     None,
         })?;
 
         // This is for test
@@ -964,6 +1050,7 @@ where
             hash:         qc_hash,
             round:        Some(round),
             epoch_id:     self.epoch_id,
+            wal_info:     None,
         })?;
 
         // This is for test
@@ -980,7 +1067,11 @@ where
     /// exits. If self node is the leader, check if there is signed prevote vote exists. It
     /// should be noted that when self is the leader, and the vote type is prevote, the process
     /// should be the same as the handle signed vote.
-    async fn vote_process(&mut self, vote_type: VoteType) -> ConsensusResult<()> {
+    async fn vote_process(
+        &mut self,
+        vote_type: VoteType,
+        lock_round: Option<u64>,
+    ) -> ConsensusResult<()> {
         if !self.is_leader {
             if let Ok(qc) = self
                 .votes
@@ -991,19 +1082,31 @@ where
                     if vote_type == VoteType::Prevote {
                         match self.check_full_txs(epoch_hash) {
                             Some(tmp) => epoch_hash = tmp,
-                            None => return Ok(()),
+                            None => {
+                                self.save_wal_before_vote(vote_type.into(), lock_round)
+                                    .await?;
+                                return Ok(());
+                            }
                         }
                     } else if !self.try_get_full_txs(&epoch_hash) {
+                        self.save_wal_before_vote(vote_type.into(), lock_round)
+                            .await?;
                         return Ok(());
                     }
+                } else {
+                    return Err(ConsensusError::Other("Empty qc".to_string()));
                 }
 
+                // Save wal with the lastest lock.
+                self.save_wal_before_vote(vote_type.clone().into(), Some(self.round))
+                    .await?;
                 self.state_machine.trigger(SMRTrigger {
                     trigger_type: qc.vote_type.clone().into(),
                     source:       TriggerSource::State,
                     hash:         epoch_hash,
                     round:        Some(self.round),
                     epoch_id:     self.epoch_id,
+                    wal_info:     None,
                 })?;
 
                 info!(
@@ -1023,11 +1126,19 @@ where
                 if vote_type == VoteType::Prevote {
                     match self.check_full_txs(epoch_hash) {
                         Some(tmp) => epoch_hash = tmp,
-                        None => return Ok(()),
+                        None => {
+                            self.save_wal_before_vote(vote_type.into(), lock_round)
+                                .await?;
+                            return Ok(());
+                        }
                     }
                 } else if !self.try_get_full_txs(&epoch_hash) {
+                    self.save_wal_before_vote(vote_type.into(), lock_round)
+                        .await?;
                     return Ok(());
                 }
+            } else {
+                return Err(ConsensusError::Other("empty qc".to_string()));
             }
 
             info!(
@@ -1035,12 +1146,16 @@ where
                 vote_type, self.epoch_id, self.round
             );
 
+            // Save wal with the lastest lock.
+            self.save_wal_before_vote(vote_type.clone().into(), Some(self.round))
+                .await?;
             self.state_machine.trigger(SMRTrigger {
                 trigger_type: vote_type.clone().into(),
                 source:       TriggerSource::State,
                 hash:         epoch_hash,
                 round:        Some(self.round),
                 epoch_id:     self.epoch_id,
+                wal_info:     None,
             })?;
 
             // This is for test
@@ -1431,6 +1546,169 @@ where
         });
     }
 
+    async fn save_wal(&mut self, step: Step, lock: Option<WalLock<T>>) -> ConsensusResult<()> {
+        let wal_info = WalInfo {
+            epoch_id: self.epoch_id,
+            round: self.round,
+            step: step.clone(),
+            lock,
+        };
+        self.wal
+            .save(Bytes::from(rlp::encode(&wal_info)))
+            .await
+            .map_err(|e| {
+                trace::error(
+                    "save_wal".to_string(),
+                    Some(json!({
+                        "epoch_id": self.epoch_id,
+                        "round": self.round,
+                        "step": step.to_string(),
+                        "error": e.to_string(),
+                    })),
+                );
+                ConsensusError::SaveWalErr {
+                    epoch_id: self.epoch_id,
+                    round:    self.round,
+                    step:     step.to_string(),
+                }
+            })?;
+        Ok(())
+    }
+
+    async fn save_wal_before_vote(
+        &mut self,
+        step: Step,
+        lock_round: Option<u64>,
+    ) -> ConsensusResult<()> {
+        let polc = if let Some(round) = lock_round {
+            if let Ok(qc) = self
+                .votes
+                .get_qc_by_id(self.epoch_id, round, VoteType::Prevote)
+            {
+                let epoch = self
+                    .hash_with_epoch
+                    .get(&qc.epoch_hash)
+                    .ok_or_else(|| ConsensusError::Other("lose whole epoch".to_string()))?;
+
+                Some(WalLock {
+                    lock_round: round,
+                    lock_votes: qc,
+                    content:    epoch.clone(),
+                })
+            } else {
+                return Err(ConsensusError::Other("no qc".to_string()));
+            }
+        } else {
+            None
+        };
+        self.save_wal(step, polc).await
+    }
+
+    async fn start_with_wal(&mut self) -> ConsensusResult<()> {
+        let wal_info = self.load_wal().await?;
+        if wal_info.is_none() {
+            return Ok(());
+        }
+
+        let wal_info = wal_info.unwrap();
+        self.epoch_id = wal_info.epoch_id;
+        self.round = wal_info.round;
+        self.is_leader = self.is_proposer()?;
+
+        // Condition no lock.
+        if wal_info.lock.is_none() {
+            if wal_info.step == Step::Commit {
+                return Err(ConsensusError::LoadWalErr(
+                    "no lock in commit step".to_string(),
+                ));
+            }
+
+            self.state_machine.trigger(SMRTrigger {
+                trigger_type: TriggerType::WalInfo,
+                source:       TriggerSource::State,
+                hash:         Hash::new(),
+                round:        None,
+                epoch_id:     self.epoch_id,
+                wal_info:     Some(wal_info.to_smr_base()),
+            })?;
+            return Ok(());
+        }
+
+        let lock = wal_info.lock.clone().unwrap();
+        let qc = lock.lock_votes.clone();
+        self.votes.set_qc(qc.clone());
+        self.hash_with_epoch
+            .insert(qc.epoch_hash.clone(), lock.content.clone());
+
+        match wal_info.step {
+            Step::Propose => {
+                if self.is_leader {
+                    let proposal = Proposal {
+                        epoch_id:   self.epoch_id,
+                        round:      self.round,
+                        content:    lock.content.clone(),
+                        epoch_hash: lock.lock_votes.epoch_hash.clone(),
+                        lock:       Some(lock.to_polc()),
+                        proposer:   self.address.clone(),
+                    };
+                    let signed_proposal = self.sign_proposal(proposal)?;
+                    self.broadcast(Context::new(), OverlordMsg::SignedProposal(signed_proposal))
+                        .await;
+                }
+
+                self.state_machine.trigger(SMRTrigger {
+                    trigger_type: TriggerType::WalInfo,
+                    source:       TriggerSource::State,
+                    hash:         Hash::new(),
+                    round:        None,
+                    epoch_id:     self.epoch_id,
+                    wal_info:     Some(wal_info.to_smr_base()),
+                })?;
+            }
+
+            Step::Prevote | Step::Precommit => {
+                let vote = qc.to_vote();
+                let signed_vote = self.sign_vote(vote)?;
+                self.state_machine.trigger(SMRTrigger {
+                    trigger_type: TriggerType::WalInfo,
+                    source:       TriggerSource::State,
+                    hash:         Hash::new(),
+                    round:        None,
+                    epoch_id:     self.epoch_id,
+                    wal_info:     Some(wal_info.to_smr_base()),
+                })?;
+
+                if !self.is_leader {
+                    self.broadcast(Context::new(), OverlordMsg::SignedVote(signed_vote))
+                        .await;
+                } else {
+                    self.handle_signed_vote(Context::new(), signed_vote).await?;
+                }
+            }
+
+            Step::Commit => {
+                self.handle_commit(qc.epoch_hash.clone()).await?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn load_wal(&mut self) -> ConsensusResult<Option<WalInfo<T>>> {
+        let tmp = self
+            .wal
+            .load()
+            .await
+            .map_err(|e| ConsensusError::LoadWalErr(e.to_string()))?;
+
+        if tmp.is_none() {
+            return Ok(None);
+        }
+
+        let info: WalInfo<T> = rlp::decode(tmp.unwrap().as_ref())
+            .map_err(|e| ConsensusError::LoadWalErr(e.to_string()))?;
+        Ok(Some(info))
+    }
+
     fn check_full_txs(&mut self, hash: Hash) -> Option<Hash> {
         if let Some(res) = self.is_full_transcation.get(&hash) {
             if *res {
@@ -1487,32 +1765,6 @@ where
             return Ok(true);
         }
         Ok(false)
-    }
-
-    #[cfg(test)]
-    pub fn set_condition(&mut self, epoch_id: u64, round: u64) {
-        self.epoch_id = epoch_id;
-        self.round = round;
-    }
-
-    #[cfg(test)]
-    pub fn set_proposal_collector(&mut self, collector: ProposalCollector<T>) {
-        self.proposals = collector;
-    }
-
-    #[cfg(test)]
-    pub fn set_vote_collector(&mut self, collector: VoteCollector) {
-        self.votes = collector;
-    }
-
-    #[cfg(test)]
-    pub fn set_full_transaction(&mut self, hash: Hash) {
-        self.is_full_transcation.insert(hash, true);
-    }
-
-    #[cfg(test)]
-    pub fn set_hash_with_epoch(&mut self, hash_with_epoch: HashMap<Hash, T>) {
-        self.hash_with_epoch = hash_with_epoch;
     }
 }
 

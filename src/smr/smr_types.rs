@@ -2,6 +2,7 @@ use derive_more::Display;
 use serde::{Deserialize, Serialize};
 
 use crate::types::Hash;
+use crate::wal::SMRBase;
 
 /// SMR steps. The default step is commit step because SMR needs rich status to start a new epoch.
 #[derive(Serialize, Deserialize, Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord)]
@@ -14,7 +15,7 @@ pub enum Step {
     ///     wait for a proposal and check it.
     /// Then goto prevote step.
     #[display(fmt = "Prepose step")]
-    Propose = 0,
+    Propose,
     /// Prevote step, in this step:
     /// Leader:
     ///     1. wait for others signed prevote votes,
@@ -26,7 +27,7 @@ pub enum Step {
     ///     3. check the aggregated vote.
     /// Then goto precommit step.
     #[display(fmt = "Prevote step")]
-    Prevote = 1,
+    Prevote,
     /// Precommit step, in this step:
     /// Leader:
     ///     1. wait for others signed precommit votes,
@@ -39,16 +40,39 @@ pub enum Step {
     /// If there is no consensus in the precommit step, goto propose step and start a new round
     /// cycle. Otherwise, goto commit step.
     #[display(fmt = "Precommit step")]
-    Precommit = 2,
+    Precommit,
     /// Commit step, in this step each node commit the epoch and wait for the rich status. After
     /// receiving the it, all nodes will goto propose step and start a new epoch consensus.
     #[display(fmt = "Commit step")]
-    Commit = 3,
+    Commit,
 }
 
 impl Default for Step {
     fn default() -> Self {
         Step::Commit
+    }
+}
+
+impl Into<u8> for Step {
+    fn into(self) -> u8 {
+        match self {
+            Step::Propose => 0,
+            Step::Prevote => 1,
+            Step::Precommit => 2,
+            Step::Commit => 3,
+        }
+    }
+}
+
+impl From<u8> for Step {
+    fn from(s: u8) -> Self {
+        match s {
+            0 => Step::Propose,
+            1 => Step::Prevote,
+            2 => Step::Precommit,
+            3 => Step::Commit,
+            _ => panic!("Invalid vote type!"),
+        }
     }
 }
 
@@ -75,7 +99,9 @@ pub enum SMREvent {
         epoch_id:   u64,
         round:      u64,
         epoch_hash: Hash,
+        lock_round: Option<u64>,
     },
+
     /// Precommit event,
     /// for state: transmit a precommit vote,
     /// for timer: set a precommit step timer.
@@ -84,6 +110,7 @@ pub enum SMREvent {
         epoch_id:   u64,
         round:      u64,
         epoch_hash: Hash,
+        lock_round: Option<u64>,
     },
     /// Commit event,
     /// for state: do commit,
@@ -112,6 +139,8 @@ pub enum TriggerType {
     /// New Epoch trigger.
     #[display(fmt = "New epoch {}", _0)]
     NewEpoch(u64),
+    ///
+    WalInfo,
 }
 
 /// SMR trigger sources.
@@ -132,7 +161,7 @@ impl Into<u8> for TriggerType {
             TriggerType::Proposal => 0u8,
             TriggerType::PrevoteQC => 1u8,
             TriggerType::PrecommitQC => 2u8,
-            TriggerType::NewEpoch(_) => unreachable!(),
+            _ => unreachable!(),
         }
     }
 }
@@ -182,6 +211,8 @@ pub struct SMRTrigger {
     /// **NOTICE**: This field is only for timer to signed timer's epoch ID. Therefore, the SMR can
     /// filter out the outdated timers.
     pub epoch_id: u64,
+    ///
+    pub wal_info: Option<SMRBase>,
 }
 
 /// An inner lock struct.

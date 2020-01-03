@@ -57,8 +57,18 @@ pub enum ConsensusError {
     #[display(fmt = "Storage error {}", _0)]
     StorageErr(String),
     ///
-    #[display(fmt = "Wal error {}", _0)]
-    WalErr(String),
+    #[display(fmt = "Save Wal error {}, {}, {} step", epoch_id, round, step)]
+    SaveWalErr {
+        ///
+        epoch_id: u64,
+        ///
+        round: u64,
+        ///
+        step: String,
+    },
+    ///
+    #[display(fmt = "Load Wal error {}", _0)]
+    LoadWalErr(String),
     ///
     #[display(fmt = "Crypto error {}", _0)]
     CryptoErr(String),

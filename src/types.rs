@@ -4,7 +4,7 @@ use bytes::Bytes;
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
 
-use crate::smr::smr_types::TriggerType;
+use crate::smr::smr_types::{Step, TriggerType};
 use crate::Codec;
 
 /// Address type.
@@ -74,6 +74,15 @@ impl Into<TriggerType> for VoteType {
         match self {
             VoteType::Prevote => TriggerType::PrevoteQC,
             VoteType::Precommit => TriggerType::PrecommitQC,
+        }
+    }
+}
+
+impl Into<Step> for VoteType {
+    fn into(self) -> Step {
+        match self {
+            VoteType::Prevote => Step::Prevote,
+            VoteType::Precommit => Step::Precommit,
         }
     }
 }

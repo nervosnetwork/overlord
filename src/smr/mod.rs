@@ -88,6 +88,7 @@ impl SMRHandler {
                 hash: Hash::new(),
                 round: None,
                 epoch_id,
+                wal_info: None,
             })
             .map_err(|_| ConsensusError::TriggerSMRErr(trigger.to_string()))
     }

@@ -1,10 +1,12 @@
 use bytes::Bytes;
 use rlp::{Decodable, DecoderError, Encodable, Prototype, Rlp, RlpStream};
 
+use crate::smr::smr_types::Step;
 use crate::types::{
     Address, AggregatedSignature, AggregatedVote, Commit, Feed, Hash, Node, PoLC, Proof, Proposal,
     Signature, SignedProposal, SignedVote, Status, Vote, VoteType,
 };
+use crate::wal::{WalInfo, WalLock};
 use crate::Codec;
 
 // impl Encodable and Decodable trait for SignedProposal
@@ -391,21 +393,76 @@ impl<T: Codec> Decodable for Feed<T> {
     }
 }
 
+impl<T: Codec> Encodable for WalLock<T> {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        let content = self.content.encode().unwrap().to_vec();
+        s.begin_list(3)
+            .append(&self.lock_round)
+            .append(&self.lock_votes)
+            .append(&content);
+    }
+}
+
+impl<T: Codec> Decodable for WalLock<T> {
+    fn decode(r: &Rlp) -> Result<Self, DecoderError> {
+        match r.prototype()? {
+            Prototype::List(3) => {
+                let lock_round: u64 = r.val_at(0)?;
+                let lock_votes: AggregatedVote = r.val_at(1)?;
+                let tmp: Vec<u8> = r.val_at(2)?;
+                let content = Codec::decode(Bytes::from(tmp))
+                    .map_err(|_| DecoderError::Custom("Codec decode error."))?;
+                Ok(WalLock {
+                    lock_round,
+                    lock_votes,
+                    content,
+                })
+            }
+            _ => Err(DecoderError::RlpInconsistentLengthAndData),
+        }
+    }
+}
+
+impl<T: Codec> Encodable for WalInfo<T> {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        s.begin_list(4)
+            .append(&self.epoch_id)
+            .append(&self.round)
+            .append::<u8>(&self.step.clone().into())
+            .append(&self.lock);
+    }
+}
+
+impl<T: Codec> Decodable for WalInfo<T> {
+    fn decode(r: &Rlp) -> Result<Self, DecoderError> {
+        match r.prototype()? {
+            Prototype::List(4) => {
+                let epoch_id: u64 = r.val_at(0)?;
+                let round: u64 = r.val_at(1)?;
+                let tmp: u8 = r.val_at(2)?;
+                let step = Step::from(tmp);
+                let lock = r.val_at(3)?;
+                Ok(WalInfo {
+                    epoch_id,
+                    round,
+                    step,
+                    lock,
+                })
+            }
+            _ => Err(DecoderError::RlpInconsistentLengthAndData),
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::error::Error;
 
     use bincode::{deserialize, serialize};
-    use bytes::Bytes;
     use rand::random;
-    use rlp::Encodable;
     use serde::{Deserialize, Serialize};
 
-    use crate::types::{
-        Address, AggregatedSignature, AggregatedVote, Commit, Feed, Hash, Node, PoLC, Proof,
-        Proposal, Signature, SignedProposal, SignedVote, Status, Vote, VoteType,
-    };
-    use crate::Codec;
+    use super::*;
 
     #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
     struct Pill {
@@ -547,6 +604,31 @@ mod test {
         }
     }
 
+    impl<T: Codec> WalInfo<T> {
+        fn new(content: Option<T>) -> Self {
+            let lock = if let Some(tmp) = content {
+                let polc = PoLC::new();
+                Some(WalLock {
+                    lock_round: polc.lock_round,
+                    lock_votes: polc.lock_votes,
+                    content:    tmp,
+                })
+            } else {
+                None
+            };
+
+            let epoch_id = random::<u64>();
+            let round = random::<u64>();
+            let step = Step::Precommit;
+            WalInfo {
+                epoch_id,
+                round,
+                step,
+                lock,
+            }
+        }
+    }
+
     fn gen_hash() -> Hash {
         Hash::from((0..16).map(|_| random::<u8>()).collect::<Vec<_>>())
     }
@@ -623,5 +705,15 @@ mod test {
         let feed = Feed::new(Pill::new());
         let res: Feed<Pill> = rlp::decode(&feed.rlp_bytes()).unwrap();
         assert_eq!(feed, res);
+
+        // Test Wal Info
+        let pill = Pill::new();
+        let wal_info = WalInfo::new(Some(pill));
+        let res: WalInfo<Pill> = rlp::decode(&wal_info.rlp_bytes()).unwrap();
+        assert_eq!(wal_info, res);
+
+        let wal_info = WalInfo::new(None);
+        let res: WalInfo<Pill> = rlp::decode(&wal_info.rlp_bytes()).unwrap();
+        assert_eq!(wal_info, res);
     }
 }

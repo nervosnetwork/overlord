@@ -9,6 +9,7 @@ use log::{debug, info};
 use moodyblues_sdk::trace;
 
 use crate::smr::smr_types::{Lock, SMREvent, SMRTrigger, Step, TriggerSource, TriggerType};
+use crate::wal::SMRBase;
 use crate::{error::ConsensusError, smr::Event, types::Hash};
 use crate::{ConsensusResult, INIT_EPOCH_ID, INIT_ROUND};
 
@@ -20,7 +21,7 @@ pub struct StateMachine {
     epoch_id:      u64,
     round:         u64,
     step:          Step,
-    epoch_hash: Hash,
+    epoch_hash:    Hash,
     lock:          Option<Lock>,
 
     event:   (UnboundedSender<SMREvent>, UnboundedSender<SMREvent>),
@@ -54,6 +55,7 @@ impl Stream for StateMachine {
                     TriggerType::PrecommitQC => {
                         self.handle_precommit(msg.hash, msg.round, msg.source, msg.epoch_id)
                     }
+                    TriggerType::WalInfo => self.handle_wal(msg.wal_info.unwrap()),
                 };
 
                 if res.is_err() {
@@ -83,6 +85,17 @@ impl StateMachine {
         };
 
         (state_machine, Event::new(rx_1), Event::new(rx_2))
+    }
+
+    fn handle_wal(&mut self, info: SMRBase) -> ConsensusResult<()> {
+        self.epoch_id = info.epoch_id;
+        self.round = info.round;
+        self.step = info.step;
+        if let Some(polc) = &info.polc {
+            self.set_proposal(polc.hash.clone());
+        }
+        self.lock = info.polc;
+        self.set_timer_after_wal()
     }
 
     /// Handle a new epoch trigger. If new epoch ID is higher than current, goto a new epoch and
@@ -138,10 +151,17 @@ impl StateMachine {
         // If the proposal trigger is from timer, goto prevote step directly.
         if source == TriggerSource::Timer {
             // This event is for timer to set a prevote timer.
+            let round = if let Some(lock) = &self.lock {
+                Some(lock.round)
+            } else {
+                None
+            };
+
             self.throw_event(SMREvent::PrevoteVote {
                 epoch_id:   self.epoch_id,
                 round:      self.round,
                 epoch_hash: Hash::new(),
+                lock_round: round,
             })?;
             self.goto_step(Step::Prevote);
             return Ok(());
@@ -169,10 +189,17 @@ impl StateMachine {
         }
 
         // throw prevote vote event
+        let round = if let Some(lock) = &self.lock {
+            Some(lock.round)
+        } else {
+            None
+        };
+
         self.throw_event(SMREvent::PrevoteVote {
             epoch_id:   self.epoch_id,
             round:      self.round,
             epoch_hash: self.epoch_hash.clone(),
+            lock_round: round,
         })?;
         self.goto_step(Step::Prevote);
         Ok(())
@@ -207,10 +234,16 @@ impl StateMachine {
 
         if source == TriggerSource::Timer {
             // This event is for timer to set a precommit timer.
+            let round = if let Some(lock) = &self.lock {
+                Some(lock.round)
+            } else {
+                None
+            };
             self.throw_event(SMREvent::PrecommitVote {
                 epoch_id:   self.epoch_id,
                 round:      self.round,
                 epoch_hash: Hash::new(),
+                lock_round: round,
             })?;
             self.goto_step(Step::Precommit);
             return Ok(());
@@ -236,10 +269,16 @@ impl StateMachine {
         }
 
         // throw precommit vote event
+        let round = if let Some(lock) = &self.lock {
+            Some(lock.round)
+        } else {
+            None
+        };
         self.throw_event(SMREvent::PrecommitVote {
             epoch_id:   self.epoch_id,
             round:      self.round,
             epoch_hash: self.epoch_hash.clone(),
+            lock_round: round,
         })?;
         self.goto_step(Step::Precommit);
         Ok(())
@@ -343,6 +382,37 @@ impl StateMachine {
         info!("Overlord: SMR goto next round {}", self.round + 1);
         self.round += 1;
         self.goto_step(Step::Propose);
+    }
+
+    fn set_timer_after_wal(&mut self) -> ConsensusResult<()> {
+        let (lock_round, lock_proposal) = if let Some(lock) = &self.lock {
+            (Some(lock.round), Some(lock.hash.clone()))
+        } else {
+            (None, None)
+        };
+
+        let event = match self.step {
+            Step::Propose => SMREvent::NewRoundInfo {
+                epoch_id: self.epoch_id,
+                round: self.round,
+                lock_round,
+                lock_proposal,
+            },
+            Step::Prevote => SMREvent::PrevoteVote {
+                epoch_id: self.epoch_id,
+                round: self.round,
+                epoch_hash: Hash::new(),
+                lock_round,
+            },
+            Step::Precommit => SMREvent::PrecommitVote {
+                epoch_id: self.epoch_id,
+                round: self.round,
+                epoch_hash: Hash::new(),
+                lock_round,
+            },
+            _ => unreachable!(),
+        };
+        self.throw_event(event)
     }
 
     /// Goto the given step.

@@ -190,6 +190,7 @@ impl Timer {
             trigger_type,
             round,
             epoch_id,
+            wal_info: None,
         })
     }
 }
@@ -275,6 +276,7 @@ mod test {
             trigger_type,
             round,
             epoch_id,
+            wal_info: None,
         }
     }
 
@@ -298,6 +300,7 @@ mod test {
                 epoch_id:   0u64,
                 round:      0u64,
                 epoch_hash: Hash::new(),
+                lock_round: None,
             },
             gen_output(TriggerType::PrevoteQC, Some(0), 0),
         )
@@ -309,6 +312,7 @@ mod test {
                 epoch_id:   0u64,
                 round:      0u64,
                 epoch_hash: Hash::new(),
+                lock_round: None,
             },
             gen_output(TriggerType::PrecommitQC, Some(0), 0),
         )
@@ -337,12 +341,14 @@ mod test {
             epoch_id:   0u64,
             round:      0u64,
             epoch_hash: Hash::new(),
+            lock_round: None,
         };
 
         let precommit_event = SMREvent::PrecommitVote {
             epoch_id:   0u64,
             round:      0u64,
             epoch_hash: Hash::new(),
+            lock_round: None,
         };
 
         runtime::spawn(async move {
