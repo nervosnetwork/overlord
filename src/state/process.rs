@@ -1676,7 +1676,8 @@ where
             }
 
             Step::Prevote | Step::Precommit => {
-                let vote = qc.to_vote();
+                let mut vote = qc.to_vote();
+                vote.round = self.round;
                 let signed_vote = self.sign_vote(vote)?;
                 self.state_machine.trigger(SMRTrigger {
                     trigger_type: TriggerType::WalInfo,
