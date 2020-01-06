@@ -1642,20 +1642,6 @@ where
 
         match wal_info.step {
             Step::Propose => {
-                if self.is_leader {
-                    let proposal = Proposal {
-                        epoch_id:   self.epoch_id,
-                        round:      self.round,
-                        content:    lock.content.clone(),
-                        epoch_hash: lock.lock_votes.epoch_hash.clone(),
-                        lock:       Some(lock.to_polc()),
-                        proposer:   self.address.clone(),
-                    };
-                    let signed_proposal = self.sign_proposal(proposal)?;
-                    self.broadcast(Context::new(), OverlordMsg::SignedProposal(signed_proposal))
-                        .await;
-                }
-
                 self.state_machine.trigger(SMRTrigger {
                     trigger_type: TriggerType::WalInfo,
                     source:       TriggerSource::State,
@@ -1664,6 +1650,29 @@ where
                     epoch_id:     self.epoch_id,
                     wal_info:     Some(wal_info.to_smr_base()),
                 })?;
+
+                if self.is_leader {
+                    let proposal = Proposal {
+                        epoch_id:   self.epoch_id,
+                        round:      self.round,
+                        content:    lock.content.clone(),
+                        epoch_hash: qc.epoch_hash.clone(),
+                        lock:       Some(lock.to_polc()),
+                        proposer:   self.address.clone(),
+                    };
+                    let signed_proposal = self.sign_proposal(proposal)?;
+                    self.broadcast(Context::new(), OverlordMsg::SignedProposal(signed_proposal))
+                        .await;
+
+                    self.state_machine.trigger(SMRTrigger {
+                        trigger_type: TriggerType::Proposal,
+                        source:       TriggerSource::State,
+                        hash:         qc.epoch_hash.clone(),
+                        round:        Some(lock.lock_round),
+                        epoch_id:     self.epoch_id,
+                        wal_info:     None,
+                    })?;
+                }
             }
 
             Step::Prevote | Step::Precommit => {
@@ -1679,7 +1688,7 @@ where
                 })?;
 
                 if !self.is_leader {
-                    self.broadcast(Context::new(), OverlordMsg::SignedVote(signed_vote))
+                    self.transmit(Context::new(), OverlordMsg::SignedVote(signed_vote))
                         .await;
                 } else {
                     self.handle_signed_vote(Context::new(), signed_vote).await?;
