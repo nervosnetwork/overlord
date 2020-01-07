@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use bincode::{deserialize, serialize};
 use bytes::Bytes;
 use creep::Context;
-use crossbeam_channel::Sender;
+use futures::channel::mpsc::UnboundedSender;
 use rand::random;
 use serde::{Deserialize, Serialize};
 
@@ -38,7 +38,7 @@ impl Pill {
 }
 
 pub struct ConsensusHelper<T: Codec> {
-    tx:        Sender<OverlordMsg<T>>,
+    tx:        UnboundedSender<OverlordMsg<T>>,
     auth_list: Vec<Node>,
 }
 
@@ -70,7 +70,7 @@ impl Consensus<Pill, Pill> for ConsensusHelper<Pill> {
         epoch_id: u64,
         commit: Commit<Pill>,
     ) -> Result<Status, Box<dyn Error + Send>> {
-        self.tx.send(OverlordMsg::Commit(commit)).unwrap();
+        let _ = self.tx.unbounded_send(OverlordMsg::Commit(commit));
         let status = Status {
             epoch_id:       epoch_id + 1,
             interval:       None,
@@ -92,7 +92,7 @@ impl Consensus<Pill, Pill> for ConsensusHelper<Pill> {
         _ctx: Context,
         msg: OverlordMsg<Pill>,
     ) -> Result<(), Box<dyn Error + Send>> {
-        self.tx.send(msg).unwrap();
+        let _ = self.tx.unbounded_send(msg);
         Ok(())
     }
 
@@ -102,13 +102,13 @@ impl Consensus<Pill, Pill> for ConsensusHelper<Pill> {
         _addr: Address,
         msg: OverlordMsg<Pill>,
     ) -> Result<(), Box<dyn Error + Send>> {
-        self.tx.send(msg).unwrap();
+        let _ = self.tx.unbounded_send(msg);
         Ok(())
     }
 }
 
 impl<T: Codec> ConsensusHelper<T> {
-    pub fn new(tx: Sender<OverlordMsg<T>>, auth_list: Vec<Node>) -> Self {
+    pub fn new(tx: UnboundedSender<OverlordMsg<T>>, auth_list: Vec<Node>) -> Self {
         ConsensusHelper { tx, auth_list }
     }
 }
