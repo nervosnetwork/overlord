@@ -473,14 +473,6 @@ impl StateMachine {
             )));
         }
 
-        // While in propose step, self proposal must be empty.
-        if self.step == Step::Propose && !self.epoch_hash.is_empty() {
-            return Err(ConsensusError::SelfCheckErr(format!(
-                "Invalid proposal hash, epoch ID {}, round {}",
-                self.epoch_id, self.round
-            )));
-        }
-
         // While in precommit step, the lock and the proposal hash must be NOR.
         if self.step == Step::Precommit && (self.epoch_hash.is_empty().bitxor(self.lock.is_none()))
         {
