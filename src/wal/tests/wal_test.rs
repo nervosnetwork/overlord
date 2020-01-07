@@ -49,11 +49,11 @@ async fn test_process(case: WalTestCase) {
     });
 
     if let Some(output) = case.state_output {
-        assert_eq!(overlord_rx.next().await.unwrap(), output);
+        assert_eq!(overlord_rx.next().await.expect("state"), output);
     }
 
     if let Some(output) = case.smr_output {
-        assert_eq!(smr_event.next().await.unwrap(), output);
+        assert_eq!(smr_event.next().await.expect("smr"), output);
     }
 
     smr_event.close();
