@@ -42,14 +42,14 @@ struct Detail {
     inner: Bytes,
 }
 
-impl Detail {
-    fn from(speech: Speech) -> Self {
-        Detail {
-            // explain your speech
-            inner: speech.inner,
-        }
-    }
-}
+// impl Detail {
+//     fn from(speech: Speech) -> Self {
+//         Detail {
+//             // explain your speech
+//             inner: speech.inner,
+//         }
+//     }
+// }
 
 macro_rules! impl_codec_for {
     ($($struc: ident),+) => {
@@ -153,7 +153,7 @@ impl Brain {
 }
 
 #[async_trait]
-impl Consensus<Speech, Detail> for Brain {
+impl Consensus<Speech> for Brain {
     async fn get_epoch(
         &self,
         _ctx: Context,
@@ -168,9 +168,9 @@ impl Consensus<Speech, Detail> for Brain {
         _ctx: Context,
         _epoch_id: u64,
         _hash: Hash,
-        speech: Speech,
-    ) -> Result<Detail, Box<dyn Error + Send>> {
-        Ok(Detail::from(speech))
+        _speech: Speech,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        Ok(())
     }
 
     async fn commit(
@@ -229,7 +229,7 @@ impl Consensus<Speech, Detail> for Brain {
 }
 
 struct Speaker {
-    overlord: Arc<Overlord<Speech, Detail, Brain, MockCrypto, MockWal>>,
+    overlord: Arc<Overlord<Speech, Brain, MockCrypto, MockWal>>,
     handler:  OverlordHandler<Speech>,
     brain:    Arc<Brain>,
 }

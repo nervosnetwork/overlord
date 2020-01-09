@@ -46,7 +46,7 @@ enum MsgType {
 /// round. The `votes` field saves all signed votes and quorum certificates which epoch ID is higher
 /// than `current_epoch - 1`.
 #[derive(Debug)]
-pub struct State<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto, W: Wal> {
+pub struct State<T: Codec, F: Consensus<T>, C: Crypto, W: Wal> {
     epoch_id:            u64,
     round:               u64,
     state_machine:       SMRHandler,
@@ -62,17 +62,16 @@ pub struct State<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto, W: Wal> {
     epoch_start:         Instant,
     epoch_interval:      u64,
 
-    resp_tx:  UnboundedSender<VerifyResp<S>>,
+    resp_tx:  UnboundedSender<VerifyResp>,
     function: Arc<F>,
     util:     C,
     wal:      W,
 }
 
-impl<T, S, F, C, W> State<T, S, F, C, W>
+impl<T, F, C, W> State<T, F, C, W>
 where
     T: Codec + 'static,
-    S: Codec + 'static,
-    F: Consensus<T, S> + 'static,
+    F: Consensus<T> + 'static,
     C: Crypto,
     W: Wal,
 {
@@ -85,7 +84,7 @@ where
         consensus: Arc<F>,
         crypto: C,
         wal_engine: W,
-    ) -> (Self, UnboundedReceiver<VerifyResp<S>>) {
+    ) -> (Self, UnboundedReceiver<VerifyResp>) {
         let (tx, rx) = unbounded();
         let mut auth = AuthorityManage::new();
         auth.update(&mut authority_list, false);
@@ -120,7 +119,7 @@ where
         &mut self,
         mut raw_rx: UnboundedReceiver<(Context, OverlordMsg<T>)>,
         mut event: Event,
-        mut verify_resp: UnboundedReceiver<VerifyResp<S>>,
+        mut verify_resp: UnboundedReceiver<VerifyResp>,
     ) -> ConsensusResult<()> {
         info!("Overlord: state start running");
         self.start_with_wal().await?;
@@ -286,7 +285,7 @@ where
         }
     }
 
-    fn handle_resp(&mut self, msg: Option<VerifyResp<S>>) -> ConsensusResult<()> {
+    fn handle_resp(&mut self, msg: Option<VerifyResp>) -> ConsensusResult<()> {
         let resp = msg.ok_or_else(|| ConsensusError::Other("Event sender dropped".to_string()))?;
         if resp.epoch_id != self.epoch_id {
             return Ok(());
@@ -308,7 +307,7 @@ where
         );
 
         self.is_full_transcation
-            .insert(epoch_hash.clone(), resp.full_txs.is_some());
+            .insert(epoch_hash.clone(), resp.is_pass);
 
         if let Some(qc) =
             self.votes
@@ -1778,33 +1777,27 @@ where
     }
 }
 
-async fn check_current_epoch<U: Consensus<T, S>, T: Codec, S: Codec>(
+async fn check_current_epoch<U: Consensus<T>, T: Codec>(
     ctx: Context,
     function: Arc<U>,
     epoch_id: u64,
     hash: Hash,
     epoch: T,
-    tx: UnboundedSender<VerifyResp<S>>,
+    tx: UnboundedSender<VerifyResp>,
 ) -> ConsensusResult<()> {
-    let txs = if let Ok(res) = function
+    let is_pass = function
         .check_epoch(ctx, epoch_id, hash.clone(), epoch)
         .await
-    {
-        Some(res)
-    } else {
-        None
-    };
+        .is_ok();
 
-    info!("Overlord: state check epoch {}", txs.is_some());
+    info!("Overlord: state check epoch {}", is_pass);
 
     tx.unbounded_send(VerifyResp {
         epoch_id,
         epoch_hash: hash,
-        full_txs: txs,
+        is_pass,
     })
-    .map_err(|e| ConsensusError::ChannelErr(e.to_string()))?;
-    // TODO: write Wal
-    Ok(())
+    .map_err(|e| ConsensusError::ChannelErr(e.to_string()))
 }
 
 #[cfg(test)]

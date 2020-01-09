@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 use creep::Context;
@@ -15,21 +14,19 @@ use crate::{Codec, Consensus, ConsensusResult, Crypto, Wal};
 type Pile<T> = RwLock<Option<T>>;
 
 /// An overlord consensus instance.
-pub struct Overlord<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto, W: Wal> {
+pub struct Overlord<T: Codec, F: Consensus<T>, C: Crypto, W: Wal> {
     sender:    Pile<UnboundedSender<(Context, OverlordMsg<T>)>>,
     state_rx:  Pile<UnboundedReceiver<(Context, OverlordMsg<T>)>>,
     address:   Pile<Address>,
     consensus: Pile<Arc<F>>,
     crypto:    Pile<C>,
     wal:       Pile<W>,
-    pin_txs:   PhantomData<S>,
 }
 
-impl<T, S, F, C, W> Overlord<T, S, F, C, W>
+impl<T, F, C, W> Overlord<T, F, C, W>
 where
     T: Codec + Send + Sync + 'static,
-    S: Codec + Send + Sync + 'static,
-    F: Consensus<T, S> + 'static,
+    F: Consensus<T> + 'static,
     C: Crypto + Send + Sync + 'static,
     W: Wal + 'static,
 {
@@ -43,7 +40,6 @@ where
             consensus: RwLock::new(Some(consensus)),
             crypto:    RwLock::new(Some(crypto)),
             wal:       RwLock::new(Some(wal)),
-            pin_txs:   PhantomData,
         }
     }
 

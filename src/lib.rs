@@ -47,7 +47,7 @@ const INIT_ROUND: u64 = 0;
 
 /// Trait for some functions that consensus needs.
 #[async_trait]
-pub trait Consensus<T: Codec, S: Codec>: Send + Sync {
+pub trait Consensus<T: Codec>: Send + Sync {
     /// Get an epoch of the given epoch ID and return the epoch with its hash.
     async fn get_epoch(
         &self,
@@ -63,7 +63,7 @@ pub trait Consensus<T: Codec, S: Codec>: Send + Sync {
         epoch_id: u64,
         hash: Hash,
         epoch: T,
-    ) -> Result<S, Box<dyn Error + Send>>;
+    ) -> Result<(), Box<dyn Error + Send>>;
 
     /// Commit a given epoch to execute and return the rich status.
     async fn commit(
