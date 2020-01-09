@@ -267,11 +267,9 @@ async fn test_proposal_trigger() {
             epoch_id:   0u64,
             round:      1u64,
             epoch_hash: lock_hash.clone(),
-            lock_round: None,
+            lock_round: Some(0),
         },
-        Some(ConsensusError::SelfCheckErr(
-            "Invalid proposal hash".to_string(),
-        )),
+        None,
         Some((0, lock_hash)),
     ));
 
@@ -310,11 +308,9 @@ async fn test_proposal_trigger() {
             epoch_id:   0u64,
             round:      2u64,
             epoch_hash: lock_hash.clone(),
-            lock_round: None,
+            lock_round: Some(1),
         },
-        Some(ConsensusError::SelfCheckErr(
-            "Invalid proposal hash".to_string(),
-        )),
+        None,
         Some((1, lock_hash)),
     ));
 
@@ -355,11 +351,9 @@ async fn test_proposal_trigger() {
             epoch_id:   0u64,
             round:      2u64,
             epoch_hash: lock_hash.clone(),
-            lock_round: None,
+            lock_round: Some(1),
         },
-        Some(ConsensusError::SelfCheckErr(
-            "Invalid proposal hash".to_string(),
-        )),
+        None,
         Some((1, lock_hash)),
     ));
 
