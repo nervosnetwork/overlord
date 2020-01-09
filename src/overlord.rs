@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 use creep::Context;
@@ -7,32 +6,32 @@ use parking_lot::RwLock;
 
 use crate::error::ConsensusError;
 use crate::state::process::State;
-use crate::types::{Address, OverlordMsg};
+use crate::types::{Address, Node, OverlordMsg};
 use crate::DurationConfig;
 use crate::{smr::SMR, timer::Timer};
-use crate::{Codec, Consensus, ConsensusResult, Crypto};
+use crate::{Codec, Consensus, ConsensusResult, Crypto, Wal};
 
 type Pile<T> = RwLock<Option<T>>;
 
 /// An overlord consensus instance.
-pub struct Overlord<T: Codec, S: Codec, F: Consensus<T, S>, C: Crypto> {
+pub struct Overlord<T: Codec, F: Consensus<T>, C: Crypto, W: Wal> {
     sender:    Pile<UnboundedSender<(Context, OverlordMsg<T>)>>,
     state_rx:  Pile<UnboundedReceiver<(Context, OverlordMsg<T>)>>,
     address:   Pile<Address>,
     consensus: Pile<Arc<F>>,
     crypto:    Pile<C>,
-    pin_txs:   PhantomData<S>,
+    wal:       Pile<W>,
 }
 
-impl<T, S, F, C> Overlord<T, S, F, C>
+impl<T, F, C, W> Overlord<T, F, C, W>
 where
     T: Codec + Send + Sync + 'static,
-    S: Codec + Send + Sync + 'static,
-    F: Consensus<T, S> + 'static,
+    F: Consensus<T> + 'static,
     C: Crypto + Send + Sync + 'static,
+    W: Wal + 'static,
 {
     /// Create a new overlord and return an overlord instance with an unbounded receiver.
-    pub fn new(address: Address, consensus: Arc<F>, crypto: C) -> Self {
+    pub fn new(address: Address, consensus: Arc<F>, crypto: C, wal: W) -> Self {
         let (tx, rx) = unbounded();
         Overlord {
             sender:    RwLock::new(Some(tx)),
@@ -40,7 +39,7 @@ where
             address:   RwLock::new(Some(address)),
             consensus: RwLock::new(Some(consensus)),
             crypto:    RwLock::new(Some(crypto)),
-            pin_txs:   PhantomData,
+            wal:       RwLock::new(Some(wal)),
         }
     }
 
@@ -56,6 +55,7 @@ where
     pub async fn run(
         &self,
         interval: u64,
+        authority_list: Vec<Node>,
         timer_config: Option<DurationConfig>,
     ) -> ConsensusResult<()> {
         let (mut smr_provider, evt_1, evt_2) = SMR::new();
@@ -67,6 +67,7 @@ where
             let mut address = self.address.write();
             let mut consensus = self.consensus.write();
             let mut crypto = self.crypto.write();
+            let mut wal = self.wal.write();
             // let sender = self.sender.read();
 
             let tmp_rx = state_rx.take().unwrap();
@@ -74,8 +75,10 @@ where
                 smr_handler,
                 address.take().unwrap(),
                 interval,
+                authority_list,
                 consensus.take().unwrap(),
                 crypto.take().unwrap(),
+                wal.take().unwrap(),
             );
 
             // assert!(sender.is_none());
@@ -83,6 +86,7 @@ where
             assert!(consensus.is_none());
             assert!(crypto.is_none());
             assert!(state_rx.is_none());
+            assert!(wal.is_none());
 
             (tmp_rx, tmp_state, tmp_resp)
         };

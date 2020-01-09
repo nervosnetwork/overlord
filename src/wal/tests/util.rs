@@ -4,13 +4,13 @@ use async_trait::async_trait;
 use bincode::{deserialize, serialize};
 use bytes::Bytes;
 use creep::Context;
-use crossbeam_channel::Sender;
+use futures::channel::mpsc::UnboundedSender;
+use rand::random;
 use serde::{Deserialize, Serialize};
 
-use crate::types::{Address, Commit, Hash, Node, OverlordMsg, Signature, Status};
-use crate::{Codec, Consensus, Crypto};
-
-use super::gen_auth_list;
+use crate::types::{Address, AggregatedSignature, Commit, Hash, Node, OverlordMsg, Status};
+use crate::wal::WalInfo;
+use crate::{Codec, Consensus, Crypto, Wal};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Pill {
@@ -38,12 +38,12 @@ impl Pill {
 }
 
 pub struct ConsensusHelper<T: Codec> {
-    tx:        Sender<OverlordMsg<T>>,
+    tx:        UnboundedSender<OverlordMsg<T>>,
     auth_list: Vec<Node>,
 }
 
 #[async_trait]
-impl Consensus<Pill, Pill> for ConsensusHelper<Pill> {
+impl Consensus<Pill> for ConsensusHelper<Pill> {
     async fn get_epoch(
         &self,
         _ctx: Context,
@@ -57,11 +57,11 @@ impl Consensus<Pill, Pill> for ConsensusHelper<Pill> {
     async fn check_epoch(
         &self,
         _ctx: Context,
-        epoch_id: u64,
+        _epoch_id: u64,
         _hash: Hash,
         _epoch: Pill,
-    ) -> Result<Pill, Box<dyn Error + Send>> {
-        Ok(Pill::new(epoch_id))
+    ) -> Result<(), Box<dyn Error + Send>> {
+        Ok(())
     }
 
     async fn commit(
@@ -70,7 +70,7 @@ impl Consensus<Pill, Pill> for ConsensusHelper<Pill> {
         epoch_id: u64,
         commit: Commit<Pill>,
     ) -> Result<Status, Box<dyn Error + Send>> {
-        self.tx.send(OverlordMsg::Commit(commit)).unwrap();
+        let _ = self.tx.unbounded_send(OverlordMsg::Commit(commit));
         let status = Status {
             epoch_id:       epoch_id + 1,
             interval:       None,
@@ -92,7 +92,7 @@ impl Consensus<Pill, Pill> for ConsensusHelper<Pill> {
         _ctx: Context,
         msg: OverlordMsg<Pill>,
     ) -> Result<(), Box<dyn Error + Send>> {
-        self.tx.send(msg).unwrap();
+        let _ = self.tx.unbounded_send(msg);
         Ok(())
     }
 
@@ -102,61 +102,90 @@ impl Consensus<Pill, Pill> for ConsensusHelper<Pill> {
         _addr: Address,
         msg: OverlordMsg<Pill>,
     ) -> Result<(), Box<dyn Error + Send>> {
-        self.tx.send(msg).unwrap();
+        let _ = self.tx.unbounded_send(msg);
         Ok(())
     }
 }
 
 impl<T: Codec> ConsensusHelper<T> {
-    pub fn new(tx: Sender<OverlordMsg<T>>) -> Self {
-        let auth_list = gen_auth_list();
+    pub fn new(tx: UnboundedSender<OverlordMsg<T>>, auth_list: Vec<Node>) -> Self {
         ConsensusHelper { tx, auth_list }
     }
 }
 
-#[derive(Clone)]
-pub struct BlsCrypto(Address);
+pub struct MockWal {
+    inner: Bytes,
+}
 
-impl Crypto for BlsCrypto {
-    fn hash(&self, _msg: Bytes) -> Hash {
-        self.0.clone()
+impl MockWal {
+    pub fn new<T: Codec>(info: WalInfo<T>) -> Self {
+        MockWal {
+            inner: Bytes::from(rlp::encode(&info)),
+        }
     }
+}
 
-    fn sign(&self, hash: Hash) -> Result<Signature, Box<dyn Error + Send>> {
-        Ok(hash)
-    }
-
-    fn verify_signature(
-        &self,
-        _signature: Signature,
-        _hash: Hash,
-        _voter: Address,
-    ) -> Result<(), Box<dyn Error + Send>> {
+#[async_trait]
+impl Wal for MockWal {
+    async fn save(&mut self, _info: Bytes) -> Result<(), Box<dyn Error + Send>> {
         Ok(())
+    }
+
+    async fn load(&mut self) -> Result<Option<Bytes>, Box<dyn Error + Send>> {
+        Ok(Some(self.inner.clone()))
+    }
+}
+
+pub struct MockCrypto;
+
+impl Crypto for MockCrypto {
+    fn hash(&self, bytes: Bytes) -> Bytes {
+        bytes
+    }
+
+    fn sign(&self, hash: Bytes) -> Result<Bytes, Box<dyn Error + Send>> {
+        Ok(hash)
     }
 
     fn aggregate_signatures(
         &self,
-        _signatures: Vec<Signature>,
-        _voters: Vec<Address>,
-    ) -> Result<Signature, Box<dyn Error + Send>> {
-        use super::gen_hash;
+        _signatures: Vec<Bytes>,
+        _voters: Vec<Bytes>,
+    ) -> Result<Bytes, Box<dyn Error + Send>> {
+        Ok(Bytes::new())
+    }
 
-        Ok(gen_hash())
+    fn verify_signature(
+        &self,
+        _signature: Bytes,
+        _hash: Bytes,
+        _voter: Bytes,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        Ok(())
     }
 
     fn verify_aggregated_signature(
         &self,
-        _aggregate_signature: Signature,
-        _hash: Hash,
-        _voters: Vec<Address>,
+        _aggregated_signature: Bytes,
+        _hash: Bytes,
+        _voters: Vec<Bytes>,
     ) -> Result<(), Box<dyn Error + Send>> {
         Ok(())
     }
 }
 
-impl BlsCrypto {
-    pub fn new(address: Address) -> Self {
-        BlsCrypto(address)
+pub fn gen_auth_list(nodes: usize) -> Vec<Node> {
+    let mut res = vec![];
+    for _i in 0..nodes {
+        res.push(Node::new(Address::from(vec![random::<u8>()])));
+    }
+    res.sort();
+    res
+}
+
+pub fn mock_aggregate_signature() -> AggregatedSignature {
+    AggregatedSignature {
+        signature:      Bytes::from((0..16).map(|_| random::<u8>()).collect::<Vec<_>>()),
+        address_bitmap: Bytes::from((0..2).map(|_| random::<u8>()).collect::<Vec<_>>()),
     }
 }

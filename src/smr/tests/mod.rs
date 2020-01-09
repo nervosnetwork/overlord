@@ -72,6 +72,7 @@ impl SMRTrigger {
             hash: proposal_hash,
             round: lock_round,
             epoch_id,
+            wal_info: None,
         }
     }
 }

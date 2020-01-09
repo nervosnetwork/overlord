@@ -48,7 +48,7 @@ struct ConsensusHelper<T: Codec> {
 }
 
 #[async_trait]
-impl Consensus<Pill, Pill> for ConsensusHelper<Pill> {
+impl Consensus<Pill> for ConsensusHelper<Pill> {
     async fn get_epoch(
         &self,
         _ctx: Context,
@@ -62,11 +62,11 @@ impl Consensus<Pill, Pill> for ConsensusHelper<Pill> {
     async fn check_epoch(
         &self,
         _ctx: Context,
-        epoch_id: u64,
+        _epoch_id: u64,
         _hash: Hash,
         _epoch: Pill,
-    ) -> Result<Pill, Box<dyn Error + Send>> {
-        Ok(Pill::new(epoch_id))
+    ) -> Result<(), Box<dyn Error + Send>> {
+        Ok(())
     }
 
     async fn commit(

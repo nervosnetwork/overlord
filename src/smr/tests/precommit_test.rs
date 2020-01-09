@@ -110,6 +110,7 @@ async fn test_precommit_trigger() {
             epoch_id:   0u64,
             round:      0u64,
             epoch_hash: hash.clone(),
+            lock_round: Some(0),
         },
         Some(ConsensusError::SelfCheckErr("".to_string())),
         Some((0, hash)),

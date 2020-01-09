@@ -4,7 +4,7 @@ use bytes::Bytes;
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
 
-use crate::smr::smr_types::TriggerType;
+use crate::smr::smr_types::{Step, TriggerType};
 use crate::Codec;
 
 /// Address type.
@@ -74,6 +74,15 @@ impl Into<TriggerType> for VoteType {
         match self {
             VoteType::Prevote => TriggerType::PrevoteQC,
             VoteType::Precommit => TriggerType::PrecommitQC,
+        }
+    }
+}
+
+impl Into<Step> for VoteType {
+    fn into(self) -> Step {
+        match self {
+            VoteType::Prevote => Step::Prevote,
+            VoteType::Precommit => Step::Precommit,
         }
     }
 }
@@ -355,11 +364,11 @@ pub(crate) struct Feed<T: Codec> {
 
 /// A verify response.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct VerifyResp<T: Codec> {
+pub struct VerifyResp {
     /// The epoch ID of the verified epoch.
     pub epoch_id: u64,
     /// Verified proposal hash.
     pub epoch_hash: Hash,
-    /// If the verify result is passed, this field is `Some`, otherwise it is `None`.
-    pub full_txs: Option<T>,
+    /// The epoch is pass or not.
+    pub is_pass: bool,
 }

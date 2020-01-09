@@ -14,7 +14,7 @@ use rand::random;
 use serde::{Deserialize, Serialize};
 
 use overlord::types::{Commit, Hash, Node, OverlordMsg, Status};
-use overlord::{Codec, Consensus, Crypto, DurationConfig, Overlord, OverlordHandler};
+use overlord::{Codec, Consensus, Crypto, DurationConfig, Overlord, OverlordHandler, Wal};
 
 lazy_static! {
     static ref HASHER_INST: HasherKeccak = HasherKeccak::new();
@@ -42,14 +42,14 @@ struct Detail {
     inner: Bytes,
 }
 
-impl Detail {
-    fn from(speech: Speech) -> Self {
-        Detail {
-            // explain your speech
-            inner: speech.inner,
-        }
-    }
-}
+// impl Detail {
+//     fn from(speech: Speech) -> Self {
+//         Detail {
+//             // explain your speech
+//             inner: speech.inner,
+//         }
+//     }
+// }
 
 macro_rules! impl_codec_for {
     ($($struc: ident),+) => {
@@ -69,6 +69,19 @@ macro_rules! impl_codec_for {
 }
 
 impl_codec_for!(Speech, Detail);
+
+struct MockWal;
+
+#[async_trait]
+impl Wal for MockWal {
+    async fn save(&mut self, _info: Bytes) -> Result<(), Box<dyn Error + Send>> {
+        Ok(())
+    }
+
+    async fn load(&mut self) -> Result<Option<Bytes>, Box<dyn Error + Send>> {
+        Ok(None)
+    }
+}
 
 struct MockCrypto {
     name: Bytes,
@@ -140,7 +153,7 @@ impl Brain {
 }
 
 #[async_trait]
-impl Consensus<Speech, Detail> for Brain {
+impl Consensus<Speech> for Brain {
     async fn get_epoch(
         &self,
         _ctx: Context,
@@ -155,9 +168,9 @@ impl Consensus<Speech, Detail> for Brain {
         _ctx: Context,
         _epoch_id: u64,
         _hash: Hash,
-        speech: Speech,
-    ) -> Result<Detail, Box<dyn Error + Send>> {
-        Ok(Detail::from(speech))
+        _speech: Speech,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        Ok(())
     }
 
     async fn commit(
@@ -216,7 +229,7 @@ impl Consensus<Speech, Detail> for Brain {
 }
 
 struct Speaker {
-    overlord: Arc<Overlord<Speech, Detail, Brain, MockCrypto>>,
+    overlord: Arc<Overlord<Speech, Brain, MockCrypto, MockWal>>,
     handler:  OverlordHandler<Speech>,
     brain:    Arc<Brain>,
 }
@@ -236,7 +249,7 @@ impl Speaker {
             hearing,
             consensus_speech,
         ));
-        let overlord = Overlord::new(name, Arc::clone(&brain), crypto);
+        let overlord = Overlord::new(name, Arc::clone(&brain), crypto, MockWal);
         let overlord_handler = overlord.get_handler();
 
         overlord_handler
@@ -261,6 +274,7 @@ impl Speaker {
         &self,
         interval: u64,
         timer_config: Option<DurationConfig>,
+        speaker_list: Vec<Node>,
     ) -> Result<(), Box<dyn Error + Send>> {
         let brain = Arc::<Brain>::clone(&self.brain);
         let handler = self.handler.clone();
@@ -288,7 +302,10 @@ impl Speaker {
             }
         });
 
-        self.overlord.run(interval, timer_config).await.unwrap();
+        self.overlord
+            .run(interval, speaker_list, timer_config)
+            .await
+            .unwrap();
 
         Ok(())
     }
@@ -308,9 +325,10 @@ async fn main() {
     let consensus_speech = Arc::new(Mutex::new(HashMap::new()));
 
     let speaker_list_clone = speaker_list.clone();
+    let auth_list = speaker_list.clone();
 
-    for speaker in speaker_list {
-        let name = speaker.address;
+    for speaker in speaker_list.iter() {
+        let name = speaker.address.clone();
         let mut talk_to: HashMap<Bytes, Sender<OverlordMsg<Speech>>> = speaker_list_clone
             .iter()
             .map(|speaker| speaker.address.clone())
@@ -325,8 +343,13 @@ async fn main() {
             hearings.get(&name).unwrap().clone(),
             Arc::<Mutex<HashMap<u64, Bytes>>>::clone(&consensus_speech),
         ));
+
+        let list = auth_list.clone();
         runtime::spawn(async move {
-            speaker.run(SPEECH_INTERVAL, timer_config()).await.unwrap();
+            speaker
+                .run(SPEECH_INTERVAL, timer_config(), list)
+                .await
+                .unwrap();
         });
     }
 
