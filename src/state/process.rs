@@ -64,8 +64,8 @@ pub struct State<T: Codec, F: Consensus<T>, C: Crypto, W: Wal> {
 
     resp_tx:  UnboundedSender<VerifyResp>,
     function: Arc<F>,
+    wal:      Arc<W>,
     util:     C,
-    wal:      W,
 }
 
 impl<T, F, C, W> State<T, F, C, W>
@@ -83,7 +83,7 @@ where
         mut authority_list: Vec<Node>,
         consensus: Arc<F>,
         crypto: C,
-        wal_engine: W,
+        wal_engine: Arc<W>,
     ) -> (Self, UnboundedReceiver<VerifyResp>) {
         let (tx, rx) = unbounded();
         let mut auth = AuthorityManage::new();
@@ -602,22 +602,18 @@ where
                 )));
             }
 
-            let voters = self.authority.get_voters(
-                &polc.lock_votes.signature.address_bitmap,
-                proposal.epoch_id == self.epoch_id,
-            )?;
-            self.util
-                .verify_aggregated_signature(
-                    polc.lock_votes.signature.signature,
-                    proposal.epoch_hash.clone(),
-                    voters,
-                )
-                .map_err(|err| {
-                    ConsensusError::AggregatedSignatureErr(format!(
-                        "{:?} proposal of epoch ID {:?}, round {:?}",
-                        err, proposal.epoch_id, proposal.round
-                    ))
-                })?;
+            self.verify_aggregated_signature(
+                polc.lock_votes.signature.clone(),
+                polc.lock_votes.to_vote(),
+                self.epoch_id,
+                VoteType::Prevote,
+            )
+            .map_err(|err| {
+                ConsensusError::AggregatedSignatureErr(format!(
+                    "{:?} proposal of epoch ID {:?}, round {:?}",
+                    err, proposal.epoch_id, proposal.round
+                ))
+            })?;
             Some(polc.lock_round)
         } else {
             None
