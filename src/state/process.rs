@@ -602,22 +602,18 @@ where
                 )));
             }
 
-            let voters = self.authority.get_voters(
-                &polc.lock_votes.signature.address_bitmap,
-                proposal.epoch_id == self.epoch_id,
-            )?;
-            self.util
-                .verify_aggregated_signature(
-                    polc.lock_votes.signature.signature,
-                    proposal.epoch_hash.clone(),
-                    voters,
-                )
-                .map_err(|err| {
-                    ConsensusError::AggregatedSignatureErr(format!(
-                        "{:?} proposal of epoch ID {:?}, round {:?}",
-                        err, proposal.epoch_id, proposal.round
-                    ))
-                })?;
+            self.verify_aggregated_signature(
+                polc.lock_votes.signature.clone(),
+                polc.lock_votes.to_vote(),
+                self.epoch_id,
+                VoteType::Prevote,
+            )
+            .map_err(|err| {
+                ConsensusError::AggregatedSignatureErr(format!(
+                    "{:?} proposal of epoch ID {:?}, round {:?}",
+                    err, proposal.epoch_id, proposal.round
+                ))
+            })?;
             Some(polc.lock_round)
         } else {
             None
