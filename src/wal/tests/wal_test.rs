@@ -41,7 +41,7 @@ async fn test_process(case: WalTestCase) {
         case.auth_list.clone(),
         Arc::new(engine),
         MockCrypto,
-        MockWal::new(case.input.clone()),
+        Arc::new(MockWal::new(case.input.clone())),
     );
 
     runtime::spawn(async move {

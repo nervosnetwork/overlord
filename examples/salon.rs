@@ -74,11 +74,11 @@ struct MockWal;
 
 #[async_trait]
 impl Wal for MockWal {
-    async fn save(&mut self, _info: Bytes) -> Result<(), Box<dyn Error + Send>> {
+    async fn save(&self, _info: Bytes) -> Result<(), Box<dyn Error + Send>> {
         Ok(())
     }
 
-    async fn load(&mut self) -> Result<Option<Bytes>, Box<dyn Error + Send>> {
+    async fn load(&self) -> Result<Option<Bytes>, Box<dyn Error + Send>> {
         Ok(None)
     }
 }
@@ -249,7 +249,7 @@ impl Speaker {
             hearing,
             consensus_speech,
         ));
-        let overlord = Overlord::new(name, Arc::clone(&brain), crypto, MockWal);
+        let overlord = Overlord::new(name, Arc::clone(&brain), crypto, Arc::new(MockWal));
         let overlord_handler = overlord.get_handler();
 
         overlord_handler

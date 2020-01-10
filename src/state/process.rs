@@ -64,8 +64,8 @@ pub struct State<T: Codec, F: Consensus<T>, C: Crypto, W: Wal> {
 
     resp_tx:  UnboundedSender<VerifyResp>,
     function: Arc<F>,
+    wal:      Arc<W>,
     util:     C,
-    wal:      W,
 }
 
 impl<T, F, C, W> State<T, F, C, W>
@@ -83,7 +83,7 @@ where
         mut authority_list: Vec<Node>,
         consensus: Arc<F>,
         crypto: C,
-        wal_engine: W,
+        wal_engine: Arc<W>,
     ) -> (Self, UnboundedReceiver<VerifyResp>) {
         let (tx, rx) = unbounded();
         let mut auth = AuthorityManage::new();
