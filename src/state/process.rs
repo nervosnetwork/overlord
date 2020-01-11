@@ -325,14 +325,16 @@ where
             self.votes
                 .get_qc_by_hash(self.epoch_id, epoch_hash, VoteType::Prevote)
         {
-            self.state_machine.trigger(SMRTrigger {
-                trigger_type: TriggerType::PrevoteQC,
-                source:       TriggerSource::State,
-                hash:         qc.epoch_hash,
-                round:        Some(self.round),
-                epoch_id:     self.epoch_id,
-                wal_info:     None,
-            })?;
+            if qc.round == self.round {
+                self.state_machine.trigger(SMRTrigger {
+                    trigger_type: TriggerType::PrevoteQC,
+                    source:       TriggerSource::State,
+                    hash:         qc.epoch_hash,
+                    round:        Some(self.round),
+                    epoch_id:     self.epoch_id,
+                    wal_info:     None,
+                })?;
+            }
         }
         Ok(())
     }
