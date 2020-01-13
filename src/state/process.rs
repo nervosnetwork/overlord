@@ -1605,6 +1605,8 @@ where
             return Ok(());
         }
 
+        // TODO: change to info level
+        error!("overlord: start from wal {:?}", wal_info);
         let wal_info = wal_info.unwrap();
         self.epoch_id = wal_info.epoch_id;
         self.round = wal_info.round;
