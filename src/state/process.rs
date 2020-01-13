@@ -665,8 +665,8 @@ where
                 VoteType::Prevote => Step::Precommit,
                 VoteType::Precommit => Step::Propose,
             };
-            let round = lock_round.unwrap();
-            let lock = if lock_round.is_some() {
+
+            let lock = if let Some(round) = lock_round {
                 let qc = self
                     .votes
                     .get_qc_by_id(self.epoch_id, round, VoteType::Prevote)?;
@@ -1561,6 +1561,8 @@ where
                         "error": e.to_string(),
                     })),
                 );
+
+                error!("Overlord: state save wal error {:?}", e);
                 ConsensusError::SaveWalErr {
                     epoch_id: self.epoch_id,
                     round:    self.round,
@@ -1605,8 +1607,7 @@ where
             return Ok(());
         }
 
-        // TODO: change to info level
-        error!("overlord: start from wal {:?}", wal_info);
+        info!("overlord: start from wal {:?}", wal_info);
         let wal_info = wal_info.unwrap();
         self.epoch_id = wal_info.epoch_id;
         self.round = wal_info.round;
