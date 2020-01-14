@@ -672,10 +672,10 @@ where
                 let qc = self
                     .votes
                     .get_qc_by_id(self.epoch_id, round, VoteType::Prevote)?;
-                let content = self
-                    .hash_with_epoch
-                    .get(&hash)
-                    .ok_or_else(|| ConsensusError::Other("lose whole epoch".to_string()))?;
+                let content = self.hash_with_epoch.get(&hash).ok_or_else(|| {
+                    error!("{:?}", self.votes);
+                    ConsensusError::Other("lose whole epoch".to_string())
+                })?;
 
                 Some(WalLock {
                     lock_round: round,
