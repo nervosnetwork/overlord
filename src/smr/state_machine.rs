@@ -237,8 +237,10 @@ impl StateMachine {
             let round = if let Some(lock) = &self.lock {
                 Some(lock.round)
             } else {
+                self.epoch_hash = Hash::new();
                 None
             };
+
             self.throw_event(SMREvent::PrecommitVote {
                 epoch_id:   self.epoch_id,
                 round:      self.round,
