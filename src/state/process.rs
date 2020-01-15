@@ -1786,17 +1786,19 @@ async fn check_current_epoch<U: Consensus<T>, T: Codec>(
     epoch: T,
     tx: UnboundedSender<VerifyResp>,
 ) -> ConsensusResult<()> {
-    let is_pass = function
+    function
         .check_epoch(ctx, epoch_id, hash.clone(), epoch)
         .await
-        .is_ok();
+        .map_err(|err| {
+            ConsensusError::Other(format!("check {} epoch error {:?}", epoch_id, err))
+        })?;
 
-    info!("Overlord: state check epoch {}", is_pass);
+    info!("Overlord: state check epoch {}", true);
 
     tx.unbounded_send(VerifyResp {
         epoch_id,
         epoch_hash: hash,
-        is_pass,
+        is_pass: true,
     })
     .map_err(|e| ConsensusError::ChannelErr(e.to_string()))
 }
