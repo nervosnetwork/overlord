@@ -325,14 +325,16 @@ where
             self.votes
                 .get_qc_by_hash(self.epoch_id, epoch_hash, VoteType::Prevote)
         {
-            self.state_machine.trigger(SMRTrigger {
-                trigger_type: TriggerType::PrevoteQC,
-                source:       TriggerSource::State,
-                hash:         qc.epoch_hash,
-                round:        Some(self.round),
-                epoch_id:     self.epoch_id,
-                wal_info:     None,
-            })?;
+            if qc.round == self.round {
+                self.state_machine.trigger(SMRTrigger {
+                    trigger_type: TriggerType::PrevoteQC,
+                    source:       TriggerSource::State,
+                    hash:         qc.epoch_hash,
+                    round:        Some(self.round),
+                    epoch_id:     self.epoch_id,
+                    wal_info:     None,
+                })?;
+            }
         }
         Ok(())
     }
@@ -665,14 +667,14 @@ where
                 VoteType::Prevote => Step::Precommit,
                 VoteType::Precommit => Step::Propose,
             };
-            let round = lock_round.unwrap();
-            let lock = if lock_round.is_some() {
+
+            let lock = if let Some(round) = lock_round {
                 let qc = self
                     .votes
                     .get_qc_by_id(self.epoch_id, round, VoteType::Prevote)?;
                 let content = self
                     .hash_with_epoch
-                    .get(&hash)
+                    .get(&qc.epoch_hash)
                     .ok_or_else(|| ConsensusError::Other("lose whole epoch".to_string()))?;
 
                 Some(WalLock {
@@ -1561,6 +1563,8 @@ where
                         "error": e.to_string(),
                     })),
                 );
+
+                error!("Overlord: state save wal error {:?}", e);
                 ConsensusError::SaveWalErr {
                     epoch_id: self.epoch_id,
                     round:    self.round,
@@ -1605,6 +1609,7 @@ where
             return Ok(());
         }
 
+        info!("overlord: start from wal {:?}", wal_info);
         let wal_info = wal_info.unwrap();
         self.epoch_id = wal_info.epoch_id;
         self.round = wal_info.round;
