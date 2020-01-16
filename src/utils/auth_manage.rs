@@ -2,10 +2,11 @@ use std::collections::HashMap;
 
 use bit_vec::BitVec;
 use derive_more::Display;
+use prime_tools::get_primes_less_than_x;
 
 use crate::error::ConsensusError;
 use crate::types::{Address, Node};
-use crate::utils::rand_proposer::get_proposer_index;
+use crate::utils::rand_proposer::get_random_proposer_index;
 use crate::ConsensusResult;
 
 /// Authority manage consits of the current epoch authority manage and the last epoch authority
@@ -56,11 +57,16 @@ impl AuthorityManage {
 
     /// Get a proposer address of the epoch by a given seed. Return `Err` when `is_current` is
     /// `false`, and the when last epoch ID's authority management is `None`.
-    pub fn get_proposer(&self, seed: u64, is_current: bool) -> ConsensusResult<Address> {
+    pub fn get_proposer(
+        &self,
+        epoch_id: u64,
+        round: u64,
+        is_current: bool,
+    ) -> ConsensusResult<Address> {
         if is_current {
-            self.current.get_proposer(seed)
+            self.current.get_proposer(epoch_id, round)
         } else if let Some(auth_list) = self.last.clone() {
-            auth_list.get_proposer(seed)
+            auth_list.get_proposer(epoch_id, round)
         } else {
             Err(ConsensusError::Other(
                 "There is no authority list cache of last epoch".to_string(),
@@ -185,8 +191,20 @@ impl EpochAuthorityManage {
     }
 
     /// Get the proposer address by a given seed.
-    fn get_proposer(&self, seed: u64) -> ConsensusResult<Address> {
-        let index = get_proposer_index(seed, &self.propose_weights, self.propose_weight_sum);
+    fn get_proposer(&self, epoch_id: u64, round: u64) -> ConsensusResult<Address> {
+        let index = if cfg!(features = "random_leader") {
+            get_random_proposer_index(
+                epoch_id + round,
+                &self.propose_weights,
+                self.propose_weight_sum,
+            )
+        } else {
+            let len = self.address.len();
+            let prime_num = *get_primes_less_than_x(len as u32).last().unwrap_or(&1) as u64;
+            let res = (epoch_id * prime_num + round) % (len as u64);
+            res as usize
+        };
+
         if let Some(addr) = self.address.get(index) {
             return Ok(addr.to_owned());
         }
@@ -427,6 +445,44 @@ mod test {
         assert_eq!(voters.len(), 2);
         assert_eq!(voters[0], auth_list[0]);
         assert_eq!(voters[1], auth_list[2]);
+    }
+
+    #[test]
+    fn test_poll_leader() {
+        let mut authority_list = vec![
+            gen_node(gen_address(), 1u8, 1u8),
+            gen_node(gen_address(), 1u8, 1u8),
+            gen_node(gen_address(), 1u8, 1u8),
+            gen_node(gen_address(), 1u8, 1u8),
+        ];
+        authority_list.sort();
+        let mut authority = AuthorityManage::new();
+        authority.update(&mut authority_list, false);
+
+        assert_eq!(
+            authority.get_proposer(1, 0, true).unwrap(),
+            authority_list[3].address
+        );
+        assert_eq!(
+            authority.get_proposer(1, 1, true).unwrap(),
+            authority_list[0].address
+        );
+        assert_eq!(
+            authority.get_proposer(2, 0, true).unwrap(),
+            authority_list[2].address
+        );
+        assert_eq!(
+            authority.get_proposer(2, 2, true).unwrap(),
+            authority_list[0].address
+        );
+        assert_eq!(
+            authority.get_proposer(3, 0, true).unwrap(),
+            authority_list[1].address
+        );
+        assert_eq!(
+            authority.get_proposer(3, 1, true).unwrap(),
+            authority_list[2].address
+        );
     }
 
     #[bench]
