@@ -105,7 +105,7 @@ impl Timer {
     }
 
     pub fn run(mut self) {
-        runtime::spawn(async move {
+        tokio::spawn(async move {
             loop {
                 if let Some(err) = self.next().await {
                     error!("Overlord: timer error {:?}", err);
@@ -144,7 +144,7 @@ impl Timer {
 
         let smr_timer = TimeoutInfo::new(interval, event, self.sender.clone());
 
-        runtime::spawn(async move {
+        tokio::spawn(async move {
             smr_timer.await;
         });
 
@@ -215,7 +215,7 @@ impl Future for TimeoutInfo {
         match self.timeout.poll_unpin(cx) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(_) => {
-                runtime::spawn(async move {
+                tokio::spawn(async move {
                     let _ = tx.send(msg).await;
                 });
                 Poll::Ready(())
@@ -254,7 +254,7 @@ mod test {
         );
         event_tx.unbounded_send(input).unwrap();
 
-        runtime::spawn(async move {
+        tokio::spawn(async move {
             loop {
                 match timer.next().await {
                     None => break,
@@ -280,7 +280,7 @@ mod test {
         }
     }
 
-    #[runtime::test]
+    #[tokio::test(threaded_scheduler)]
     async fn test_correctness() {
         // Test propose step timer.
         test_timer_trigger(
@@ -319,7 +319,7 @@ mod test {
         .await;
     }
 
-    #[runtime::test]
+    #[tokio::test(threaded_scheduler)]
     async fn test_order() {
         let (trigger_tx, mut trigger_rx) = unbounded();
         let (event_tx, event_rx) = unbounded();
@@ -351,7 +351,7 @@ mod test {
             lock_round: None,
         };
 
-        runtime::spawn(async move {
+        tokio::spawn(async move {
             loop {
                 match timer.next().await {
                     None => break,

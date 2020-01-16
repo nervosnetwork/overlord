@@ -45,9 +45,9 @@ impl SMR {
         self.smr_handler.take().unwrap()
     }
 
-    /// Run SMR module in runtime environment.
+    /// Run SMR module in tokio environment.
     pub fn run(mut self) {
-        runtime::spawn(async move {
+        tokio::spawn(async move {
             loop {
                 let res = self.state_machine.next().await;
                 if let Some(err) = res {

@@ -4,7 +4,7 @@ use crate::{error::ConsensusError, types::Hash};
 
 /// Test state machine handle proposal trigger.
 /// There are a total of *4 × 4 + 3 = 19* test cases.
-#[runtime::test]
+#[tokio::test(threaded_scheduler)]
 async fn test_proposal_trigger() {
     let mut index = 1;
     let mut test_cases: Vec<StateMachineTestCase> = Vec::new();

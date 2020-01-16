@@ -2,7 +2,7 @@ use crate::smr::smr_types::{Lock, SMREvent, SMRTrigger, Step, TriggerType};
 use crate::smr::tests::{gen_hash, trigger_test, InnerState, StateMachineTestCase};
 use crate::{error::ConsensusError, types::Hash};
 
-#[runtime::test]
+#[tokio::test(threaded_scheduler)]
 async fn test_new_epoch() {
     let mut index = 1;
     let mut test_cases: Vec<StateMachineTestCase> = Vec::new();
