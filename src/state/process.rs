@@ -1531,7 +1531,7 @@ where
             })),
         );
 
-        runtime::spawn(async move {
+        tokio::spawn(async move {
             if let Err(e) =
                 check_current_epoch(ctx, function, epoch_id, hash.clone(), epoch, resp_tx).await
             {

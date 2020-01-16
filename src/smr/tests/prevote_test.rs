@@ -4,7 +4,7 @@ use crate::{error::ConsensusError, types::Hash};
 
 /// Test state machine handle prevoteQC trigger.
 /// There are a total of *2 × 4 + 2 = 10* test cases.
-#[runtime::test]
+#[tokio::test(threaded_scheduler)]
 async fn test_prevote_trigger() {
     let mut index = 1;
     let mut test_cases: Vec<StateMachineTestCase> = Vec::new();

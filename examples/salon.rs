@@ -311,7 +311,7 @@ impl Speaker {
     }
 }
 
-#[runtime::main(runtime_tokio::Tokio)]
+#[tokio::main]
 async fn main() {
     let speaker_list: Vec<Node> = (0..SPEAKER_NUM)
         .map(|_| Node::new(gen_random_bytes()))
@@ -345,7 +345,7 @@ async fn main() {
         ));
 
         let list = auth_list.clone();
-        runtime::spawn(async move {
+        tokio::spawn(async move {
             speaker
                 .run(SPEECH_INTERVAL, timer_config(), list)
                 .await

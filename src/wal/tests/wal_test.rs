@@ -44,7 +44,7 @@ async fn test_process(case: WalTestCase) {
         Arc::new(MockWal::new(case.input.clone())),
     );
 
-    runtime::spawn(async move {
+    tokio::spawn(async move {
         let _ = overlord.run(raw_rx, Event::new(mock_rx), tmp_rx).await;
     });
 
@@ -62,7 +62,7 @@ async fn test_process(case: WalTestCase) {
     mock_tx.close_channel();
 }
 
-#[runtime::test]
+#[tokio::test(threaded_scheduler)]
 #[ignore]
 async fn test_wal() {
     let mut test_cases = Vec::new();
