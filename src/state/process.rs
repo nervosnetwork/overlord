@@ -1310,6 +1310,11 @@ where
             info!("Overlord: state self become leader");
             return Ok(true);
         }
+
+        info!(
+            "Overlord: {:?} become leader",
+            hex::encode(proposer.clone())
+        );
         self.leader_address = proposer;
         Ok(false)
     }
