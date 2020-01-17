@@ -312,7 +312,8 @@ pub struct Status {
 pub struct Node {
     /// Node address.
     pub address: Address,
-    /// The propose weight of the node.
+    /// The propose weight of the node. The field is only effective in `features =
+    /// "random_leader"`.
     pub propose_weight: u8,
     /// The vote weight of the node.
     pub vote_weight: u8,
@@ -340,7 +341,8 @@ impl Node {
         }
     }
 
-    /// Set a new propose weight of the node.
+    /// Set a new propose weight of the node. Propose weight is only effective in `features =
+    /// "random_leader"`.
     pub fn set_propose_weight(&mut self, propose_weight: u8) {
         self.propose_weight = propose_weight;
     }

@@ -801,7 +801,8 @@ where
         self.authority.update(&mut auth_list, true);
 
         let cost = Instant::now() - self.epoch_start;
-        if self.next_proposer(status.epoch_id)? && cost < Duration::from_millis(self.epoch_interval)
+        if self.next_proposer(status.epoch_id, INIT_ROUND)?
+            && cost < Duration::from_millis(self.epoch_interval)
         {
             Delay::new(Duration::from_millis(self.epoch_interval) - cost).await;
         }
@@ -1304,7 +1305,7 @@ where
     fn is_proposer(&mut self) -> ConsensusResult<bool> {
         let proposer = self
             .authority
-            .get_proposer(self.epoch_id + self.round, true)?;
+            .get_proposer(self.epoch_id, self.round, true)?;
 
         if proposer == self.address {
             info!("Overlord: state self become leader");
@@ -1319,8 +1320,8 @@ where
         Ok(false)
     }
 
-    fn next_proposer(&self, seed: u64) -> ConsensusResult<bool> {
-        let proposer = self.authority.get_proposer(seed, true)?;
+    fn next_proposer(&self, epoch_id: u64, round: u64) -> ConsensusResult<bool> {
+        let proposer = self.authority.get_proposer(epoch_id, round, true)?;
         Ok(self.address == proposer)
     }
 
@@ -1427,7 +1428,7 @@ where
     ) -> ConsensusResult<()> {
         debug!("Overlord: state verify a proposer");
         self.verify_address(address, is_current)?;
-        if address != &self.authority.get_proposer(epoch_id + round, is_current)? {
+        if address != &self.authority.get_proposer(epoch_id, round, is_current)? {
             return Err(ConsensusError::ProposalErr("Invalid proposer".to_string()));
         }
         Ok(())
