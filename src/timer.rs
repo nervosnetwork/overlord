@@ -12,7 +12,7 @@ use log::{debug, error, info};
 use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
 use crate::smr::{Event, SMRHandler};
 use crate::DurationConfig;
-use crate::{error::ConsensusError, ConsensusResult, INIT_height, INIT_ROUND};
+use crate::{error::ConsensusError, ConsensusResult, INIT_HEIGHT, INIT_ROUND};
 use crate::{types::Hash, utils::timer_config::TimerConfig};
 
 /// Overlord timer used futures timer which is powered by a timer heap. When monitor a SMR event,
@@ -95,7 +95,7 @@ impl Timer {
 
         Timer {
             config: timer_config,
-            height: INIT_height,
+            height: INIT_HEIGHT,
             round: INIT_ROUND,
             sender: tx,
             notify: rx,

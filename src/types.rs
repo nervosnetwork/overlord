@@ -138,7 +138,7 @@ pub struct Proposal<T: Codec> {
     pub round: u64,
     /// Proposal content.
     pub content: T,
-    /// Proposal epoch hash.
+    /// Proposal block hash.
     pub block_hash: Hash,
     /// Optional field. If the proposal has a PoLC, this contains the lock round and lock votes.
     pub lock: Option<PoLC>,
@@ -266,7 +266,7 @@ pub struct Vote {
     pub round: u64,
     /// Type of the vote.
     pub vote_type: VoteType,
-    /// Epoch hash of the vote.
+    /// Block hash of the vote.
     pub block_hash: Hash,
 }
 
@@ -289,7 +289,7 @@ pub struct Proof {
     pub height: u64,
     /// Round of the proof.
     pub round: u64,
-    /// Epoch hash of the proof.
+    /// Block hash of the proof.
     pub block_hash: Hash,
     /// Aggregated signature of the proof.
     pub signature: AggregatedSignature,
@@ -360,14 +360,14 @@ pub(crate) struct Feed<T: Codec> {
     pub(crate) height: u64,
     /// Feed content.
     pub(crate) content: T,
-    /// The epoch hash.
+    /// The block hash.
     pub(crate) block_hash: Hash,
 }
 
 /// A verify response.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VerifyResp {
-    /// The height of the verified epoch.
+    /// The height of the verified block.
     pub height: u64,
     /// Verified proposal hash.
     pub block_hash: Hash,

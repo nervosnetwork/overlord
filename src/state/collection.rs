@@ -589,7 +589,9 @@ mod test {
         assert_eq!(proposals.get(3, 0).unwrap(), proposal_04);
 
         assert!(proposals.get_height_proposals(1).is_none());
-        assert_eq!(proposals.get_height_proposals(2).unwrap(), vec![proposal_03]);
+        assert_eq!(proposals.get_height_proposals(2).unwrap(), vec![
+            proposal_03
+        ]);
         assert!(proposals.get(2, 0).is_err());
     }
 

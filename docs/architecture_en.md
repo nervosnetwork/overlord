@@ -250,7 +250,7 @@ pub fn load(&self) -> Vec<(WalMsgType, Vec<u8>)>
 #[async_trait]
 pub trait Consensus<T: Codec>: Send + Sync {
     /// Get an epoch of an height and return the epoch with its hash.
-    async fn get_epoch(
+    async fn get_block(
         &self,
         _ctx: Vec<u8>,
         height: u64,

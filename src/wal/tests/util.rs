@@ -44,7 +44,7 @@ pub struct ConsensusHelper<T: Codec> {
 
 #[async_trait]
 impl Consensus<Pill> for ConsensusHelper<Pill> {
-    async fn get_epoch(
+    async fn get_block(
         &self,
         _ctx: Context,
         height: u64,

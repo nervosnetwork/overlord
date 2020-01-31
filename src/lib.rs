@@ -42,30 +42,30 @@ use crate::types::{Address, Commit, Hash, Node, OverlordMsg, Signature, Status};
 /// Overlord consensus result.
 pub type ConsensusResult<T> = ::std::result::Result<T, ConsensusError>;
 
-const INIT_height: u64 = 0;
+const INIT_HEIGHT: u64 = 0;
 const INIT_ROUND: u64 = 0;
 
 /// Trait for some functions that consensus needs.
 #[async_trait]
 pub trait Consensus<T: Codec>: Send + Sync {
-    /// Get an epoch of the given height and return the epoch with its hash.
-    async fn get_epoch(
+    /// Get an block of the given height and return the block with its hash.
+    async fn get_block(
         &self,
         ctx: Context,
         height: u64,
     ) -> Result<(T, Hash), Box<dyn Error + Send>>;
 
-    /// Check the correctness of an epoch. If is passed, return the integrated transcations to do
+    /// Check the correctness of an block. If is passed, return the integrated transcations to do
     /// data persistence.
     async fn check_block(
         &self,
         ctx: Context,
         height: u64,
         hash: Hash,
-        epoch: T,
+        block: T,
     ) -> Result<(), Box<dyn Error + Send>>;
 
-    /// Commit a given epoch to execute and return the rich status.
+    /// Commit a given height to execute and return the rich status.
     async fn commit(
         &self,
         ctx: Context,
@@ -150,11 +150,11 @@ pub trait Crypto: Send {
 /// The setting of the timeout interval of each step.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct DurationConfig {
-    /// The proportion of propose timeout to the epoch interval.
+    /// The proportion of propose timeout to the height interval.
     pub propose_ratio: u64,
-    /// The proportion of prevote timeout to the epoch interval.
+    /// The proportion of prevote timeout to the height interval.
     pub prevote_ratio: u64,
-    /// The proportion of precommit timeout to the epoch interval.
+    /// The proportion of precommit timeout to the height interval.
     pub precommit_ratio: u64,
 }
 

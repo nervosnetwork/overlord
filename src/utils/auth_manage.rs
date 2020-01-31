@@ -9,27 +9,27 @@ use crate::types::{Address, Node};
 use crate::utils::rand_proposer::get_random_proposer_index;
 use crate::ConsensusResult;
 
-/// Authority manage consits of the current epoch authority manage and the last epoch authority
-/// manage The last epoch authority manage which is optional is used to check the correctness of
-/// last epoch's message. The last epoch's authority manage should be `Some` unless current epoch is
-/// `0` or `1`.
+/// Authority manage consits of the current height authority manage and the last height authority
+/// manage The last height authority manage which is optional is used to check the correctness of
+/// last height's message. The last height's authority manage should be `Some` unless current height
+/// is `0` or `1`.
 #[display(fmt = "Authority List {:?}", current)]
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
 pub struct AuthorityManage {
-    current: EpochAuthorityManage,
-    last:    Option<EpochAuthorityManage>,
+    current: HeightAuthorityManage,
+    last:    Option<HeightAuthorityManage>,
 }
 
 impl AuthorityManage {
     /// Create a new authority management.
     pub fn new() -> Self {
         AuthorityManage {
-            current: EpochAuthorityManage::new(),
+            current: HeightAuthorityManage::new(),
             last:    None,
         }
     }
 
-    /// Update a new epoch of authority list. If the argument `reserve_old` is `true`, the old
+    /// Update a new height of authority list. If the argument `reserve_old` is `true`, the old
     /// authority will be reserved, otherwise, it will be cleared.
     pub fn update(&mut self, authority_list: &mut Vec<Node>, reserve_old: bool) {
         self.last = if reserve_old {
@@ -40,11 +40,11 @@ impl AuthorityManage {
         self.current.update(authority_list);
     }
 
-    /// Set the last epoch's authority list when the node leap to a higher epoch. In this situation,
-    /// an authority list of `current_epoch - 1` is required to guarantee the consensus
-    /// liveness.
+    /// Set the last height's authority list when the node leap to a higher height. In this
+    /// situation, an authority list of `current_height - 1` is required to guarantee the
+    /// consensus liveness.
     pub fn set_last_list(&mut self, authority_list: &mut Vec<Node>) {
-        let mut auth_manage = EpochAuthorityManage::new();
+        let mut auth_manage = HeightAuthorityManage::new();
         auth_manage.update(authority_list);
         self.last = Some(auth_manage);
     }
@@ -55,7 +55,7 @@ impl AuthorityManage {
         self.current.get_vote_weight(addr)
     }
 
-    /// Get a proposer address of the epoch by a given seed. Return `Err` when `is_current` is
+    /// Get a proposer address of the height by a given seed. Return `Err` when `is_current` is
     /// `false`, and the when last height's authority management is `None`.
     pub fn get_proposer(
         &self,
@@ -69,7 +69,7 @@ impl AuthorityManage {
             auth_list.get_proposer(height, round)
         } else {
             Err(ConsensusError::Other(
-                "There is no authority list cache of last epoch".to_string(),
+                "There is no authority list cache of last height".to_string(),
             ))
         }
     }
@@ -83,7 +83,7 @@ impl AuthorityManage {
             auth_list.is_above_threshold(bitmap)
         } else {
             Err(ConsensusError::Other(
-                "There is no authority list cache of last epoch".to_string(),
+                "There is no authority list cache of last height".to_string(),
             ))
         }
     }
@@ -96,7 +96,7 @@ impl AuthorityManage {
             auth_list.get_voters(bitmap)
         } else {
             Err(ConsensusError::Other(
-                "There is no authority list cache of last epoch".to_string(),
+                "There is no authority list cache of last height".to_string(),
             ))
         }
     }
@@ -110,7 +110,7 @@ impl AuthorityManage {
             Ok(auth_list.contains(address))
         } else {
             Err(ConsensusError::Other(
-                "There is no authority list cache of last epoch".to_string(),
+                "There is no authority list cache of last height".to_string(),
             ))
         }
     }
@@ -124,7 +124,7 @@ impl AuthorityManage {
             Ok(auth_list.get_vote_weight_sum())
         } else {
             Err(ConsensusError::Other(
-                "There is no authority list cache of last epoch".to_string(),
+                "There is no authority list cache of last height".to_string(),
             ))
         }
     }
@@ -139,13 +139,13 @@ impl AuthorityManage {
     }
 }
 
-/// Epoch authority manage is an extensional data structure of authority list which means
+/// Height authority manage is an extensional data structure of authority list which means
 /// `Vec<Node>`. It transforms the information in `Node` struct into a more suitable data structure
 /// according to its usage scene. The vote weight need look up by address frequently, therefore,
 /// address with vote weight saved in a `HashMap`.
 #[display(fmt = "{:?}", address)]
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
-struct EpochAuthorityManage {
+struct HeightAuthorityManage {
     address:            Vec<Address>,
     propose_weights:    Vec<u64>,
     vote_weight_map:    HashMap<Address, u8>,
@@ -153,10 +153,10 @@ struct EpochAuthorityManage {
     vote_weight_sum:    u64,
 }
 
-impl EpochAuthorityManage {
-    /// Create a new epoch authority manage.
+impl HeightAuthorityManage {
+    /// Create a new height authority manage.
     fn new() -> Self {
-        EpochAuthorityManage {
+        HeightAuthorityManage {
             address:            Vec::new(),
             propose_weights:    Vec::new(),
             vote_weight_map:    HashMap::new(),
@@ -165,7 +165,7 @@ impl EpochAuthorityManage {
         }
     }
 
-    /// Update the epoch authority manage by a new authority list.
+    /// Update the height authority manage by a new authority list.
     fn update(&mut self, authority_list: &mut Vec<Node>) {
         self.flush();
         authority_list.sort();
@@ -255,7 +255,7 @@ impl EpochAuthorityManage {
         self.vote_weight_sum
     }
 
-    /// Clear the EpochAuthorityManage, removing all values.
+    /// Clear the HeightAuthorityManage, removing all values.
     fn flush(&mut self) {
         self.address.clear();
         self.propose_weights.clear();
@@ -276,7 +276,7 @@ mod test {
 
     use crate::error::ConsensusError;
     use crate::types::{Address, Node};
-    use crate::utils::auth_manage::{AuthorityManage, EpochAuthorityManage};
+    use crate::utils::auth_manage::{AuthorityManage, HeightAuthorityManage};
 
     fn gen_address() -> Address {
         Address::from((0..32).map(|_| random::<u8>()).collect::<Vec<_>>())
@@ -312,7 +312,7 @@ mod test {
     #[test]
     fn test_vote_weight() {
         let mut authority_list = gen_auth_list(0);
-        let mut authority_manage = EpochAuthorityManage::new();
+        let mut authority_manage = HeightAuthorityManage::new();
         authority_manage.update(&mut authority_list);
 
         for node in authority_list.iter() {
@@ -342,7 +342,7 @@ mod test {
         let mut authority_list_new = gen_auth_list(random::<u8>() as usize);
         let mut authority_list_newer = gen_auth_list(random::<u8>() as usize);
         let mut auth_manage = AuthorityManage::new();
-        let mut e_auth_manage = EpochAuthorityManage::new();
+        let mut e_auth_manage = HeightAuthorityManage::new();
 
         auth_manage.update(&mut authority_list, false);
         e_auth_manage.update(&mut authority_list);

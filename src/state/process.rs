@@ -59,7 +59,7 @@ pub struct State<T: Codec, F: Consensus<T>, C: Crypto, W: Wal> {
     is_leader:           bool,
     leader_address:      Address,
     last_commit_qc:      Option<AggregatedVote>,
-    height_start:         Instant,
+    height_start:        Instant,
     block_interval:      u64,
 
     resp_tx:  UnboundedSender<VerifyResp>,
@@ -102,7 +102,7 @@ where
             is_leader:           false,
             leader_address:      Address::default(),
             last_commit_qc:      None,
-            height_start:         Instant::now(),
+            height_start:        Instant::now(),
             block_interval:      interval,
 
             resp_tx:  tx,
@@ -346,8 +346,8 @@ where
     /// If the difference between the status height and current's over one, get the last authority
     /// list of the status height firstly. Then update the height, authority_list and the block
     /// interval. Since it is possible to have received and cached the current height's proposals,
-    /// votes and quorum certificates before, these should be re-checked as goto new height. Finally,
-    /// trigger SMR to goto new height.
+    /// votes and quorum certificates before, these should be re-checked as goto new height.
+    /// Finally, trigger SMR to goto new height.
     async fn goto_new_height(
         &mut self,
         ctx: Context,
@@ -475,7 +475,7 @@ where
         let (block, hash, polc) = if lock_round.is_none() {
             let (new_block, new_hash) = self
                 .function
-                .get_epoch(ctx.clone(), self.height)
+                .get_block(ctx.clone(), self.height)
                 .await
                 .map_err(|err| ConsensusError::Other(format!("get block error {:?}", err)))?;
             (new_block, new_hash, None)
@@ -757,9 +757,9 @@ where
         let qc = qc.unwrap();
         let proof = Proof {
             height,
-            round:      self.round,
+            round: self.round,
             block_hash: hash.clone(),
-            signature:  qc.signature.clone(),
+            signature: qc.signature.clone(),
         };
         let commit = Commit {
             height,

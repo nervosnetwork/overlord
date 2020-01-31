@@ -154,7 +154,7 @@ impl Brain {
 
 #[async_trait]
 impl Consensus<Speech> for Brain {
-    async fn get_epoch(
+    async fn get_block(
         &self,
         _ctx: Context,
         _height: u64,
