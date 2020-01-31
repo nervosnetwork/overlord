@@ -42,7 +42,7 @@ use crate::types::{Address, Commit, Hash, Node, OverlordMsg, Signature, Status};
 /// Overlord consensus result.
 pub type ConsensusResult<T> = ::std::result::Result<T, ConsensusError>;
 
-const INIT_EPOCH_ID: u64 = 0;
+const INIT_height: u64 = 0;
 const INIT_ROUND: u64 = 0;
 
 /// Trait for some functions that consensus needs.
@@ -52,7 +52,7 @@ pub trait Consensus<T: Codec>: Send + Sync {
     async fn get_epoch(
         &self,
         ctx: Context,
-        epoch_id: u64,
+        height: u64,
     ) -> Result<(T, Hash), Box<dyn Error + Send>>;
 
     /// Check the correctness of an epoch. If is passed, return the integrated transcations to do
@@ -60,7 +60,7 @@ pub trait Consensus<T: Codec>: Send + Sync {
     async fn check_epoch(
         &self,
         ctx: Context,
-        epoch_id: u64,
+        height: u64,
         hash: Hash,
         epoch: T,
     ) -> Result<(), Box<dyn Error + Send>>;
@@ -69,7 +69,7 @@ pub trait Consensus<T: Codec>: Send + Sync {
     async fn commit(
         &self,
         ctx: Context,
-        epoch_id: u64,
+        height: u64,
         commit: Commit<T>,
     ) -> Result<Status, Box<dyn Error + Send>>;
 
@@ -77,7 +77,7 @@ pub trait Consensus<T: Codec>: Send + Sync {
     async fn get_authority_list(
         &self,
         ctx: Context,
-        epoch_id: u64,
+        height: u64,
     ) -> Result<Vec<Node>, Box<dyn Error + Send>>;
 
     /// Broadcast a message to other replicas.

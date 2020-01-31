@@ -60,18 +60,13 @@ impl InnerState {
 }
 
 impl SMRTrigger {
-    fn new(
-        proposal_hash: Hash,
-        t_type: TriggerType,
-        lock_round: Option<u64>,
-        epoch_id: u64,
-    ) -> Self {
+    fn new(proposal_hash: Hash, t_type: TriggerType, lock_round: Option<u64>, height: u64) -> Self {
         SMRTrigger {
             trigger_type: t_type,
             source: TriggerSource::State,
             hash: proposal_hash,
             round: lock_round,
-            epoch_id,
+            height,
             wal_info: None,
         }
     }

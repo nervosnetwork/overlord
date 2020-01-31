@@ -17,7 +17,7 @@ async fn test_prevote_trigger() {
         InnerState::new(0, Step::Prevote, Hash::new(), None),
         SMRTrigger::new(hash.clone(), TriggerType::PrevoteQC, Some(0), 0),
         SMREvent::PrecommitVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      0u64,
             epoch_hash: hash.clone(),
             lock_round: Some(0),
@@ -34,7 +34,7 @@ async fn test_prevote_trigger() {
         InnerState::new(0, Step::Prevote, Hash::new(), None),
         SMRTrigger::new(hash.clone(), TriggerType::PrevoteQC, Some(0), 0),
         SMREvent::PrecommitVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      0u64,
             epoch_hash: hash,
             lock_round: None,
@@ -56,7 +56,7 @@ async fn test_prevote_trigger() {
         InnerState::new(1, Step::Prevote, hash.clone(), Some(lock)),
         SMRTrigger::new(hash, TriggerType::PrevoteQC, Some(1), 0),
         SMREvent::PrecommitVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      1u64,
             epoch_hash: lock_hash.clone(),
             lock_round: None,
@@ -78,7 +78,7 @@ async fn test_prevote_trigger() {
         InnerState::new(1, Step::Prevote, Hash::new(), Some(lock)),
         SMRTrigger::new(hash, TriggerType::PrevoteQC, Some(1), 0),
         SMREvent::PrecommitVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      1u64,
             epoch_hash: lock_hash.clone(),
             lock_round: None,
@@ -95,7 +95,7 @@ async fn test_prevote_trigger() {
         InnerState::new(1, Step::Prevote, hash.clone(), None),
         SMRTrigger::new(Hash::new(), TriggerType::PrevoteQC, Some(1), 0),
         SMREvent::PrecommitVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      1u64,
             epoch_hash: Hash::new(),
             lock_round: None,
@@ -113,7 +113,7 @@ async fn test_prevote_trigger() {
         InnerState::new(1, Step::Prevote, hash.clone(), None),
         SMRTrigger::new(vote_hash.clone(), TriggerType::PrevoteQC, Some(1), 0),
         SMREvent::PrecommitVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      1u64,
             epoch_hash: vote_hash.clone(),
             lock_round: Some(1),
@@ -132,7 +132,7 @@ async fn test_prevote_trigger() {
         InnerState::new(1, Step::Prevote, lock_hash.clone(), Some(lock)),
         SMRTrigger::new(hash.clone(), TriggerType::PrevoteQC, Some(1), 0),
         SMREvent::PrecommitVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      1u64,
             epoch_hash: hash.clone(),
             lock_round: None,
@@ -151,7 +151,7 @@ async fn test_prevote_trigger() {
         InnerState::new(1, Step::Prevote, lock_hash.clone(), Some(lock)),
         SMRTrigger::new(hash.clone(), TriggerType::PrevoteQC, Some(1), 0),
         SMREvent::PrecommitVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      1u64,
             epoch_hash: hash.clone(),
             lock_round: Some(1),
@@ -168,7 +168,7 @@ async fn test_prevote_trigger() {
     //     InnerState::new(1, Step::Prevote, Hash::new(), None),
     //     SMRTrigger::new(hash, TriggerType::PrevoteQC, Some(0), 0),
     //     SMREvent::PrecommitVote {
-    //         epoch_id:   0u64,
+    //         height:   0u64,
     //         round:      1u64,
     //         epoch_hash: Hash::new(),
     //     },

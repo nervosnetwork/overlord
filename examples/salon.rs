@@ -157,7 +157,7 @@ impl Consensus<Speech> for Brain {
     async fn get_epoch(
         &self,
         _ctx: Context,
-        _epoch_id: u64,
+        _height: u64,
     ) -> Result<(Speech, Hash), Box<dyn Error + Send>> {
         let thought = gen_random_bytes();
         Ok((Speech::from(thought.clone()), hash(&thought)))
@@ -166,7 +166,7 @@ impl Consensus<Speech> for Brain {
     async fn check_epoch(
         &self,
         _ctx: Context,
-        _epoch_id: u64,
+        _height: u64,
         _hash: Hash,
         _speech: Speech,
     ) -> Result<(), Box<dyn Error + Send>> {
@@ -176,23 +176,23 @@ impl Consensus<Speech> for Brain {
     async fn commit(
         &self,
         _ctx: Context,
-        epoch_id: u64,
+        height: u64,
         commit: Commit<Speech>,
     ) -> Result<Status, Box<dyn Error + Send>> {
         let mut speeches = self.consensus_speech.lock().unwrap();
-        if let Some(speech) = speeches.get(&commit.epoch_id) {
+        if let Some(speech) = speeches.get(&commit.height) {
             assert_eq!(speech, &commit.content.inner);
         } else {
             println!(
-                "In epoch_id: {:?}, commit with : {:?}",
-                commit.epoch_id,
+                "In height: {:?}, commit with : {:?}",
+                commit.height,
                 hex::encode(commit.content.inner.clone())
             );
-            speeches.insert(commit.epoch_id, commit.content.inner);
+            speeches.insert(commit.height, commit.content.inner);
         }
 
         Ok(Status {
-            epoch_id:       epoch_id + 1,
+            height:         height + 1,
             interval:       Some(SPEECH_INTERVAL),
             authority_list: self.speaker_list.clone(),
         })
@@ -201,7 +201,7 @@ impl Consensus<Speech> for Brain {
     async fn get_authority_list(
         &self,
         _ctx: Context,
-        _epoch_id: u64,
+        _height: u64,
     ) -> Result<Vec<Node>, Box<dyn Error + Send>> {
         Ok(self.speaker_list.clone())
     }
@@ -256,7 +256,7 @@ impl Speaker {
             .send_msg(
                 Context::new(),
                 OverlordMsg::RichStatus(Status {
-                    epoch_id:       1,
+                    height:         1,
                     interval:       Some(SPEECH_INTERVAL),
                     authority_list: speaker_list,
                 }),

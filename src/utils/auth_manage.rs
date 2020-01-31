@@ -59,14 +59,14 @@ impl AuthorityManage {
     /// `false`, and the when last epoch ID's authority management is `None`.
     pub fn get_proposer(
         &self,
-        epoch_id: u64,
+        height: u64,
         round: u64,
         is_current: bool,
     ) -> ConsensusResult<Address> {
         if is_current {
-            self.current.get_proposer(epoch_id, round)
+            self.current.get_proposer(height, round)
         } else if let Some(auth_list) = self.last.clone() {
-            auth_list.get_proposer(epoch_id, round)
+            auth_list.get_proposer(height, round)
         } else {
             Err(ConsensusError::Other(
                 "There is no authority list cache of last epoch".to_string(),
@@ -191,17 +191,17 @@ impl EpochAuthorityManage {
     }
 
     /// Get the proposer address by a given seed.
-    fn get_proposer(&self, epoch_id: u64, round: u64) -> ConsensusResult<Address> {
+    fn get_proposer(&self, height: u64, round: u64) -> ConsensusResult<Address> {
         let index = if cfg!(features = "random_leader") {
             get_random_proposer_index(
-                epoch_id + round,
+                height + round,
                 &self.propose_weights,
                 self.propose_weight_sum,
             )
         } else {
             let len = self.address.len();
             let prime_num = *get_primes_less_than_x(len as u32).last().unwrap_or(&1) as u64;
-            let res = (epoch_id * prime_num + round) % (len as u64);
+            let res = (height * prime_num + round) % (len as u64);
             res as usize
         };
 

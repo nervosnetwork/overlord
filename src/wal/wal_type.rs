@@ -4,10 +4,10 @@ use crate::Codec;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WalInfo<T: Codec> {
-    pub epoch_id: u64,
-    pub round:    u64,
-    pub step:     Step,
-    pub lock:     Option<WalLock<T>>,
+    pub height: u64,
+    pub round:  u64,
+    pub step:   Step,
+    pub lock:   Option<WalLock<T>>,
 }
 
 impl<T: Codec> WalInfo<T> {
@@ -19,10 +19,10 @@ impl<T: Codec> WalInfo<T> {
         };
 
         SMRBase {
-            epoch_id: self.epoch_id,
-            round:    self.round,
-            step:     self.step.clone(),
-            polc:     lock,
+            height: self.height,
+            round:  self.round,
+            step:   self.step.clone(),
+            polc:   lock,
         }
     }
 }
@@ -52,8 +52,8 @@ impl<T: Codec> WalLock<T> {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SMRBase {
-    pub epoch_id: u64,
-    pub round:    u64,
-    pub step:     Step,
-    pub polc:     Option<Lock>,
+    pub height: u64,
+    pub round:  u64,
+    pub step:   Step,
+    pub polc:   Option<Lock>,
 }

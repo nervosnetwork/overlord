@@ -57,10 +57,10 @@ pub enum ConsensusError {
     #[display(fmt = "Storage error {}", _0)]
     StorageErr(String),
     ///
-    #[display(fmt = "Save Wal error {}, {}, {} step", epoch_id, round, step)]
+    #[display(fmt = "Save Wal error {}, {}, {} step", height, round, step)]
     SaveWalErr {
         ///
-        epoch_id: u64,
+        height: u64,
         ///
         round: u64,
         ///

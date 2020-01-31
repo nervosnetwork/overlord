@@ -18,7 +18,7 @@ async fn test_proposal_trigger() {
         InnerState::new(0, Step::Propose, Hash::new(), None),
         SMRTrigger::new(hash.clone(), TriggerType::Proposal, None, 0),
         SMREvent::PrevoteVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      0u64,
             epoch_hash: hash,
             lock_round: None,
@@ -36,7 +36,7 @@ async fn test_proposal_trigger() {
         InnerState::new(0, Step::Propose, Hash::new(), None),
         SMRTrigger::new(hash.clone(), TriggerType::Proposal, None, 0),
         SMREvent::PrevoteVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      0u64,
             epoch_hash: hash,
             lock_round: None,
@@ -54,7 +54,7 @@ async fn test_proposal_trigger() {
         InnerState::new(1, Step::Propose, Hash::new(), None),
         SMRTrigger::new(hash.clone(), TriggerType::Proposal, Some(0), 0),
         SMREvent::PrevoteVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      1u64,
             epoch_hash: hash,
             lock_round: None,
@@ -72,7 +72,7 @@ async fn test_proposal_trigger() {
         InnerState::new(1, Step::Propose, Hash::new(), None),
         SMRTrigger::new(hash.clone(), TriggerType::Proposal, Some(0), 0),
         SMREvent::PrevoteVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      1u64,
             epoch_hash: hash,
             lock_round: None,
@@ -90,7 +90,7 @@ async fn test_proposal_trigger() {
         InnerState::new(1, Step::Propose, hash.clone(), None),
         SMRTrigger::new(hash.clone(), TriggerType::Proposal, Some(0), 0),
         SMREvent::PrevoteVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      1u64,
             epoch_hash: hash,
             lock_round: None,
@@ -108,7 +108,7 @@ async fn test_proposal_trigger() {
         InnerState::new(1, Step::Propose, hash.clone(), None),
         SMRTrigger::new(hash.clone(), TriggerType::Proposal, None, 0),
         SMREvent::PrevoteVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      1u64,
             epoch_hash: hash,
             lock_round: None,
@@ -126,7 +126,7 @@ async fn test_proposal_trigger() {
         InnerState::new(1, Step::Propose, hash.clone(), None),
         SMRTrigger::new(Hash::new(), TriggerType::Proposal, Some(0), 0),
         SMREvent::PrevoteVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      1u64,
             epoch_hash: hash,
             lock_round: None,
@@ -144,7 +144,7 @@ async fn test_proposal_trigger() {
         InnerState::new(1, Step::Propose, hash.clone(), None),
         SMRTrigger::new(Hash::new(), TriggerType::Proposal, None, 0),
         SMREvent::PrevoteVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      1u64,
             epoch_hash: hash,
             lock_round: None,
@@ -164,7 +164,7 @@ async fn test_proposal_trigger() {
         InnerState::new(1, Step::Propose, hash.clone(), Some(lock)),
         SMRTrigger::new(hash.clone(), TriggerType::Proposal, None, 0),
         SMREvent::PrevoteVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      1u64,
             epoch_hash: hash,
             lock_round: None,
@@ -184,7 +184,7 @@ async fn test_proposal_trigger() {
         InnerState::new(1, Step::Propose, hash.clone(), Some(lock)),
         SMRTrigger::new(hash.clone(), TriggerType::Proposal, Some(0), 0),
         SMREvent::PrevoteVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      1u64,
             epoch_hash: hash,
             lock_round: None,
@@ -204,7 +204,7 @@ async fn test_proposal_trigger() {
         InnerState::new(1, Step::Propose, hash.clone(), Some(lock)),
         SMRTrigger::new(hash.clone(), TriggerType::Proposal, None, 0),
         SMREvent::PrevoteVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      1u64,
             epoch_hash: hash,
             lock_round: None,
@@ -224,7 +224,7 @@ async fn test_proposal_trigger() {
         InnerState::new(1, Step::Propose, hash, Some(lock)),
         SMRTrigger::new(lock_hash.clone(), TriggerType::Proposal, None, 0),
         SMREvent::PrevoteVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      1u64,
             epoch_hash: lock_hash,
             lock_round: None,
@@ -244,7 +244,7 @@ async fn test_proposal_trigger() {
         InnerState::new(1, Step::Propose, lock_hash.clone(), Some(lock)),
         SMRTrigger::new(hash, TriggerType::Proposal, None, 0),
         SMREvent::PrevoteVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      1u64,
             epoch_hash: lock_hash.clone(),
             lock_round: None,
@@ -264,7 +264,7 @@ async fn test_proposal_trigger() {
         InnerState::new(1, Step::Propose, lock_hash.clone(), Some(lock)),
         SMRTrigger::new(hash, TriggerType::Proposal, None, 0),
         SMREvent::PrevoteVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      1u64,
             epoch_hash: lock_hash.clone(),
             lock_round: Some(0),
@@ -284,7 +284,7 @@ async fn test_proposal_trigger() {
         InnerState::new(1, Step::Propose, lock_hash.clone(), Some(lock)),
         SMRTrigger::new(hash, TriggerType::Proposal, Some(0), 0),
         SMREvent::PrevoteVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      1u64,
             epoch_hash: lock_hash.clone(),
             lock_round: None,
@@ -305,7 +305,7 @@ async fn test_proposal_trigger() {
         InnerState::new(2, Step::Propose, lock_hash.clone(), Some(lock)),
         SMRTrigger::new(hash, TriggerType::Proposal, Some(0), 0),
         SMREvent::PrevoteVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      2u64,
             epoch_hash: lock_hash.clone(),
             lock_round: Some(1),
@@ -326,7 +326,7 @@ async fn test_proposal_trigger() {
         InnerState::new(3, Step::Propose, lock_hash.clone(), Some(lock)),
         SMRTrigger::new(hash.clone(), TriggerType::Proposal, Some(2), 0),
         SMREvent::PrevoteVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      3u64,
             epoch_hash: hash,
             lock_round: None,
@@ -348,7 +348,7 @@ async fn test_proposal_trigger() {
         InnerState::new(2, Step::Propose, lock_hash.clone(), Some(lock)),
         SMRTrigger::new(lock_hash.clone(), TriggerType::Proposal, Some(1), 0),
         SMREvent::PrevoteVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      2u64,
             epoch_hash: lock_hash.clone(),
             lock_round: Some(1),

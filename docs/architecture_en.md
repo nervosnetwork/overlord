@@ -36,7 +36,7 @@ We use B(h, S, T) to represent a block of height h, which contains a state of S,
 ### Protocol description
 
 
-In Overlord, a consensus process is called an epoch. The epoch contains two parts, Header and Body (as shown below). The core structure of epoch is shown below, `epoch_id` is a monotonically increasing value, equivalent to height; `prev_hash` is the hash of the previous epoch; `order_root` is the merkle root of all pending transactions contained in the Body; `state_root` represents the latest world The MPT root of the state; `confirm_roots` represents the `order_root` collection from the `state_root` of the previous epoch to the `state_root` of the current epoch; the `receipt_roots` records the `receipt_root` corresponding to each `order_root` being executed; proof is proof of the previous epoch .
+In Overlord, a consensus process is called an epoch. The epoch contains two parts, Header and Body (as shown below). The core structure of epoch is shown below, `height` is a monotonically increasing value, equivalent to height; `prev_hash` is the hash of the previous epoch; `order_root` is the merkle root of all pending transactions contained in the Body; `state_root` represents the latest world The MPT root of the state; `confirm_roots` represents the `order_root` collection from the `state_root` of the previous epoch to the `state_root` of the current epoch; the `receipt_roots` records the `receipt_root` corresponding to each `order_root` being executed; proof is proof of the previous epoch .
 
 <div align=center><img src="./assets/epoch.png"></div>
 
@@ -121,7 +121,7 @@ In the project, we combine the pre-voting phase and the verification phase into 
 
 The states that the state machine module needs to store are:
 
-* epoch_id: current consensus epoch
+* height: current consensus epoch
 * round: round of current consensus
 * step: the current stage
 * proposal_hash: optional, current hash of consensus
@@ -178,7 +178,7 @@ pub fn new() -> Self
 /// Trigger a SMR action.
 pub fn trigger(&self, gate: SMRTrigger) -> Result<(), Error>
 /// Goto a new consensus epoch.
-pub fn new_epoch(&self, epoch_id: u64) -> Result<(), Error>
+pub fn new_epoch(&self, height: u64) -> Result<(), Error>
 ```
 
 ### State storage (State)
@@ -189,7 +189,7 @@ The state storage module is the functional core of the entire consensus. The mai
 
 The state that the state storage module needs to store include:
 
-* epoch_id: current consensus epoch
+* height: current consensus epoch
 * round: round of current consensus
 * proposals: cache current epoch all offers
 * votes: cache current epoch all votes
@@ -208,7 +208,7 @@ When sending a message, choose how to send the message based on the message and 
 
 When the state storage module listens to the NewRound event thrown by the state machine, it determines whether it is a block node by a deterministic random number algorithm. If it is a block node, a proposal is made.
 
-Deterministic random number algorithm: Because the Overlord consensus protocol allows different out-of-block weights and voting weights to be set, when determining the block, the node normalizes the block weights and projects them into the entire u64 range, using the current epoch_id and The sum of round is used as a random number seed to determine which of the u64 ranges the generated random number falls into, and the node corresponding to the weight is the outbound node.
+Deterministic random number algorithm: Because the Overlord consensus protocol allows different out-of-block weights and voting weights to be set, when determining the block, the node normalizes the block weights and projects them into the entire u64 range, using the current height and The sum of round is used as a random number seed to determine which of the u64 ranges the generated random number falls into, and the node corresponding to the weight is the outbound node.
 
 #### Cryptography
 
@@ -235,7 +235,7 @@ In the consensus process, some messages need to be written to Wal. When restarti
 /// Create a new Wal struct.
 pub fn new(path: &str) -> Self
 /// Set a new epoch of Wal, while go to new epoch.
-pub fn set_epoch(&self, epoch_id: u64) -> Result<(), Error>
+pub fn set_epoch(&self, height: u64) -> Result<(), Error>
 /// Save message to Wal.
 pub async fn save(&self, msg_type: WalMsgType, msg: Vec<u8>) -> Result<(), Error>;
 /// Load message from Wal.
@@ -249,11 +249,11 @@ pub fn load(&self) -> Vec<(WalMsgType, Vec<u8>)>
 ```
 #[async_trait]
 pub trait Consensus<T: Codec>: Send + Sync {
-    /// Get an epoch of an epoch_id and return the epoch with its hash.
+    /// Get an epoch of an height and return the epoch with its hash.
     async fn get_epoch(
         &self,
         _ctx: Vec<u8>,
-        epoch_id: u64,
+        height: u64,
     ) -> Result<(T, Hash), Box<dyn Error + Send>>;
 
     /// Check the correctness of an epoch. If is passed, return the integrated transcations to do
@@ -261,7 +261,7 @@ pub trait Consensus<T: Codec>: Send + Sync {
     async fn check_epoch(
         &self,
         _ctx: Vec<u8>,
-        epoch_id: u64,
+        height: u64,
         hash: Hash,
     ) -> Result<(), Box<dyn Error + Send>>;
 
@@ -269,7 +269,7 @@ pub trait Consensus<T: Codec>: Send + Sync {
     async fn commit(
         &self,
         _ctx: Vec<u8>,
-        epoch_id: u64,
+        height: u64,
         commit: Commit<T>,
     ) -> Result<Status, Box<dyn Error + Send>>;
 
@@ -277,7 +277,7 @@ pub trait Consensus<T: Codec>: Send + Sync {
     async fn get_authority_list(
         &self, 
         _ctx: Vec<u8>, 
-        epoch_id: u64
+        height: u64
     ) -> Result<Vec<Node>, Box<dyn Error + Send>>;
 
     /// Broadcast a message to other replicas.

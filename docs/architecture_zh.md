@@ -45,7 +45,7 @@ Overlord 的核心思想是解耦交易定序与状态共识。
 
 ### 协议描述
 
-在 Overlord 中，一次共识过程称为一个 *epoch*，我们将达成共识的区块称为 *epoch*。*epoch* 包含 Header 和 Body 两部分（如下图所示）。*epoch* 的核心结构如下图所示，`epoch_id` 是单调递增的数值，相当于高度；`prev_hash` 是上一个 *epoch* 的哈希；`order_root` 是包含在 Body 中的所有待定序的交易的 merkle root；`state_root` 表示最新的世界状态的 MPT Root；`confirm_roots` 表示从上一个 *epoch* 的 `state_root` 到当前 *epoch* 的 `state_root` 之间执行模块向前推进的 `order_root` 集合；`receipt_roots` 记录被执行的每一个 `order_root` 所对应的 `receipt_root`；`proof` 是对上一个 *epoch* 的证明。
+在 Overlord 中，一次共识过程称为一个 *epoch*，我们将达成共识的区块称为 *epoch*。*epoch* 包含 Header 和 Body 两部分（如下图所示）。*epoch* 的核心结构如下图所示，`height` 是单调递增的数值，相当于高度；`prev_hash` 是上一个 *epoch* 的哈希；`order_root` 是包含在 Body 中的所有待定序的交易的 merkle root；`state_root` 表示最新的世界状态的 MPT Root；`confirm_roots` 表示从上一个 *epoch* 的 `state_root` 到当前 *epoch* 的 `state_root` 之间执行模块向前推进的 `order_root` 集合；`receipt_roots` 记录被执行的每一个 `order_root` 所对应的 `receipt_root`；`proof` 是对上一个 *epoch* 的证明。
 
 <div align=center><img src="./assets/epoch.png"></div>
 
@@ -133,7 +133,7 @@ Overlord 共识由以下几个组件组成的：
 
 状态机模块需要存储的状态有：
 
-* *epoch_id*: 当前共识的 epoch
+* *height*: 当前共识的 epoch
 
 * *round*: 当前共识的轮次
 
@@ -194,7 +194,7 @@ pub fn new() -> Self
 /// Trigger a SMR action.
 pub fn trigger(&self, gate: SMRTrigger) -> Result<(), Error>
 /// Goto a new consensus epoch.
-pub fn new_epoch(&self, epoch_id: u64) -> Result<(), Error>
+pub fn new_epoch(&self, height: u64) -> Result<(), Error>
 ```
 
 ### 状态存储(State)
@@ -205,7 +205,7 @@ pub fn new_epoch(&self, epoch_id: u64) -> Result<(), Error>
 
 状态存储模块需要存储的状态有：
 
-* *epoch_id*: 当前共识的 epoch
+* *height*: 当前共识的 epoch
 
 * *round*: 当前共识的轮次
 
@@ -233,7 +233,7 @@ pub fn new_epoch(&self, epoch_id: u64) -> Result<(), Error>
 
 当状态存储模块监听到状态机抛出的 `NewRound` 事件时，通过一个确定性随机数算法判断自己是不是出块节点。如果是出块节点则提出一个 proposal。
 
-*确定性随机数算法*：因为 Overlord 共识协议允许设置不同的出块权重和投票权重，在判断出块时，节点将出块权重进行归一化，并投射到整个 `u64` 的范围中，使用当前 `epoch_id` 与 `round` 之和作为随机数种子，判断生成的随机数落入到`u64` 范围中的哪一个区间中，该权重对应的节点即为出块节点。
+*确定性随机数算法*：因为 Overlord 共识协议允许设置不同的出块权重和投票权重，在判断出块时，节点将出块权重进行归一化，并投射到整个 `u64` 的范围中，使用当前 `height` 与 `round` 之和作为随机数种子，判断生成的随机数落入到`u64` 范围中的哪一个区间中，该权重对应的节点即为出块节点。
 
 #### 密码学操作
 
@@ -263,7 +263,7 @@ pub fn new_epoch(&self, epoch_id: u64) -> Result<(), Error>
 /// Create a new Wal struct.
 pub fn new(path: &str) -> Self
 /// Set a new epoch of Wal, while go to new epoch.
-pub fn set_epoch(&self, epoch_id: u64) -> Result<(), Error>
+pub fn set_epoch(&self, height: u64) -> Result<(), Error>
 /// Save message to Wal.
 pub async fn save(&self, msg_type: WalMsgType, msg: Vec<u8>) -> Result<(), Error>;
 /// Load message from Wal.
@@ -277,11 +277,11 @@ pub fn load(&self) -> Vec<(WalMsgType, Vec<u8>)>
 ```rust
 #[async_trait]
 pub trait Consensus<T: Codec>: Send + Sync {
-    /// Get an epoch of an epoch_id and return the epoch with its hash.
+    /// Get an epoch of an height and return the epoch with its hash.
     async fn get_epoch(
         &self,
         _ctx: Vec<u8>,
-        epoch_id: u64,
+        height: u64,
     ) -> Result<(T, Hash), Box<dyn Error + Send>>;
 
     /// Check the correctness of an epoch. If is passed, return the integrated transcations to do
@@ -289,7 +289,7 @@ pub trait Consensus<T: Codec>: Send + Sync {
     async fn check_epoch(
         &self,
         _ctx: Vec<u8>,
-        epoch_id: u64,
+        height: u64,
         hash: Hash,
     ) -> Result<(), Box<dyn Error + Send>>;
 
@@ -297,7 +297,7 @@ pub trait Consensus<T: Codec>: Send + Sync {
     async fn commit(
         &self,
         _ctx: Vec<u8>,
-        epoch_id: u64,
+        height: u64,
         commit: Commit<T>,
     ) -> Result<Status, Box<dyn Error + Send>>;
 
@@ -305,7 +305,7 @@ pub trait Consensus<T: Codec>: Send + Sync {
     async fn get_authority_list(
         &self, 
         _ctx: Vec<u8>, 
-        epoch_id: u64
+        height: u64
     ) -> Result<Vec<Node>, Box<dyn Error + Send>>;
 
     /// Broadcast a message to other replicas.

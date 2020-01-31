@@ -21,27 +21,27 @@ where
     /// the given epoch ID and round exists.
     pub fn insert(
         &mut self,
-        epoch_id: u64,
+        height: u64,
         round: u64,
         proposal: SignedProposal<T>,
     ) -> ConsensusResult<()> {
         self.0
-            .entry(epoch_id)
+            .entry(height)
             .or_insert_with(ProposalRoundCollector::new)
             .insert(round, proposal)
-            .map_err(|_| ConsensusError::MultiProposal(epoch_id, round))
+            .map_err(|_| ConsensusError::MultiProposal(height, round))
     }
 
     /// Get the signed proposal of the given epoch ID and round. Return `Err` when there is no
     /// signed proposal. Return `Err` when can not get it.
-    pub fn get(&self, epoch_id: u64, round: u64) -> ConsensusResult<SignedProposal<T>> {
-        if let Some(round_collector) = self.0.get(&epoch_id) {
+    pub fn get(&self, height: u64, round: u64) -> ConsensusResult<SignedProposal<T>> {
+        if let Some(round_collector) = self.0.get(&height) {
             return Ok(round_collector
                 .get(round)
                 .map_err(|_| {
                     ConsensusError::StorageErr(format!(
                         "No proposal epoch ID {}, round {}",
-                        epoch_id, round
+                        height, round
                     ))
                 })?
                 .to_owned());
@@ -49,13 +49,13 @@ where
 
         Err(ConsensusError::StorageErr(format!(
             "No proposal epoch ID {}, round {}",
-            epoch_id, round
+            height, round
         )))
     }
 
     /// Get all proposals of the given epoch ID.
-    pub fn get_epoch_proposals(&mut self, epoch_id: u64) -> Option<Vec<SignedProposal<T>>> {
-        self.0.remove(&epoch_id).map_or_else(
+    pub fn get_epoch_proposals(&mut self, height: u64) -> Option<Vec<SignedProposal<T>>> {
+        self.0.remove(&height).map_or_else(
             || None,
             |map| Some(map.0.values().cloned().collect::<Vec<_>>()),
         )
@@ -195,9 +195,9 @@ impl VoteCollector {
     /// Get all votes and quorum certificates of the given epoch ID.
     pub fn get_epoch_votes(
         &mut self,
-        epoch_id: u64,
+        height: u64,
     ) -> Option<(Vec<SignedVote>, Vec<AggregatedVote>)> {
-        self.0.remove(&epoch_id).map_or_else(
+        self.0.remove(&height).map_or_else(
             || None,
             |mut vrc| {
                 let mut votes = Vec::new();
@@ -213,8 +213,8 @@ impl VoteCollector {
         )
     }
 
-    pub fn vote_count(&self, epoch_id: u64, round: u64, vote_type: VoteType) -> usize {
-        if let Some(vrc) = self.0.get(&epoch_id) {
+    pub fn vote_count(&self, height: u64, round: u64, vote_type: VoteType) -> usize {
+        if let Some(vrc) = self.0.get(&height) {
             return vrc.vote_count(round, vote_type);
         }
         0
@@ -473,8 +473,8 @@ mod test {
 
     #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
     struct Pill {
-        epoch_id: u64,
-        epoch:    Vec<u64>,
+        height: u64,
+        epoch:  Vec<u64>,
     }
 
     impl Codec for Pill {
@@ -491,9 +491,9 @@ mod test {
 
     impl Pill {
         fn new() -> Self {
-            let epoch_id = random::<u64>();
+            let height = random::<u64>();
             let epoch = (0..128).map(|_| random::<u64>()).collect::<Vec<_>>();
-            Pill { epoch_id, epoch }
+            Pill { height, epoch }
         }
     }
 
@@ -516,10 +516,10 @@ mod test {
         }
     }
 
-    fn gen_signed_proposal(epoch_id: u64, round: u64) -> SignedProposal<Pill> {
+    fn gen_signed_proposal(height: u64, round: u64) -> SignedProposal<Pill> {
         let signature = gen_signature();
         let proposal = Proposal {
-            epoch_id,
+            height,
             round,
             content: Pill::new(),
             epoch_hash: gen_hash(),
@@ -534,14 +534,14 @@ mod test {
     }
 
     fn gen_signed_vote(
-        epoch_id: u64,
+        height: u64,
         round: u64,
         vote_type: VoteType,
         hash: Hash,
         addr: Address,
     ) -> SignedVote {
         let vote = Vote {
-            epoch_id,
+            height,
             round,
             vote_type,
             epoch_hash: hash,
@@ -554,12 +554,12 @@ mod test {
         }
     }
 
-    fn gen_aggregated_vote(epoch_id: u64, round: u64, vote_type: VoteType) -> AggregatedVote {
+    fn gen_aggregated_vote(height: u64, round: u64, vote_type: VoteType) -> AggregatedVote {
         let signature = gen_aggr_signature();
 
         AggregatedVote {
             signature,
-            epoch_id,
+            height,
             round,
             vote_type,
             epoch_hash: gen_hash(),

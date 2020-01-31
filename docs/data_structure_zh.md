@@ -40,7 +40,7 @@ pub struct SignedProposal<T> {
 }
 
 pub struct Proposal<T> {
-    pub epoch_id: u64,
+    pub height: u64,
     pub round: u64,
     pub hash: Hash,
     pub content: T,
@@ -61,13 +61,13 @@ pub struct SignedVote {
 pub struct AggregatedVote {
     pub signature: AggregatedSignature,
     pub type: VoteType,
-    pub epoch_id: u64,
+    pub height: u64,
     pub round: u64,
     pub proposal: Hash,
 }
 
 pub struct Vote {
-    pub epoch_id: u64,
+    pub height: u64,
     pub round: u64,
     pub type: VoteType,
     pub proposal: Hash,
@@ -79,7 +79,7 @@ pub struct Vote {
 
 ```rust
 pub struct Commit<T> {
-    pub epoch_id: u64,
+    pub height: u64,
     pub proposal: T,
     pub proof: Proof,
 }
@@ -98,7 +98,7 @@ pub struct AggregatedSignature {
 
 ```rust
 pub struct Proof {
-    pub epoch_id: u64,
+    pub height: u64,
     pub round: u64,
     pub proposal_hash: Hash,
     pub signature: AggregatedSignature,
@@ -119,7 +119,7 @@ pub struct Node {
 
 ```rust
 pub struct Status {
-    pub epoch_id: u64,
+    pub height: u64,
     pub interval: u64,
     pub authority_list: Vec<Node>,
 }
@@ -138,7 +138,7 @@ pub(crate) struct VerifyResp {
 
 ```rust
 pub(crate) struct Feed<T> {
-    pub(crate) epoch_id: u64,
+    pub(crate) height: u64,
     pub(crate) proposal: T,
     pub(crate) hash: Hash,
 }

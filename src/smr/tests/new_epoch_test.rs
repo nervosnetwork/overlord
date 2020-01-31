@@ -14,7 +14,7 @@ async fn test_new_epoch() {
         InnerState::new(0, Step::Propose, Hash::new(), None),
         SMRTrigger::new(Hash::new(), TriggerType::NewEpoch(1), None, 0),
         SMREvent::NewRoundInfo {
-            epoch_id:      1u64,
+            height:        1u64,
             round:         0u64,
             lock_round:    None,
             lock_proposal: None,
@@ -35,7 +35,7 @@ async fn test_new_epoch() {
         InnerState::new(1, Step::Propose, hash, Some(lock)),
         SMRTrigger::new(Hash::new(), TriggerType::NewEpoch(1), None, 0),
         SMREvent::NewRoundInfo {
-            epoch_id:      1u64,
+            height:        1u64,
             round:         0u64,
             lock_round:    None,
             lock_proposal: None,
@@ -53,7 +53,7 @@ async fn test_new_epoch() {
         InnerState::new(0, Step::Propose, Hash::new(), Some(lock)),
         SMRTrigger::new(Hash::new(), TriggerType::NewEpoch(1), None, 0),
         SMREvent::NewRoundInfo {
-            epoch_id:      1u64,
+            height:        1u64,
             round:         0u64,
             lock_round:    None,
             lock_proposal: None,
@@ -70,7 +70,7 @@ async fn test_new_epoch() {
         InnerState::new(0, Step::Propose, hash, None),
         SMRTrigger::new(Hash::new(), TriggerType::NewEpoch(1), None, 0),
         SMREvent::NewRoundInfo {
-            epoch_id:      1u64,
+            height:        1u64,
             round:         0u64,
             lock_round:    None,
             lock_proposal: None,
@@ -87,7 +87,7 @@ async fn test_new_epoch() {
         InnerState::new(0, Step::Prevote, hash, None),
         SMRTrigger::new(Hash::new(), TriggerType::NewEpoch(1), None, 0),
         SMREvent::NewRoundInfo {
-            epoch_id:      1u64,
+            height:        1u64,
             round:         0u64,
             lock_round:    None,
             lock_proposal: None,
@@ -104,7 +104,7 @@ async fn test_new_epoch() {
         InnerState::new(0, Step::Prevote, hash, None),
         SMRTrigger::new(Hash::new(), TriggerType::NewEpoch(1), None, 0),
         SMREvent::NewRoundInfo {
-            epoch_id:      1u64,
+            height:        1u64,
             round:         0u64,
             lock_round:    None,
             lock_proposal: None,
@@ -122,7 +122,7 @@ async fn test_new_epoch() {
         InnerState::new(1, Step::Prevote, hash, Some(lock)),
         SMRTrigger::new(Hash::new(), TriggerType::NewEpoch(1), None, 0),
         SMREvent::NewRoundInfo {
-            epoch_id:      1u64,
+            height:        1u64,
             round:         0u64,
             lock_round:    None,
             lock_proposal: None,
