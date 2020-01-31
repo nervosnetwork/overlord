@@ -4,13 +4,13 @@ use serde::{Deserialize, Serialize};
 use crate::types::Hash;
 use crate::wal::SMRBase;
 
-/// SMR steps. The default step is commit step because SMR needs rich status to start a new epoch.
+/// SMR steps. The default step is commit step because SMR needs rich status to start a new block.
 #[derive(Serialize, Deserialize, Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Step {
     /// Prepose step, in this step:
     /// Firstly, each node calculate the new proposer, then:
     /// Leader:
-    ///     proposer an epoch,
+    ///     proposer a block,
     /// Replica:
     ///     wait for a proposal and check it.
     /// Then goto prevote step.
@@ -41,8 +41,8 @@ pub enum Step {
     /// cycle. Otherwise, goto commit step.
     #[display(fmt = "Precommit step")]
     Precommit,
-    /// Commit step, in this step each node commit the epoch and wait for the rich status. After
-    /// receiving the it, all nodes will goto propose step and start a new epoch consensus.
+    /// Commit step, in this step each node commit the block and wait for the rich status. After
+    /// receiving the it, all nodes will goto propose step and start a new block consensus.
     #[display(fmt = "Commit step")]
     Commit,
 }
@@ -77,16 +77,16 @@ impl From<u8> for Step {
 }
 
 /// SMR event that state and timer monitor this.
-/// **NOTICE**: The `epoch_id` field is just for the timer. Timer will take this to signal the timer
-/// epoch ID. State will ignore this field on handling event.
+/// **NOTICE**: The `height` field is just for the timer. Timer will take this to signal the timer
+/// height. State will ignore this field on handling event.
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
 pub enum SMREvent {
     /// New round event,
     /// for state: update round,
-    /// for timer: set a propose step timer. If `round == 0`, set an extra total epoch timer.
+    /// for timer: set a propose step timer. If `round == 0`, set an extra total height timer.
     #[display(fmt = "New round {} event", round)]
     NewRoundInfo {
-        epoch_id:      u64,
+        height:        u64,
         round:         u64,
         lock_round:    Option<u64>,
         lock_proposal: Option<Hash>,
@@ -96,9 +96,9 @@ pub enum SMREvent {
     /// for timer: set a prevote step timer.
     #[display(fmt = "Prevote event")]
     PrevoteVote {
-        epoch_id:   u64,
+        height:     u64,
         round:      u64,
-        epoch_hash: Hash,
+        block_hash: Hash,
         lock_round: Option<u64>,
     },
 
@@ -107,9 +107,9 @@ pub enum SMREvent {
     /// for timer: set a precommit step timer.
     #[display(fmt = "Precommit event")]
     PrecommitVote {
-        epoch_id:   u64,
+        height:     u64,
         round:      u64,
-        epoch_hash: Hash,
+        block_hash: Hash,
         lock_round: Option<u64>,
     },
     /// Commit event,
@@ -136,9 +136,9 @@ pub enum TriggerType {
     /// Precommit quorum certificate trigger.
     #[display(fmt = "PrecommitQC")]
     PrecommitQC,
-    /// New Epoch trigger.
-    #[display(fmt = "New epoch {}", _0)]
-    NewEpoch(u64),
+    /// New Height trigger.
+    #[display(fmt = "New height {}", _0)]
+    NewHeight(u64),
     ///
     WalInfo,
 }
@@ -155,7 +155,7 @@ pub enum TriggerSource {
 }
 
 impl Into<u8> for TriggerType {
-    /// It should not occur that call `TriggerType::NewEpoch(*).into()`.
+    /// It should not occur that call `TriggerType::NewHeight(*).into()`.
     fn into(self) -> u8 {
         match self {
             TriggerType::Proposal => 0u8,
@@ -182,22 +182,22 @@ impl From<u8> for TriggerType {
 /// A SMR trigger to touch off SMR process. For different trigger type,
 /// the field `hash` and `round` have different restrictions and meaning.
 /// While trigger type is `Proposal`:
-///     * `hash`: Proposal epoch hash,
+///     * `hash`: Proposal block hash,
 ///     * `round`: Optional lock round.
 /// While trigger type is `PrevoteQC` or `PrecommitQC`:
-///     * `hash`: QC epoch hash,
+///     * `hash`: QC block hash,
 ///     * `round`: QC round, this must be `Some`.
-/// While trigger type is `NewEpoch`:
+/// While trigger type is `NewHeight`:
 ///     * `hash`: A empty hash,
 ///     * `round`: This must be `None`.
-/// For each sources, while filling the `SMRTrigger`, the `epoch_id` field take the current epoch ID
+/// For each sources, while filling the `SMRTrigger`, the `height` field take the current height
 /// directly.
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
 #[display(
-    fmt = "{:?} trigger from {:?}, epoch ID {}",
+    fmt = "{:?} trigger from {:?}, height {}",
     trigger_type,
     source,
-    epoch_id
+    height
 )]
 pub struct SMRTrigger {
     /// SMR trigger type.
@@ -208,9 +208,9 @@ pub struct SMRTrigger {
     pub hash: Hash,
     /// SMR trigger round, the meaning shown above.
     pub round: Option<u64>,
-    /// **NOTICE**: This field is only for timer to signed timer's epoch ID. Therefore, the SMR can
+    /// **NOTICE**: This field is only for timer to signed timer's height. Therefore, the SMR can
     /// filter out the outdated timers.
-    pub epoch_id: u64,
+    pub height: u64,
     ///
     pub wal_info: Option<SMRBase>,
 }

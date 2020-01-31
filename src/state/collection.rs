@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use crate::types::{Address, AggregatedVote, Hash, SignedProposal, SignedVote, VoteType};
 use crate::{error::ConsensusError, Codec, ConsensusResult};
 
-/// A struct to collect signed proposals in each epoch. It stores each epoch and the corresponding
+/// A struct to collect signed proposals in each height. It stores each height and the corresponding
 /// signed proposals in a `BTreeMap`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProposalCollector<T: Codec>(BTreeMap<u64, ProposalRoundCollector<T>>);
@@ -18,50 +18,50 @@ where
     }
 
     /// Insert a signed proposal into the proposal collector. Return `Err()` while the proposal of
-    /// the given epoch ID and round exists.
+    /// the given height and round exists.
     pub fn insert(
         &mut self,
-        epoch_id: u64,
+        height: u64,
         round: u64,
         proposal: SignedProposal<T>,
     ) -> ConsensusResult<()> {
         self.0
-            .entry(epoch_id)
+            .entry(height)
             .or_insert_with(ProposalRoundCollector::new)
             .insert(round, proposal)
-            .map_err(|_| ConsensusError::MultiProposal(epoch_id, round))
+            .map_err(|_| ConsensusError::MultiProposal(height, round))
     }
 
-    /// Get the signed proposal of the given epoch ID and round. Return `Err` when there is no
+    /// Get the signed proposal of the given height and round. Return `Err` when there is no
     /// signed proposal. Return `Err` when can not get it.
-    pub fn get(&self, epoch_id: u64, round: u64) -> ConsensusResult<SignedProposal<T>> {
-        if let Some(round_collector) = self.0.get(&epoch_id) {
+    pub fn get(&self, height: u64, round: u64) -> ConsensusResult<SignedProposal<T>> {
+        if let Some(round_collector) = self.0.get(&height) {
             return Ok(round_collector
                 .get(round)
                 .map_err(|_| {
                     ConsensusError::StorageErr(format!(
-                        "No proposal epoch ID {}, round {}",
-                        epoch_id, round
+                        "No proposal height {}, round {}",
+                        height, round
                     ))
                 })?
                 .to_owned());
         }
 
         Err(ConsensusError::StorageErr(format!(
-            "No proposal epoch ID {}, round {}",
-            epoch_id, round
+            "No proposal height {}, round {}",
+            height, round
         )))
     }
 
-    /// Get all proposals of the given epoch ID.
-    pub fn get_epoch_proposals(&mut self, epoch_id: u64) -> Option<Vec<SignedProposal<T>>> {
-        self.0.remove(&epoch_id).map_or_else(
+    /// Get all proposals of the given height.
+    pub fn get_height_proposals(&mut self, height: u64) -> Option<Vec<SignedProposal<T>>> {
+        self.0.remove(&height).map_or_else(
             || None,
             |map| Some(map.0.values().cloned().collect::<Vec<_>>()),
         )
     }
 
-    /// Remove items that epoch ID is less than `till`.
+    /// Remove items that height is less than `till`.
     pub fn flush(&mut self, till: u64) {
         self.0 = self.0.split_off(&till);
     }
@@ -98,7 +98,7 @@ where
     }
 }
 
-/// A struct to collect votes in each epoch. It stores each epoch and the corresponding votes in a
+/// A struct to collect votes in each height. It stores each height and the corresponding votes in a
 /// `BTreeMap`. The votes includes aggregated vote and signed vote.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VoteCollector(BTreeMap<u64, VoteRoundCollector>);
@@ -112,7 +112,7 @@ impl VoteCollector {
     /// Insert a vote to the collector.
     pub fn insert_vote(&mut self, hash: Hash, vote: SignedVote, addr: Address) {
         self.0
-            .entry(vote.get_epoch())
+            .entry(vote.get_height())
             .or_insert_with(VoteRoundCollector::new)
             .insert_vote(hash, vote, addr);
     }
@@ -120,84 +120,84 @@ impl VoteCollector {
     /// Set a given quorum certificate to the collector.
     pub fn set_qc(&mut self, qc: AggregatedVote) {
         self.0
-            .entry(qc.get_epoch())
+            .entry(qc.get_height())
             .or_insert_with(VoteRoundCollector::new)
             .set_qc(qc);
     }
 
     /// Get an index of a `HashMap` that the key is vote hash and the value is address list, with
-    /// the given epoch ID, round and type.
+    /// the given height, round and type.
     pub fn get_vote_map(
         &mut self,
-        epoch: u64,
+        height: u64,
         round: u64,
         vote_type: VoteType,
     ) -> ConsensusResult<&HashMap<Hash, HashSet<Address>>> {
         self.0
-            .get_mut(&epoch)
+            .get_mut(&height)
             .and_then(|vrc| vrc.get_vote_map(round, vote_type.clone()))
             .ok_or_else(|| {
                 ConsensusError::StorageErr(format!(
-                    "Can not get {:?} vote map epoch ID {}, round {}",
-                    vote_type, epoch, round
+                    "Can not get {:?} vote map height {}, round {}",
+                    vote_type, height, round
                 ))
             })
     }
 
-    /// Get a vote list with the given epoch, round, type and hash.
+    /// Get a vote list with the given height, round, type and hash.
     pub fn get_votes(
         &mut self,
-        epoch: u64,
+        height: u64,
         round: u64,
         vote_type: VoteType,
         hash: &Hash,
     ) -> ConsensusResult<Vec<SignedVote>> {
         self.0
-            .get_mut(&epoch)
+            .get_mut(&height)
             .and_then(|vrc| vrc.get_votes(round, vote_type.clone(), hash))
             .ok_or_else(|| {
                 ConsensusError::StorageErr(format!(
-                    "Can not get {:?} votes epoch ID {}, round {}",
-                    vote_type, epoch, round
+                    "Can not get {:?} votes height {}, round {}",
+                    vote_type, height, round
                 ))
             })
     }
 
-    /// Get a quorum certificate with the given epoch, round and type.
+    /// Get a quorum certificate with the given height, round and type.
     pub fn get_qc_by_id(
         &mut self,
-        epoch: u64,
+        height: u64,
         round: u64,
         qc_type: VoteType,
     ) -> ConsensusResult<AggregatedVote> {
         self.0
-            .get_mut(&epoch)
+            .get_mut(&height)
             .and_then(|vrc| vrc.get_qc_by_id(round, qc_type.clone()))
             .ok_or_else(|| {
                 ConsensusError::StorageErr(format!(
-                    "Can not get {:?} qc epoch ID {}, round {}",
-                    qc_type, epoch, round
+                    "Can not get {:?} qc height {}, round {}",
+                    qc_type, height, round
                 ))
             })
     }
 
     pub fn get_qc_by_hash(
         &mut self,
-        epoch: u64,
+        height: u64,
         hash: Hash,
         qc_type: VoteType,
     ) -> Option<AggregatedVote> {
         self.0
-            .get_mut(&epoch)
+            .get_mut(&height)
             .and_then(|vrc| vrc.get_qc_by_hash(hash, qc_type))
     }
 
-    /// Get all votes and quorum certificates of the given epoch ID.
-    pub fn get_epoch_votes(
+    /// Get all votes and quorum certificates of the given height.
+    pub fn get_height_votes(
         &mut self,
-        epoch_id: u64,
+        height: u64,
     ) -> Option<(Vec<SignedVote>, Vec<AggregatedVote>)> {
-        self.0.remove(&epoch_id).map_or_else(
+        self.0.remove(&height).map_or_else(
             || None,
             |mut vrc| {
                 let mut votes = Vec::new();
@@ -213,14 +213,14 @@ impl VoteCollector {
         )
     }
 
-    pub fn vote_count(&self, epoch_id: u64, round: u64, vote_type: VoteType) -> usize {
-        if let Some(vrc) = self.0.get(&epoch_id) {
+    pub fn vote_count(&self, height: u64, round: u64, vote_type: VoteType) -> usize {
+        if let Some(vrc) = self.0.get(&height) {
             return vrc.vote_count(round, vote_type);
         }
         0
     }
 
-    /// Remove items that epoch ID is less than `till`.
+    /// Remove items that height is less than `till`.
     pub fn flush(&mut self, till: u64) {
         self.0 = self.0.split_off(&till);
     }
@@ -251,7 +251,7 @@ impl VoteRoundCollector {
 
     fn set_qc(&mut self, qc: AggregatedVote) {
         self.qc_by_hash
-            .entry(qc.epoch_hash.clone())
+            .entry(qc.block_hash.clone())
             .or_insert_with(QuorumCertificate::new)
             .set_quorum_certificate(qc.clone());
 
@@ -473,8 +473,8 @@ mod test {
 
     #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
     struct Pill {
-        epoch_id: u64,
-        epoch:    Vec<u64>,
+        height: u64,
+        epoch:  Vec<u64>,
     }
 
     impl Codec for Pill {
@@ -491,9 +491,9 @@ mod test {
 
     impl Pill {
         fn new() -> Self {
-            let epoch_id = random::<u64>();
+            let height = random::<u64>();
             let epoch = (0..128).map(|_| random::<u64>()).collect::<Vec<_>>();
-            Pill { epoch_id, epoch }
+            Pill { height, epoch }
         }
     }
 
@@ -516,13 +516,13 @@ mod test {
         }
     }
 
-    fn gen_signed_proposal(epoch_id: u64, round: u64) -> SignedProposal<Pill> {
+    fn gen_signed_proposal(height: u64, round: u64) -> SignedProposal<Pill> {
         let signature = gen_signature();
         let proposal = Proposal {
-            epoch_id,
+            height,
             round,
             content: Pill::new(),
-            epoch_hash: gen_hash(),
+            block_hash: gen_hash(),
             lock: None,
             proposer: gen_address(),
         };
@@ -534,17 +534,17 @@ mod test {
     }
 
     fn gen_signed_vote(
-        epoch_id: u64,
+        height: u64,
         round: u64,
         vote_type: VoteType,
         hash: Hash,
         addr: Address,
     ) -> SignedVote {
         let vote = Vote {
-            epoch_id,
+            height,
             round,
             vote_type,
-            epoch_hash: hash,
+            block_hash: hash,
         };
 
         SignedVote {
@@ -554,15 +554,15 @@ mod test {
         }
     }
 
-    fn gen_aggregated_vote(epoch_id: u64, round: u64, vote_type: VoteType) -> AggregatedVote {
+    fn gen_aggregated_vote(height: u64, round: u64, vote_type: VoteType) -> AggregatedVote {
         let signature = gen_aggr_signature();
 
         AggregatedVote {
             signature,
-            epoch_id,
+            height,
             round,
             vote_type,
-            epoch_hash: gen_hash(),
+            block_hash: gen_hash(),
             leader: gen_address(),
         }
     }
@@ -588,8 +588,10 @@ mod test {
         assert_eq!(proposals.get(2, 0).unwrap(), proposal_03.clone());
         assert_eq!(proposals.get(3, 0).unwrap(), proposal_04);
 
-        assert!(proposals.get_epoch_proposals(1).is_none());
-        assert_eq!(proposals.get_epoch_proposals(2).unwrap(), vec![proposal_03]);
+        assert!(proposals.get_height_proposals(1).is_none());
+        assert_eq!(proposals.get_height_proposals(2).unwrap(), vec![
+            proposal_03
+        ]);
         assert!(proposals.get(2, 0).is_err());
     }
 

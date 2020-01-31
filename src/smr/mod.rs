@@ -78,16 +78,16 @@ impl SMRHandler {
             .map_err(|_| ConsensusError::TriggerSMRErr(trigger_type))
     }
 
-    /// Trigger SMR to goto a new epoch.
-    pub fn new_epoch(&mut self, epoch_id: u64) -> ConsensusResult<()> {
-        let trigger = TriggerType::NewEpoch(epoch_id);
+    /// Trigger SMR to goto a new height.
+    pub fn new_height(&mut self, height: u64) -> ConsensusResult<()> {
+        let trigger = TriggerType::NewHeight(height);
         self.tx
             .unbounded_send(SMRTrigger {
                 trigger_type: trigger.clone(),
                 source: TriggerSource::State,
                 hash: Hash::new(),
                 round: None,
-                epoch_id,
+                height,
                 wal_info: None,
             })
             .map_err(|_| ConsensusError::TriggerSMRErr(trigger.to_string()))

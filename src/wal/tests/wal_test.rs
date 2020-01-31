@@ -73,13 +73,13 @@ async fn test_wal() {
     // is not lock
     let auth_list = gen_auth_list(1);
     let wal = WalInfo {
-        epoch_id: 0,
-        round:    0,
-        step:     Step::Propose,
-        lock:     None,
+        height: 0,
+        round:  0,
+        step:   Step::Propose,
+        lock:   None,
     };
     let event = SMREvent::NewRoundInfo {
-        epoch_id:      0,
+        height:        0,
         round:         0,
         lock_round:    None,
         lock_proposal: None,
@@ -99,13 +99,13 @@ async fn test_wal() {
     // is not lock
     let auth_list = gen_auth_list(2);
     let wal = WalInfo {
-        epoch_id: 0,
-        round:    0,
-        step:     Step::Propose,
-        lock:     None,
+        height: 0,
+        round:  0,
+        step:   Step::Propose,
+        lock:   None,
     };
     let event = SMREvent::NewRoundInfo {
-        epoch_id:      0,
+        height:        0,
         round:         0,
         lock_round:    None,
         lock_proposal: None,
@@ -127,9 +127,9 @@ async fn test_wal() {
     let qc = AggregatedVote {
         signature:  mock_aggregate_signature(),
         vote_type:  VoteType::Prevote,
-        epoch_id:   0,
+        height:     0,
         round:      0,
-        epoch_hash: Bytes::from((0..32).map(|_| random::<u8>()).collect::<Vec<_>>()),
+        block_hash: Bytes::from((0..32).map(|_| random::<u8>()).collect::<Vec<_>>()),
         leader:     auth_list[0].address.clone(),
     };
     let lock = WalLock {
@@ -138,16 +138,16 @@ async fn test_wal() {
         content:    Pill::new(0),
     };
     let wal = WalInfo {
-        epoch_id: 0,
-        round:    1,
-        step:     Step::Propose,
-        lock:     Some(lock),
+        height: 0,
+        round:  1,
+        step:   Step::Propose,
+        lock:   Some(lock),
     };
     let proposal = Proposal {
-        epoch_id:   0,
+        height:     0,
         round:      1,
         content:    Pill::new(0),
-        epoch_hash: qc.epoch_hash.clone(),
+        block_hash: qc.block_hash.clone(),
         lock:       Some(PoLC {
             lock_round: 0,
             lock_votes: qc.clone(),
@@ -159,10 +159,10 @@ async fn test_wal() {
         proposal,
     });
     let event = SMREvent::NewRoundInfo {
-        epoch_id:      0,
+        height:        0,
         round:         1,
         lock_round:    Some(0),
-        lock_proposal: Some(qc.epoch_hash.clone()),
+        lock_proposal: Some(qc.block_hash.clone()),
     };
     let case_03 = WalTestCase {
         address: auth_list[0].address.clone(),
@@ -181,9 +181,9 @@ async fn test_wal() {
     let qc = AggregatedVote {
         signature:  mock_aggregate_signature(),
         vote_type:  VoteType::Prevote,
-        epoch_id:   0,
+        height:     0,
         round:      0,
-        epoch_hash: Bytes::from((0..32).map(|_| random::<u8>()).collect::<Vec<_>>()),
+        block_hash: Bytes::from((0..32).map(|_| random::<u8>()).collect::<Vec<_>>()),
         leader:     auth_list[0].address.clone(),
     };
     let lock = WalLock {
@@ -192,16 +192,16 @@ async fn test_wal() {
         content:    Pill::new(0),
     };
     let wal = WalInfo {
-        epoch_id: 0,
-        round:    1,
-        step:     Step::Propose,
-        lock:     Some(lock),
+        height: 0,
+        round:  1,
+        step:   Step::Propose,
+        lock:   Some(lock),
     };
     let event = SMREvent::NewRoundInfo {
-        epoch_id:      0,
+        height:        0,
         round:         1,
         lock_round:    Some(0),
-        lock_proposal: Some(qc.epoch_hash.clone()),
+        lock_proposal: Some(qc.block_hash.clone()),
     };
     let case_04 = WalTestCase {
         address: auth_list[0].address.clone(),
@@ -218,15 +218,15 @@ async fn test_wal() {
     // is not lock
     let auth_list = gen_auth_list(1);
     let wal = WalInfo {
-        epoch_id: 0,
-        round:    1,
-        step:     Step::Prevote,
-        lock:     None,
+        height: 0,
+        round:  1,
+        step:   Step::Prevote,
+        lock:   None,
     };
     let event = SMREvent::PrevoteVote {
-        epoch_id:   0,
+        height:     0,
         round:      1,
-        epoch_hash: Bytes::new(),
+        block_hash: Bytes::new(),
         lock_round: None,
     };
     let case_05 = WalTestCase {
@@ -244,15 +244,15 @@ async fn test_wal() {
     // is not lock
     let auth_list = gen_auth_list(1);
     let wal = WalInfo {
-        epoch_id: 0,
-        round:    1,
-        step:     Step::Prevote,
-        lock:     None,
+        height: 0,
+        round:  1,
+        step:   Step::Prevote,
+        lock:   None,
     };
     let event = SMREvent::PrevoteVote {
-        epoch_id:   0,
+        height:     0,
         round:      1,
-        epoch_hash: Bytes::new(),
+        block_hash: Bytes::new(),
         lock_round: None,
     };
     let case_06 = WalTestCase {
@@ -272,9 +272,9 @@ async fn test_wal() {
     let qc = AggregatedVote {
         signature:  mock_aggregate_signature(),
         vote_type:  VoteType::Prevote,
-        epoch_id:   0,
+        height:     0,
         round:      0,
-        epoch_hash: Bytes::from((0..32).map(|_| random::<u8>()).collect::<Vec<_>>()),
+        block_hash: Bytes::from((0..32).map(|_| random::<u8>()).collect::<Vec<_>>()),
         leader:     auth_list[0].address.clone(),
     };
     let lock = WalLock {
@@ -283,16 +283,16 @@ async fn test_wal() {
         content:    Pill::new(0),
     };
     let wal = WalInfo {
-        epoch_id: 0,
-        round:    1,
-        step:     Step::Prevote,
-        lock:     Some(lock),
+        height: 0,
+        round:  1,
+        step:   Step::Prevote,
+        lock:   Some(lock),
     };
     let vote = Vote {
-        epoch_id:   0,
+        height:     0,
         round:      1,
         vote_type:  VoteType::Prevote,
-        epoch_hash: qc.epoch_hash.clone(),
+        block_hash: qc.block_hash.clone(),
     };
     let msg = OverlordMsg::SignedVote(SignedVote {
         signature: Bytes::from(rlp::encode(&vote)),
@@ -300,10 +300,10 @@ async fn test_wal() {
         voter: auth_list[0].address.clone(),
     });
     let event = SMREvent::PrevoteVote {
-        epoch_id:   0,
+        height:     0,
         round:      1,
         lock_round: Some(0),
-        epoch_hash: Bytes::new(),
+        block_hash: Bytes::new(),
     };
     let case_07 = WalTestCase {
         address: auth_list[0].address.clone(),
@@ -322,9 +322,9 @@ async fn test_wal() {
     let qc = AggregatedVote {
         signature:  mock_aggregate_signature(),
         vote_type:  VoteType::Prevote,
-        epoch_id:   0,
+        height:     0,
         round:      0,
-        epoch_hash: Bytes::from((0..32).map(|_| random::<u8>()).collect::<Vec<_>>()),
+        block_hash: Bytes::from((0..32).map(|_| random::<u8>()).collect::<Vec<_>>()),
         leader:     auth_list[0].address.clone(),
     };
     let lock = WalLock {
@@ -333,16 +333,16 @@ async fn test_wal() {
         content:    Pill::new(0),
     };
     let wal = WalInfo {
-        epoch_id: 0,
-        round:    1,
-        step:     Step::Prevote,
-        lock:     Some(lock),
+        height: 0,
+        round:  1,
+        step:   Step::Prevote,
+        lock:   Some(lock),
     };
     let event = SMREvent::PrevoteVote {
-        epoch_id:   0,
+        height:     0,
         round:      1,
         lock_round: Some(0),
-        epoch_hash: Bytes::new(),
+        block_hash: Bytes::new(),
     };
     let case_08 = WalTestCase {
         address: auth_list[0].address.clone(),
@@ -359,16 +359,16 @@ async fn test_wal() {
     // is not lock
     let auth_list = gen_auth_list(1);
     let wal = WalInfo {
-        epoch_id: 0,
-        round:    1,
-        step:     Step::Precommit,
-        lock:     None,
+        height: 0,
+        round:  1,
+        step:   Step::Precommit,
+        lock:   None,
     };
     let event = SMREvent::PrecommitVote {
-        epoch_id:   0,
+        height:     0,
         round:      1,
         lock_round: None,
-        epoch_hash: Bytes::new(),
+        block_hash: Bytes::new(),
     };
     let case_09 = WalTestCase {
         address: auth_list[0].address.clone(),
@@ -385,16 +385,16 @@ async fn test_wal() {
     // is not lock
     let auth_list = gen_auth_list(2);
     let wal = WalInfo {
-        epoch_id: 0,
-        round:    1,
-        step:     Step::Precommit,
-        lock:     None,
+        height: 0,
+        round:  1,
+        step:   Step::Precommit,
+        lock:   None,
     };
     let event = SMREvent::PrecommitVote {
-        epoch_id:   0,
+        height:     0,
         round:      1,
         lock_round: None,
-        epoch_hash: Bytes::new(),
+        block_hash: Bytes::new(),
     };
     let case_10 = WalTestCase {
         address: auth_list[0].address.clone(),
@@ -413,9 +413,9 @@ async fn test_wal() {
     let qc = AggregatedVote {
         signature:  mock_aggregate_signature(),
         vote_type:  VoteType::Prevote,
-        epoch_id:   0,
+        height:     0,
         round:      0,
-        epoch_hash: Bytes::from((0..32).map(|_| random::<u8>()).collect::<Vec<_>>()),
+        block_hash: Bytes::from((0..32).map(|_| random::<u8>()).collect::<Vec<_>>()),
         leader:     auth_list[0].address.clone(),
     };
     let lock = WalLock {
@@ -424,16 +424,16 @@ async fn test_wal() {
         content:    Pill::new(0),
     };
     let wal = WalInfo {
-        epoch_id: 0,
-        round:    1,
-        step:     Step::Precommit,
-        lock:     Some(lock),
+        height: 0,
+        round:  1,
+        step:   Step::Precommit,
+        lock:   Some(lock),
     };
     let vote = Vote {
-        epoch_id:   0,
+        height:     0,
         round:      1,
         vote_type:  VoteType::Prevote,
-        epoch_hash: qc.epoch_hash.clone(),
+        block_hash: qc.block_hash.clone(),
     };
     let msg = OverlordMsg::SignedVote(SignedVote {
         signature: Bytes::from(rlp::encode(&vote)),
@@ -441,10 +441,10 @@ async fn test_wal() {
         voter: auth_list[0].address.clone(),
     });
     let event = SMREvent::PrecommitVote {
-        epoch_id:   0,
+        height:     0,
         round:      1,
         lock_round: Some(0),
-        epoch_hash: Bytes::new(),
+        block_hash: Bytes::new(),
     };
     let case_11 = WalTestCase {
         address: auth_list[0].address.clone(),
@@ -463,9 +463,9 @@ async fn test_wal() {
     let qc = AggregatedVote {
         signature:  mock_aggregate_signature(),
         vote_type:  VoteType::Prevote,
-        epoch_id:   0,
+        height:     0,
         round:      0,
-        epoch_hash: Bytes::from((0..32).map(|_| random::<u8>()).collect::<Vec<_>>()),
+        block_hash: Bytes::from((0..32).map(|_| random::<u8>()).collect::<Vec<_>>()),
         leader:     auth_list[0].address.clone(),
     };
     let lock = WalLock {
@@ -474,16 +474,16 @@ async fn test_wal() {
         content:    Pill::new(0),
     };
     let wal = WalInfo {
-        epoch_id: 0,
-        round:    1,
-        step:     Step::Precommit,
-        lock:     Some(lock),
+        height: 0,
+        round:  1,
+        step:   Step::Precommit,
+        lock:   Some(lock),
     };
     let event = SMREvent::PrecommitVote {
-        epoch_id:   0,
+        height:     0,
         round:      1,
         lock_round: Some(0),
-        epoch_hash: Bytes::new(),
+        block_hash: Bytes::new(),
     };
     let case_12 = WalTestCase {
         address: auth_list[0].address.clone(),
@@ -503,9 +503,9 @@ async fn test_wal() {
     let qc = AggregatedVote {
         signature:  sig.clone(),
         vote_type:  VoteType::Precommit,
-        epoch_id:   0,
+        height:     0,
         round:      1,
-        epoch_hash: Bytes::from((0..32).map(|_| random::<u8>()).collect::<Vec<_>>()),
+        block_hash: Bytes::from((0..32).map(|_| random::<u8>()).collect::<Vec<_>>()),
         leader:     auth_list[0].address.clone(),
     };
     let lock = WalLock {
@@ -514,19 +514,19 @@ async fn test_wal() {
         content:    Pill::new(0),
     };
     let wal = WalInfo {
-        epoch_id: 0,
-        round:    1,
-        step:     Step::Commit,
-        lock:     Some(lock),
+        height: 0,
+        round:  1,
+        step:   Step::Commit,
+        lock:   Some(lock),
     };
     let proof = Proof {
-        epoch_id:   0,
+        height:     0,
         round:      1,
-        epoch_hash: qc.epoch_hash.clone(),
+        block_hash: qc.block_hash.clone(),
         signature:  sig,
     };
     let msg = OverlordMsg::Commit(Commit {
-        epoch_id: 0,
+        height: 0,
         content: Pill::new(0),
         proof,
     });

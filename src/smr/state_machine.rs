@@ -11,17 +11,17 @@ use moodyblues_sdk::trace;
 use crate::smr::smr_types::{Lock, SMREvent, SMRTrigger, Step, TriggerSource, TriggerType};
 use crate::wal::SMRBase;
 use crate::{error::ConsensusError, smr::Event, types::Hash};
-use crate::{ConsensusResult, INIT_EPOCH_ID, INIT_ROUND};
+use crate::{ConsensusResult, INIT_HEIGHT, INIT_ROUND};
 
 /// A smallest implementation of an atomic overlord state machine. It
 #[derive(Debug, Display)]
 #[rustfmt::skip]
-#[display(fmt = "State machine epoch ID {}, round {}, step {:?}", epoch_id, round, step)]
+#[display(fmt = "State machine height {}, round {}, step {:?}", height, round, step)]
 pub struct StateMachine {
-    epoch_id:      u64,
+    height:      u64,
     round:         u64,
     step:          Step,
-    epoch_hash:    Hash,
+    block_hash:    Hash,
     lock:          Option<Lock>,
 
     event:   (UnboundedSender<SMREvent>, UnboundedSender<SMREvent>),
@@ -45,15 +45,15 @@ impl Stream for StateMachine {
                 let msg = msg.unwrap();
                 let trigger_type = msg.trigger_type.clone();
                 let res = match trigger_type {
-                    TriggerType::NewEpoch(epoch_id) => self.handle_new_epoch(epoch_id, msg.source),
+                    TriggerType::NewHeight(height) => self.handle_new_height(height, msg.source),
                     TriggerType::Proposal => {
-                        self.handle_proposal(msg.hash, msg.round, msg.source, msg.epoch_id)
+                        self.handle_proposal(msg.hash, msg.round, msg.source, msg.height)
                     }
                     TriggerType::PrevoteQC => {
-                        self.handle_prevote(msg.hash, msg.round, msg.source, msg.epoch_id)
+                        self.handle_prevote(msg.hash, msg.round, msg.source, msg.height)
                     }
                     TriggerType::PrecommitQC => {
-                        self.handle_precommit(msg.hash, msg.round, msg.source, msg.epoch_id)
+                        self.handle_precommit(msg.hash, msg.round, msg.source, msg.height)
                     }
                     TriggerType::WalInfo => self.handle_wal(msg.wal_info.unwrap()),
                 };
@@ -75,10 +75,10 @@ impl StateMachine {
         let (tx_2, rx_2) = unbounded();
 
         let state_machine = StateMachine {
-            epoch_id:   INIT_EPOCH_ID,
+            height:     INIT_HEIGHT,
             round:      INIT_ROUND,
             step:       Step::default(),
-            epoch_hash: Hash::new(),
+            block_hash: Hash::new(),
             lock:       None,
             trigger:    trigger_receiver,
             event:      (tx_1, tx_2),
@@ -88,7 +88,7 @@ impl StateMachine {
     }
 
     fn handle_wal(&mut self, info: SMRBase) -> ConsensusResult<()> {
-        self.epoch_id = info.epoch_id;
+        self.height = info.height;
         self.round = info.round;
         self.step = info.step;
         if let Some(polc) = &info.polc {
@@ -98,25 +98,25 @@ impl StateMachine {
         self.set_timer_after_wal()
     }
 
-    /// Handle a new epoch trigger. If new epoch ID is higher than current, goto a new epoch and
+    /// Handle a new height trigger. If new height is higher than current, goto new height and
     /// throw a new round info event.
-    fn handle_new_epoch(&mut self, epoch_id: u64, source: TriggerSource) -> ConsensusResult<()> {
-        info!("Overlord: SMR triggered by new epoch {}", epoch_id);
+    fn handle_new_height(&mut self, height: u64, source: TriggerSource) -> ConsensusResult<()> {
+        info!("Overlord: SMR triggered by new height {}", height);
 
         if source != TriggerSource::State {
             return Err(ConsensusError::Other(
                 "Rich status source error".to_string(),
             ));
-        } else if epoch_id <= self.epoch_id {
+        } else if height <= self.height {
             return Err(ConsensusError::Other("Delayed status".to_string()));
         }
 
         self.check()?;
-        self.goto_new_epoch(epoch_id);
+        self.goto_new_height(height);
 
         // throw new round info event
         self.throw_event(SMREvent::NewRoundInfo {
-            epoch_id:      self.epoch_id,
+            height:        self.height,
             round:         INIT_ROUND,
             lock_round:    None,
             lock_proposal: None,
@@ -133,9 +133,9 @@ impl StateMachine {
         proposal_hash: Hash,
         lock_round: Option<u64>,
         source: TriggerSource,
-        epoch_id: u64,
+        height: u64,
     ) -> ConsensusResult<()> {
-        if self.epoch_id != epoch_id {
+        if self.height != height {
             return Ok(());
         }
 
@@ -158,9 +158,9 @@ impl StateMachine {
             };
 
             self.throw_event(SMREvent::PrevoteVote {
-                epoch_id:   self.epoch_id,
+                height:     self.height,
                 round:      self.round,
-                epoch_hash: Hash::new(),
+                block_hash: Hash::new(),
                 lock_round: round,
             })?;
             self.goto_step(Step::Prevote);
@@ -178,7 +178,7 @@ impl StateMachine {
                 if lock_round > lock.round {
                     self.remove_polc();
                     self.set_proposal(proposal_hash);
-                } else if lock_round == lock.round && proposal_hash != self.epoch_hash {
+                } else if lock_round == lock.round && proposal_hash != self.block_hash {
                     return Err(ConsensusError::CorrectnessErr("Fork".to_string()));
                 }
             } else {
@@ -196,9 +196,9 @@ impl StateMachine {
         };
 
         self.throw_event(SMREvent::PrevoteVote {
-            epoch_id:   self.epoch_id,
+            height:     self.height,
             round:      self.round,
-            epoch_hash: self.epoch_hash.clone(),
+            block_hash: self.block_hash.clone(),
             lock_round: round,
         })?;
         self.goto_step(Step::Prevote);
@@ -214,12 +214,12 @@ impl StateMachine {
         prevote_hash: Hash,
         prevote_round: Option<u64>,
         source: TriggerSource,
-        epoch_id: u64,
+        height: u64,
     ) -> ConsensusResult<()> {
         let prevote_round =
             prevote_round.ok_or_else(|| ConsensusError::PrevoteErr("No vote round".to_string()))?;
 
-        if self.epoch_id != epoch_id {
+        if self.height != height {
             return Ok(());
         }
 
@@ -237,14 +237,14 @@ impl StateMachine {
             let round = if let Some(lock) = &self.lock {
                 Some(lock.round)
             } else {
-                self.epoch_hash = Hash::new();
+                self.block_hash = Hash::new();
                 None
             };
 
             self.throw_event(SMREvent::PrecommitVote {
-                epoch_id:   self.epoch_id,
+                height:     self.height,
                 round:      self.round,
-                epoch_hash: Hash::new(),
+                block_hash: Hash::new(),
                 lock_round: round,
             })?;
             self.goto_step(Step::Precommit);
@@ -277,9 +277,9 @@ impl StateMachine {
             None
         };
         self.throw_event(SMREvent::PrecommitVote {
-            epoch_id:   self.epoch_id,
+            height:     self.height,
             round:      self.round,
-            epoch_hash: self.epoch_hash.clone(),
+            block_hash: self.block_hash.clone(),
             lock_round: round,
         })?;
         self.goto_step(Step::Precommit);
@@ -295,12 +295,12 @@ impl StateMachine {
         precommit_hash: Hash,
         precommit_round: Option<u64>,
         source: TriggerSource,
-        epoch_id: u64,
+        height: u64,
     ) -> ConsensusResult<()> {
         let precommit_round = precommit_round
             .ok_or_else(|| ConsensusError::PrevoteErr("No vote round".to_string()))?;
 
-        if self.epoch_id != epoch_id {
+        if self.height != height {
             return Ok(());
         }
 
@@ -320,7 +320,7 @@ impl StateMachine {
 
         if source == TriggerSource::Timer {
             self.throw_event(SMREvent::NewRoundInfo {
-                epoch_id: self.epoch_id,
+                height: self.height,
                 round: self.round + 1,
                 lock_round,
                 lock_proposal,
@@ -351,7 +351,7 @@ impl StateMachine {
         Ok(())
     }
 
-    // Check PoLC when triggered precommit QC by state. If the epoch hash of the QC is equal to self
+    // Check PoLC when triggered precommit QC by state. If the block hash of the QC is equal to self
     // lock, change self round and do commit, otherwise, it may be fork.
     fn check_polc(&mut self, hash: Hash, round: u64) -> ConsensusResult<()> {
         if let Some(lock) = self.lock.as_mut() {
@@ -368,14 +368,14 @@ impl StateMachine {
         Ok(())
     }
 
-    /// Goto a new epoch and clear everything.
-    fn goto_new_epoch(&mut self, epoch_id: u64) {
-        info!("Overlord: SMR goto new epoch: {}", epoch_id);
-        self.epoch_id = epoch_id;
+    /// Goto new height and clear everything.
+    fn goto_new_height(&mut self, height: u64) {
+        info!("Overlord: SMR goto new height: {}", height);
+        self.height = height;
         self.round = INIT_ROUND;
-        trace::start_step((Step::Propose).to_string(), self.round, epoch_id);
+        trace::start_step((Step::Propose).to_string(), self.round, height);
         self.goto_step(Step::Propose);
-        self.epoch_hash = Hash::new();
+        self.block_hash = Hash::new();
         self.lock = None;
     }
 
@@ -395,21 +395,21 @@ impl StateMachine {
 
         let event = match self.step {
             Step::Propose => SMREvent::NewRoundInfo {
-                epoch_id: self.epoch_id,
+                height: self.height,
                 round: self.round,
                 lock_round,
                 lock_proposal,
             },
             Step::Prevote => SMREvent::PrevoteVote {
-                epoch_id: self.epoch_id,
+                height: self.height,
                 round: self.round,
-                epoch_hash: Hash::new(),
+                block_hash: Hash::new(),
                 lock_round,
             },
             Step::Precommit => SMREvent::PrecommitVote {
-                epoch_id: self.epoch_id,
+                height: self.height,
                 round: self.round,
-                epoch_hash: Hash::new(),
+                block_hash: Hash::new(),
                 lock_round,
             },
             _ => unreachable!(),
@@ -421,7 +421,7 @@ impl StateMachine {
     #[inline]
     fn goto_step(&mut self, step: Step) {
         debug!("Overlord: SMR goto step {:?}", step);
-        trace::start_step(step.clone().to_string(), self.round, self.epoch_id);
+        trace::start_step(step.clone().to_string(), self.round, self.height);
         self.step = step;
     }
 
@@ -447,7 +447,7 @@ impl StateMachine {
     /// Set self proposal hash as the given hash.
     #[inline]
     fn set_proposal(&mut self, proposal_hash: Hash) {
-        self.epoch_hash = proposal_hash;
+        self.block_hash = proposal_hash;
     }
 
     /// Do below self checks before each message is processed:
@@ -460,9 +460,9 @@ impl StateMachine {
         debug!("Overlord: SMR do self check");
 
         // Lock hash must be same as proposal hash, if has.
-        if self.epoch_id == 0
+        if self.height == 0
             && self.lock.is_some()
-            && self.lock.clone().unwrap().hash != self.epoch_hash
+            && self.lock.clone().unwrap().hash != self.block_hash
         {
             return Err(ConsensusError::SelfCheckErr("Lock".to_string()));
         }
@@ -470,17 +470,17 @@ impl StateMachine {
         // While self step lt precommit and round is 0, self lock must be none.
         if self.step < Step::Precommit && self.round == 0 && self.lock.is_some() {
             return Err(ConsensusError::SelfCheckErr(format!(
-                "Invalid lock, epoch ID {}, round {}",
-                self.epoch_id, self.round
+                "Invalid lock, height {}, round {}",
+                self.height, self.round
             )));
         }
 
         // While in precommit step, the lock and the proposal hash must be NOR.
-        if self.step == Step::Precommit && (self.epoch_hash.is_empty().bitxor(self.lock.is_none()))
+        if self.step == Step::Precommit && (self.block_hash.is_empty().bitxor(self.lock.is_none()))
         {
             return Err(ConsensusError::SelfCheckErr(format!(
-                "Invalid status in precommit, epoch ID {}, round {}",
-                self.epoch_id, self.round
+                "Invalid status in precommit, height {}, round {}",
+                self.height, self.round
             )));
         }
         Ok(())

@@ -14,8 +14,8 @@ use crate::{Codec, Consensus, Crypto, Wal};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Pill {
-    epoch_id: u64,
-    epoch:    Vec<u8>,
+    height: u64,
+    epoch:  Vec<u8>,
 }
 
 impl Codec for Pill {
@@ -31,9 +31,9 @@ impl Codec for Pill {
 }
 
 impl Pill {
-    pub fn new(epoch_id: u64) -> Self {
+    pub fn new(height: u64) -> Self {
         let epoch = vec![1, 2, 3, 4, 5];
-        Pill { epoch_id, epoch }
+        Pill { height, epoch }
     }
 }
 
@@ -44,20 +44,20 @@ pub struct ConsensusHelper<T: Codec> {
 
 #[async_trait]
 impl Consensus<Pill> for ConsensusHelper<Pill> {
-    async fn get_epoch(
+    async fn get_block(
         &self,
         _ctx: Context,
-        epoch_id: u64,
+        height: u64,
     ) -> Result<(Pill, Hash), Box<dyn Error + Send>> {
-        let epoch = Pill::new(epoch_id);
+        let epoch = Pill::new(height);
         let hash = Bytes::from(vec![1u8, 2, 3, 4, 5]);
         Ok((epoch, hash))
     }
 
-    async fn check_epoch(
+    async fn check_block(
         &self,
         _ctx: Context,
-        _epoch_id: u64,
+        _height: u64,
         _hash: Hash,
         _epoch: Pill,
     ) -> Result<(), Box<dyn Error + Send>> {
@@ -67,12 +67,12 @@ impl Consensus<Pill> for ConsensusHelper<Pill> {
     async fn commit(
         &self,
         _ctx: Context,
-        epoch_id: u64,
+        height: u64,
         commit: Commit<Pill>,
     ) -> Result<Status, Box<dyn Error + Send>> {
         let _ = self.tx.unbounded_send(OverlordMsg::Commit(commit));
         let status = Status {
-            epoch_id:       epoch_id + 1,
+            height:         height + 1,
             interval:       None,
             authority_list: self.auth_list.clone(),
         };
@@ -82,7 +82,7 @@ impl Consensus<Pill> for ConsensusHelper<Pill> {
     async fn get_authority_list(
         &self,
         _ctx: Context,
-        _epoch_id: u64,
+        _height: u64,
     ) -> Result<Vec<Node>, Box<dyn Error + Send>> {
         Ok(self.auth_list.clone())
     }

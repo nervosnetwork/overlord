@@ -18,8 +18,8 @@ enum Approach {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 struct Pill {
-    epoch_id: u64,
-    epoch:    Vec<u64>,
+    height: u64,
+    epoch:  Vec<u64>,
 }
 
 impl Codec for Pill {
@@ -35,9 +35,9 @@ impl Codec for Pill {
 }
 
 impl Pill {
-    fn new(epoch_id: u64) -> Self {
+    fn new(height: u64) -> Self {
         let epoch = (0..128).map(|_| random::<u64>()).collect::<Vec<_>>();
-        Pill { epoch_id, epoch }
+        Pill { height, epoch }
     }
 }
 
@@ -49,20 +49,20 @@ struct ConsensusHelper<T: Codec> {
 
 #[async_trait]
 impl Consensus<Pill> for ConsensusHelper<Pill> {
-    async fn get_epoch(
+    async fn get_block(
         &self,
         _ctx: Context,
-        epoch_id: u64,
+        height: u64,
     ) -> Result<(Pill, Hash), Box<dyn Error + Send>> {
-        let epoch = Pill::new(epoch_id);
+        let epoch = Pill::new(height);
         let hash = BytesMut::from(blake2b(epoch.clone().encode()?.as_ref()).as_bytes()).freeze();
         Ok((epoch, hash))
     }
 
-    async fn check_epoch(
+    async fn check_block(
         &self,
         _ctx: Context,
-        _epoch_id: u64,
+        _height: u64,
         _hash: Hash,
         _epoch: Pill,
     ) -> Result<(), Box<dyn Error + Send>> {
@@ -72,12 +72,12 @@ impl Consensus<Pill> for ConsensusHelper<Pill> {
     async fn commit(
         &self,
         _ctx: Context,
-        epoch_id: u64,
+        height: u64,
         commit: Commit<Pill>,
     ) -> Result<Status, Box<dyn Error + Send>> {
         self.commit_tx.send(commit).unwrap();
         let status = Status {
-            epoch_id:       epoch_id + 1,
+            height:         height + 1,
             interval:       None,
             authority_list: self.auth_list.clone(),
         };
@@ -87,7 +87,7 @@ impl Consensus<Pill> for ConsensusHelper<Pill> {
     async fn get_authority_list(
         &self,
         _ctx: Context,
-        _epoch_id: u64,
+        _height: u64,
     ) -> Result<Vec<Node>, Box<dyn Error + Send>> {
         Ok(self.auth_list.clone())
     }

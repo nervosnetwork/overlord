@@ -51,16 +51,16 @@ pub enum ConsensusError {
     #[display(fmt = "State error {}", _0)]
     StateErr(String),
     ///
-    #[display(fmt = "Multiple proposal in epoch ID {}, round {}", _0, _1)]
+    #[display(fmt = "Multiple proposal in height {}, round {}", _0, _1)]
     MultiProposal(u64, u64),
     ///
     #[display(fmt = "Storage error {}", _0)]
     StorageErr(String),
     ///
-    #[display(fmt = "Save Wal error {}, {}, {} step", epoch_id, round, step)]
+    #[display(fmt = "Save Wal error {}, {}, {} step", height, round, step)]
     SaveWalErr {
         ///
-        epoch_id: u64,
+        height: u64,
         ///
         round: u64,
         ///

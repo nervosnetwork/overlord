@@ -40,9 +40,9 @@ impl<T: Codec> Encodable for Proposal<T> {
     fn rlp_append(&self, s: &mut RlpStream) {
         let content = self.content.encode().unwrap().to_vec();
         s.begin_list(6)
-            .append(&self.epoch_id)
+            .append(&self.height)
             .append(&self.round)
-            .append(&self.epoch_hash.to_vec())
+            .append(&self.block_hash.to_vec())
             .append(&self.lock)
             .append(&self.proposer.to_vec())
             .append(&content);
@@ -53,10 +53,10 @@ impl<T: Codec> Decodable for Proposal<T> {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         match r.prototype()? {
             Prototype::List(6) => {
-                let epoch_id: u64 = r.val_at(0)?;
+                let height: u64 = r.val_at(0)?;
                 let round: u64 = r.val_at(1)?;
                 let tmp: Vec<u8> = r.val_at(2)?;
-                let epoch_hash = Hash::from(tmp);
+                let block_hash = Hash::from(tmp);
                 let lock = r.val_at(3)?;
                 let tmp: Vec<u8> = r.val_at(4)?;
                 let proposer = Address::from(tmp);
@@ -64,10 +64,10 @@ impl<T: Codec> Decodable for Proposal<T> {
                 let content = Codec::decode(Bytes::from(tmp))
                     .map_err(|_| DecoderError::Custom("Codec decode error."))?;
                 Ok(Proposal {
-                    epoch_id,
+                    height,
                     round,
                     content,
-                    epoch_hash,
+                    block_hash,
                     lock,
                     proposer,
                 })
@@ -136,9 +136,9 @@ impl Encodable for AggregatedVote {
         s.begin_list(6)
             .append(&self.signature)
             .append(&vote_type)
-            .append(&self.epoch_id)
+            .append(&self.height)
             .append(&self.round)
-            .append(&self.epoch_hash.to_vec())
+            .append(&self.block_hash.to_vec())
             .append(&self.leader.to_vec());
     }
 }
@@ -150,18 +150,18 @@ impl Decodable for AggregatedVote {
                 let signature: AggregatedSignature = r.val_at(0)?;
                 let tmp: u8 = r.val_at(1)?;
                 let vote_type = VoteType::from(tmp);
-                let epoch_id: u64 = r.val_at(2)?;
+                let height: u64 = r.val_at(2)?;
                 let round: u64 = r.val_at(3)?;
                 let tmp: Vec<u8> = r.val_at(4)?;
-                let epoch_hash = Hash::from(tmp);
+                let block_hash = Hash::from(tmp);
                 let tmp: Vec<u8> = r.val_at(5)?;
                 let leader = Address::from(tmp);
                 Ok(AggregatedVote {
                     signature,
                     vote_type,
-                    epoch_id,
+                    height,
                     round,
-                    epoch_hash,
+                    block_hash,
                     leader,
                 })
             }
@@ -205,10 +205,10 @@ impl Encodable for Vote {
     fn rlp_append(&self, s: &mut RlpStream) {
         let vote_type: u8 = self.vote_type.clone().into();
         s.begin_list(4)
-            .append(&self.epoch_id)
+            .append(&self.height)
             .append(&self.round)
             .append(&vote_type)
-            .append(&self.epoch_hash.to_vec());
+            .append(&self.block_hash.to_vec());
     }
 }
 
@@ -216,17 +216,17 @@ impl Decodable for Vote {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         match r.prototype()? {
             Prototype::List(4) => {
-                let epoch_id: u64 = r.val_at(0)?;
+                let height: u64 = r.val_at(0)?;
                 let round: u64 = r.val_at(1)?;
                 let tmp: u8 = r.val_at(2)?;
                 let vote_type = VoteType::from(tmp);
                 let tmp: Vec<u8> = r.val_at(3)?;
-                let epoch_hash = Hash::from(tmp);
+                let block_hash = Hash::from(tmp);
                 Ok(Vote {
-                    epoch_id,
+                    height,
                     round,
                     vote_type,
-                    epoch_hash,
+                    block_hash,
                 })
             }
             _ => Err(DecoderError::RlpInconsistentLengthAndData),
@@ -239,7 +239,7 @@ impl<T: Codec> Encodable for Commit<T> {
     fn rlp_append(&self, s: &mut RlpStream) {
         let content = self.content.encode().unwrap().to_vec();
         s.begin_list(3)
-            .append(&self.epoch_id)
+            .append(&self.height)
             .append(&self.proof)
             .append(&content);
     }
@@ -249,13 +249,13 @@ impl<T: Codec> Decodable for Commit<T> {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         match r.prototype()? {
             Prototype::List(3) => {
-                let epoch_id: u64 = r.val_at(0)?;
+                let height: u64 = r.val_at(0)?;
                 let proof: Proof = r.val_at(1)?;
                 let tmp: Vec<u8> = r.val_at(2)?;
                 let content = Codec::decode(Bytes::from(tmp))
                     .map_err(|_| DecoderError::Custom("Codec decode error."))?;
                 Ok(Commit {
-                    epoch_id,
+                    height,
                     proof,
                     content,
                 })
@@ -269,9 +269,9 @@ impl<T: Codec> Decodable for Commit<T> {
 impl Encodable for Proof {
     fn rlp_append(&self, s: &mut RlpStream) {
         s.begin_list(4)
-            .append(&self.epoch_id)
+            .append(&self.height)
             .append(&self.round)
-            .append(&self.epoch_hash.to_vec())
+            .append(&self.block_hash.to_vec())
             .append(&self.signature);
     }
 }
@@ -280,15 +280,15 @@ impl Decodable for Proof {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         match r.prototype()? {
             Prototype::List(4) => {
-                let epoch_id: u64 = r.val_at(0)?;
+                let height: u64 = r.val_at(0)?;
                 let round: u64 = r.val_at(1)?;
                 let tmp: Vec<u8> = r.val_at(2)?;
-                let epoch_hash = Hash::from(tmp);
+                let block_hash = Hash::from(tmp);
                 let signature: AggregatedSignature = r.val_at(3)?;
                 Ok(Proof {
-                    epoch_id,
+                    height,
                     round,
-                    epoch_hash,
+                    block_hash,
                     signature,
                 })
             }
@@ -306,7 +306,7 @@ impl Encodable for Status {
             self.interval.clone().unwrap()
         };
         s.begin_list(3)
-            .append(&self.epoch_id)
+            .append(&self.height)
             .append(&tmp)
             .append_list(&self.authority_list);
     }
@@ -316,13 +316,13 @@ impl Decodable for Status {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         match r.prototype()? {
             Prototype::List(3) => {
-                let epoch_id: u64 = r.val_at(0)?;
+                let height: u64 = r.val_at(0)?;
                 let tmp: u64 = r.val_at(1)?;
                 let authority_list: Vec<Node> = r.list_at(2)?;
                 let interval = if tmp == 0 { None } else { Some(tmp) };
 
                 Ok(Status {
-                    epoch_id,
+                    height,
                     interval,
                     authority_list,
                 })
@@ -366,8 +366,8 @@ impl<T: Codec> Encodable for Feed<T> {
     fn rlp_append(&self, s: &mut RlpStream) {
         let content = self.content.encode().unwrap().to_vec();
         s.begin_list(3)
-            .append(&self.epoch_id)
-            .append(&self.epoch_hash.to_vec())
+            .append(&self.height)
+            .append(&self.block_hash.to_vec())
             .append(&content);
     }
 }
@@ -376,15 +376,15 @@ impl<T: Codec> Decodable for Feed<T> {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         match r.prototype()? {
             Prototype::List(3) => {
-                let epoch_id: u64 = r.val_at(0)?;
+                let height: u64 = r.val_at(0)?;
                 let tmp: Vec<u8> = r.val_at(1)?;
-                let epoch_hash = Hash::from(tmp);
+                let block_hash = Hash::from(tmp);
                 let tmp: Vec<u8> = r.val_at(2)?;
                 let content = Codec::decode(Bytes::from(tmp))
                     .map_err(|_| DecoderError::Custom("Codec decode error."))?;
                 Ok(Feed {
-                    epoch_id,
-                    epoch_hash,
+                    height,
+                    block_hash,
                     content,
                 })
             }
@@ -426,7 +426,7 @@ impl<T: Codec> Decodable for WalLock<T> {
 impl<T: Codec> Encodable for WalInfo<T> {
     fn rlp_append(&self, s: &mut RlpStream) {
         s.begin_list(4)
-            .append(&self.epoch_id)
+            .append(&self.height)
             .append(&self.round)
             .append::<u8>(&self.step.clone().into())
             .append(&self.lock);
@@ -437,13 +437,13 @@ impl<T: Codec> Decodable for WalInfo<T> {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         match r.prototype()? {
             Prototype::List(4) => {
-                let epoch_id: u64 = r.val_at(0)?;
+                let height: u64 = r.val_at(0)?;
                 let round: u64 = r.val_at(1)?;
                 let tmp: u8 = r.val_at(2)?;
                 let step = Step::from(tmp);
                 let lock = r.val_at(3)?;
                 Ok(WalInfo {
-                    epoch_id,
+                    height,
                     round,
                     step,
                     lock,
@@ -466,8 +466,8 @@ mod test {
 
     #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
     struct Pill {
-        epoch_id: u64,
-        epoch:    Vec<u64>,
+        height: u64,
+        epoch:  Vec<u64>,
     }
 
     impl Codec for Pill {
@@ -484,9 +484,9 @@ mod test {
 
     impl Pill {
         fn new() -> Self {
-            let epoch_id = random::<u64>();
+            let height = random::<u64>();
             let epoch = (0..128).map(|_| random::<u64>()).collect::<Vec<_>>();
-            Pill { epoch_id, epoch }
+            Pill { height, epoch }
         }
     }
 
@@ -501,15 +501,15 @@ mod test {
 
     impl<T: Codec> Proposal<T> {
         fn new(content: T, lock: Option<PoLC>) -> Self {
-            let epoch_id = random::<u64>();
+            let height = random::<u64>();
             let round = random::<u64>();
-            let epoch_hash = gen_hash();
+            let block_hash = gen_hash();
             let proposer = gen_address();
             Proposal {
-                epoch_id,
+                height,
                 round,
                 content,
-                epoch_hash,
+                block_hash,
                 lock,
                 proposer,
             }
@@ -540,9 +540,9 @@ mod test {
             AggregatedVote {
                 signature:  gen_aggr_signature(),
                 vote_type:  VoteType::from(vote_type),
-                epoch_id:   random::<u64>(),
+                height:     random::<u64>(),
                 round:      random::<u64>(),
-                epoch_hash: gen_hash(),
+                block_hash: gen_hash(),
                 leader:     gen_address(),
             }
         }
@@ -551,20 +551,20 @@ mod test {
     impl Vote {
         fn new(vote_type: u8) -> Self {
             Vote {
-                epoch_id:   random::<u64>(),
+                height:     random::<u64>(),
                 round:      random::<u64>(),
                 vote_type:  VoteType::from(vote_type),
-                epoch_hash: gen_hash(),
+                block_hash: gen_hash(),
             }
         }
     }
 
     impl<T: Codec> Commit<T> {
         fn new(content: T) -> Self {
-            let epoch_id = random::<u64>();
+            let height = random::<u64>();
             let proof = Proof::new();
             Commit {
-                epoch_id,
+                height,
                 content,
                 proof,
             }
@@ -574,9 +574,9 @@ mod test {
     impl Proof {
         fn new() -> Self {
             Proof {
-                epoch_id:   random::<u64>(),
+                height:     random::<u64>(),
                 round:      random::<u64>(),
-                epoch_hash: gen_hash(),
+                block_hash: gen_hash(),
                 signature:  gen_aggr_signature(),
             }
         }
@@ -585,7 +585,7 @@ mod test {
     impl Status {
         fn new(time: Option<u64>) -> Self {
             Status {
-                epoch_id:       random::<u64>(),
+                height:         random::<u64>(),
                 interval:       time,
                 authority_list: vec![Node::new(gen_address())],
             }
@@ -594,12 +594,12 @@ mod test {
 
     impl<T: Codec> Feed<T> {
         fn new(content: T) -> Self {
-            let epoch_id = random::<u64>();
-            let epoch_hash = gen_hash();
+            let height = random::<u64>();
+            let block_hash = gen_hash();
             Feed {
-                epoch_id,
+                height,
                 content,
-                epoch_hash,
+                block_hash,
             }
         }
     }
@@ -617,11 +617,11 @@ mod test {
                 None
             };
 
-            let epoch_id = random::<u64>();
+            let height = random::<u64>();
             let round = random::<u64>();
             let step = Step::Precommit;
             WalInfo {
-                epoch_id,
+                height,
                 round,
                 step,
                 lock,

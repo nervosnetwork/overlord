@@ -51,7 +51,7 @@ where
         OverlordHandler::new(tx)
     }
 
-    /// Run overlord consensus process. The `interval` is the epoch interval as millisecond.
+    /// Run overlord consensus process. The `interval` is the height interval as millisecond.
     pub async fn run(
         &self,
         interval: u64,

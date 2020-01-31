@@ -36,11 +36,11 @@ We use B(h, S, T) to represent a block of height h, which contains a state of S,
 ### Protocol description
 
 
-In Overlord, a consensus process is called an epoch. The epoch contains two parts, Header and Body (as shown below). The core structure of epoch is shown below, `epoch_id` is a monotonically increasing value, equivalent to height; `prev_hash` is the hash of the previous epoch; `order_root` is the merkle root of all pending transactions contained in the Body; `state_root` represents the latest world The MPT root of the state; `confirm_roots` represents the `order_root` collection from the `state_root` of the previous epoch to the `state_root` of the current epoch; the `receipt_roots` records the `receipt_root` corresponding to each `order_root` being executed; proof is proof of the previous epoch .
+In Overlord, a consensus process is called a block. The block contains two parts, Header and Body (as shown below). The core structure of block is shown below, `height` is a monotonically increasing value, equivalent to height; `prev_hash` is the hash of the previous block; `order_root` is the merkle root of all pending transactions contained in the Body; `state_root` represents the latest world The MPT root of the state; `confirm_roots` represents the `order_root` collection from the `state_root` of the previous block to the `state_root` of the current block; the `receipt_roots` records the `receipt_root` corresponding to each `order_root` being executed; proof is proof of the previous block .
 
-<div align=center><img src="./assets/epoch.png"></div>
+<div align=center><img src="./assets/block.png"></div>
 
-In this method, the consensus module batches the transactions to make a consensus. After the consensus is reached, the ordered transaction set is added to the queue to be executed, and the execution module executes in order of the transaction set, and each execution of the transaction set is performed. The ordered root of the transaction set to be executed, and the executed stateRoot are sent to the consensus module. When packing the transactions to assemble the epoch, the leader take the latest state_root as the latest state to participate in the consensus.
+In this method, the consensus module batches the transactions to make a consensus. After the consensus is reached, the ordered transaction set is added to the queue to be executed, and the execution module executes in order of the transaction set, and each execution of the transaction set is performed. The ordered root of the transaction set to be executed, and the executed stateRoot are sent to the consensus module. When packing the transactions to assemble the block, the leader take the latest state_root as the latest state to participate in the consensus.
 
 Overlord is an interpretation layer above the specific consensus algorithm. By reinterpreting the semantics of consensus, the transaction sequence is decoupled from the state consensus, so that higher transaction processing capability can be obtained in actual operation. In theory, Overlord can be based on almost any BFT-like consensus algorithm, specifically in our project based on the improved Tendermint.
 
@@ -48,7 +48,7 @@ We have made three major improvements compared to Tendermint:
 
 1. Apply the aggregate signature to Tendermint to make the consensus message complexity from <img src="https://latex.codecogs.com/svg.latex?\inline&space;O(n^{2})" title= "O(n^{2})" /> falls to <img src="https://latex.codecogs.com/svg.latex?\inline&space;O(n)" title="O(n)" />, thus being able to support more consensus nodes
 2. The propose transaction area is added to the proposal, so that the synchronization of the new transaction can be paralleled with the consensus process.
-3. After receiving the proposal, the consensus node can vote for the prevote without waiting for the epoch check, and must obtain the epoch check result before voting the precommit vote, so that the block check is parallel with the prevote process.
+3. After receiving the proposal, the consensus node can vote for the prevote without waiting for the block check, and must obtain the block check result before voting the precommit vote, so that the block check is parallel with the prevote process.
 
 #### Aggregate signature
 
@@ -58,13 +58,13 @@ If Relayer fails, no aggregated signature is sent to the consensus node, or Rela
 
 #### Synchronous parallelism
 
-Overlord broadcasts CompactEpoch in a compact block, meaning that its body contains only transaction hashes, not full transactions. After receiving the CompactEpoch, the consensus node needs to synchronize all the complete transactions contained in its Body to construct a complete epoch.
+Overlord broadcasts CompactBlock in a compact block, meaning that its body contains only transaction hashes, not full transactions. After receiving the CompactBlock, the consensus node needs to synchronize all the complete transactions contained in its Body to construct a complete block.
 
-In addition to the CompactEpoch, we also added a propose trading area in the proposal. The pose contains the hash of the new transaction to be synchronized. It should be noted that these transactions do not overlap with the pending transaction hashes contained in CompactEpoch. When CompactEpoch is not sufficient to contain all new transactions in the trading pool, the remaining new transactions can be included in the proposed trading area for early synchronization. This can increase the degree of concurrency of transaction synchronization and consensus when the system transaction volume is large, and further improve transaction processing capability.
+In addition to the CompactBlock, we also added a propose trading area in the proposal. The pose contains the hash of the new transaction to be synchronized. It should be noted that these transactions do not overlap with the pending transaction hashes contained in CompactBlock. When CompactBlock is not sufficient to contain all new transactions in the trading pool, the remaining new transactions can be included in the proposed trading area for early synchronization. This can increase the degree of concurrency of transaction synchronization and consensus when the system transaction volume is large, and further improve transaction processing capability.
 
 #### Verify parallelism
 
-After receiving the *proposal*, the consensus node will verify the *CompactEpoch* (to obtain the complete transaction and verify the correctness of the transaction) in parallel with the *prevote* vote. Only after receiving the *prevote* aggregate signature and the *CompactEpoch* test result will the *precommit* be cast.
+After receiving the *proposal*, the consensus node will verify the *CompactBlock* (to obtain the complete transaction and verify the correctness of the transaction) in parallel with the *prevote* vote. Only after receiving the *prevote* aggregate signature and the *CompactBlock* test result will the *precommit* be cast.
 
 ## Overlord architecture
 
@@ -121,7 +121,7 @@ In the project, we combine the pre-voting phase and the verification phase into 
 
 The states that the state machine module needs to store are:
 
-* epoch_id: current consensus epoch
+* height: current consensus height
 * round: round of current consensus
 * step: the current stage
 * proposal_hash: optional, current hash of consensus
@@ -177,8 +177,8 @@ pub enum SMREvent {
 pub fn new() -> Self
 /// Trigger a SMR action.
 pub fn trigger(&self, gate: SMRTrigger) -> Result<(), Error>
-/// Goto a new consensus epoch.
-pub fn new_epoch(&self, epoch_id: u64) -> Result<(), Error>
+/// Goto a new consensus height.
+pub fn new_height(&self, height: u64) -> Result<(), Error>
 ```
 
 ### State storage (State)
@@ -189,14 +189,14 @@ The state storage module is the functional core of the entire consensus. The mai
 
 The state that the state storage module needs to store include:
 
-* epoch_id: current consensus epoch
+* height: current consensus height
 * round: round of current consensus
-* proposals: cache current epoch all offers
-* votes: cache current epoch all votes
-* QCs: Cache current epoch all QC
+* proposals: cache current height all offers
+* votes: cache current height all votes
+* QCs: Cache current height all QC
 * authority_manage: consensus list management
 * is_leader: whether the node is a leader
-* proof: optional, proof of the last epoch
+* proof: optional, proof of the last height
 * last_commit_round: optional, the last round of submissions
 * last_commit_proposal: Optional, last submitted proposal
 
@@ -208,7 +208,7 @@ When sending a message, choose how to send the message based on the message and 
 
 When the state storage module listens to the NewRound event thrown by the state machine, it determines whether it is a block node by a deterministic random number algorithm. If it is a block node, a proposal is made.
 
-Deterministic random number algorithm: Because the Overlord consensus protocol allows different out-of-block weights and voting weights to be set, when determining the block, the node normalizes the block weights and projects them into the entire u64 range, using the current epoch_id and The sum of round is used as a random number seed to determine which of the u64 ranges the generated random number falls into, and the node corresponding to the weight is the outbound node.
+Deterministic random number algorithm: Because the Overlord consensus protocol allows different out-of-block weights and voting weights to be set, when determining the block, the node normalizes the block weights and projects them into the entire u64 range, using the current height and The sum of round is used as a random number seed to determine which of the u64 ranges the generated random number falls into, and the node corresponding to the weight is the outbound node.
 
 #### Cryptography
 
@@ -231,15 +231,11 @@ In the consensus process, some messages need to be written to Wal. When restarti
 
 #### Wal Interface
 
-```
-/// Create a new Wal struct.
-pub fn new(path: &str) -> Self
-/// Set a new epoch of Wal, while go to new epoch.
-pub fn set_epoch(&self, epoch_id: u64) -> Result<(), Error>
-/// Save message to Wal.
-pub async fn save(&self, msg_type: WalMsgType, msg: Vec<u8>) -> Result<(), Error>;
-/// Load message from Wal.
-pub fn load(&self) -> Vec<(WalMsgType, Vec<u8>)>
+```rust
+/// Save wal information.
+pub async fn save(&self, info: Bytes) -> Result<(), Error>;
+/// Load wal information.
+pub fn load(&self) -> Result<Option<Bytes>, Error>;
 ```
 
 ## Overlord Interface
@@ -249,35 +245,35 @@ pub fn load(&self) -> Vec<(WalMsgType, Vec<u8>)>
 ```
 #[async_trait]
 pub trait Consensus<T: Codec>: Send + Sync {
-    /// Get an epoch of an epoch_id and return the epoch with its hash.
-    async fn get_epoch(
+    /// Get a block of an height and return the block with its hash.
+    async fn get_block(
         &self,
         _ctx: Vec<u8>,
-        epoch_id: u64,
+        height: u64,
     ) -> Result<(T, Hash), Box<dyn Error + Send>>;
 
-    /// Check the correctness of an epoch. If is passed, return the integrated transcations to do
+    /// Check the correctness of a block. If is passed, return the integrated transcations to do
     /// data persistence.
-    async fn check_epoch(
+    async fn check_block(
         &self,
         _ctx: Vec<u8>,
-        epoch_id: u64,
+        height: u64,
         hash: Hash,
     ) -> Result<(), Box<dyn Error + Send>>;
 
-    /// Commit a given epoch to execute and return the rich status.
+    /// Commit a given block to execute and return the rich status.
     async fn commit(
         &self,
         _ctx: Vec<u8>,
-        epoch_id: u64,
+        height: u64,
         commit: Commit<T>,
     ) -> Result<Status, Box<dyn Error + Send>>;
 
-    /// Get an authority list of the given epoch ID.
+    /// Get an authority list of the given height.
     async fn get_authority_list(
         &self, 
         _ctx: Vec<u8>, 
-        epoch_id: u64
+        height: u64
     ) -> Result<Vec<Node>, Box<dyn Error + Send>>;
 
     /// Broadcast a message to other replicas.

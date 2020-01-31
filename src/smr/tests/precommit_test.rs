@@ -29,7 +29,7 @@ async fn test_precommit_trigger() {
         InnerState::new(0, Step::Precommit, Hash::new(), None),
         SMRTrigger::new(hash.clone(), TriggerType::PrecommitQC, Some(0), 0),
         SMREvent::NewRoundInfo {
-            epoch_id:      0u64,
+            height:        0u64,
             round:         1u64,
             lock_round:    None,
             lock_proposal: None,
@@ -63,7 +63,7 @@ async fn test_precommit_trigger() {
         InnerState::new(0, Step::Precommit, hash.clone(), Some(lock)),
         SMRTrigger::new(Hash::new(), TriggerType::PrecommitQC, Some(0), 0),
         SMREvent::NewRoundInfo {
-            epoch_id:      0u64,
+            height:        0u64,
             round:         1u64,
             lock_round:    Some(0),
             lock_proposal: Some(hash.clone()),
@@ -107,9 +107,9 @@ async fn test_precommit_trigger() {
         InnerState::new(0, Step::Precommit, hash.clone(), None),
         SMRTrigger::new(hash.clone(), TriggerType::PrecommitQC, Some(0), 0),
         SMREvent::PrecommitVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      0u64,
-            epoch_hash: hash.clone(),
+            block_hash: hash.clone(),
             lock_round: Some(0),
         },
         Some(ConsensusError::SelfCheckErr("".to_string())),
@@ -124,7 +124,7 @@ async fn test_precommit_trigger() {
         InnerState::new(0, Step::Precommit, hash.clone(), None),
         SMRTrigger::new(Hash::new(), TriggerType::PrecommitQC, Some(0), 0),
         SMREvent::NewRoundInfo {
-            epoch_id:      0u64,
+            height:        0u64,
             round:         1u64,
             lock_round:    None,
             lock_proposal: None,

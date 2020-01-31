@@ -12,7 +12,7 @@ use log::{debug, error, info};
 use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
 use crate::smr::{Event, SMRHandler};
 use crate::DurationConfig;
-use crate::{error::ConsensusError, ConsensusResult, INIT_EPOCH_ID, INIT_ROUND};
+use crate::{error::ConsensusError, ConsensusResult, INIT_HEIGHT, INIT_ROUND};
 use crate::{types::Hash, utils::timer_config::TimerConfig};
 
 /// Overlord timer used futures timer which is powered by a timer heap. When monitor a SMR event,
@@ -24,7 +24,7 @@ pub struct Timer {
     sender:        UnboundedSender<SMREvent>,
     notify:        UnboundedReceiver<SMREvent>,
     state_machine: SMRHandler,
-    epoch_id:      u64,
+    height:        u64,
     round:         u64,
 }
 
@@ -95,7 +95,7 @@ impl Timer {
 
         Timer {
             config: timer_config,
-            epoch_id: INIT_EPOCH_ID,
+            height: INIT_HEIGHT,
             round: INIT_ROUND,
             sender: tx,
             notify: rx,
@@ -117,11 +117,9 @@ impl Timer {
     fn set_timer(&mut self, event: SMREvent) -> ConsensusResult<()> {
         let mut is_propose_timer = false;
         match event.clone() {
-            SMREvent::NewRoundInfo {
-                epoch_id, round, ..
-            } => {
-                if epoch_id > self.epoch_id {
-                    self.epoch_id = epoch_id;
+            SMREvent::NewRoundInfo { height, round, .. } => {
+                if height > self.height {
+                    self.height = height;
                 }
                 self.round = round;
                 is_propose_timer = true;
@@ -153,30 +151,30 @@ impl Timer {
 
     #[rustfmt::skip]
     fn trigger(&mut self, event: SMREvent) -> ConsensusResult<()> {
-        let (trigger_type, round, epoch_id) = match event {
-            SMREvent::NewRoundInfo { epoch_id, round, .. } => {
-                if epoch_id < self.epoch_id || round < self.round {
+        let (trigger_type, round, height) = match event {
+            SMREvent::NewRoundInfo { height, round, .. } => {
+                if height < self.height || round < self.round {
                     return Ok(());
                 }
-                (TriggerType::Proposal, None, epoch_id)
+                (TriggerType::Proposal, None, height)
             }
 
             SMREvent::PrevoteVote {
-                epoch_id, round, ..
+                height, round, ..
             } => {
-                if epoch_id < self.epoch_id {
+                if height < self.height {
                     return Ok(());
                 }
-                (TriggerType::PrevoteQC, Some(round), epoch_id)
+                (TriggerType::PrevoteQC, Some(round), height)
             }
 
             SMREvent::PrecommitVote {
-                epoch_id, round, ..
+                height, round, ..
             } => {
-                if epoch_id < self.epoch_id {
+                if height < self.height {
                     return Ok(());
                 }
-                (TriggerType::PrecommitQC, Some(round), epoch_id)
+                (TriggerType::PrecommitQC, Some(round), height)
             }
 
             _ => return Err(ConsensusError::TimerErr("No commit timer".to_string())),
@@ -189,7 +187,7 @@ impl Timer {
             hash: Hash::new(),
             trigger_type,
             round,
-            epoch_id,
+            height,
             wal_info: None,
         })
     }
@@ -269,13 +267,13 @@ mod test {
         }
     }
 
-    fn gen_output(trigger_type: TriggerType, round: Option<u64>, epoch_id: u64) -> SMRTrigger {
+    fn gen_output(trigger_type: TriggerType, round: Option<u64>, height: u64) -> SMRTrigger {
         SMRTrigger {
             source: TriggerSource::Timer,
             hash: Hash::new(),
             trigger_type,
             round,
-            epoch_id,
+            height,
             wal_info: None,
         }
     }
@@ -285,7 +283,7 @@ mod test {
         // Test propose step timer.
         test_timer_trigger(
             SMREvent::NewRoundInfo {
-                epoch_id:      0,
+                height:        0,
                 round:         0,
                 lock_round:    None,
                 lock_proposal: None,
@@ -297,9 +295,9 @@ mod test {
         // Test prevote step timer.
         test_timer_trigger(
             SMREvent::PrevoteVote {
-                epoch_id:   0u64,
+                height:     0u64,
                 round:      0u64,
-                epoch_hash: Hash::new(),
+                block_hash: Hash::new(),
                 lock_round: None,
             },
             gen_output(TriggerType::PrevoteQC, Some(0), 0),
@@ -309,9 +307,9 @@ mod test {
         // Test precommit step timer.
         test_timer_trigger(
             SMREvent::PrecommitVote {
-                epoch_id:   0u64,
+                height:     0u64,
                 round:      0u64,
-                epoch_hash: Hash::new(),
+                block_hash: Hash::new(),
                 lock_round: None,
             },
             gen_output(TriggerType::PrecommitQC, Some(0), 0),
@@ -331,23 +329,23 @@ mod test {
         );
 
         let new_round_event = SMREvent::NewRoundInfo {
-            epoch_id:      0,
+            height:        0,
             round:         0,
             lock_round:    None,
             lock_proposal: None,
         };
 
         let prevote_event = SMREvent::PrevoteVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      0u64,
-            epoch_hash: Hash::new(),
+            block_hash: Hash::new(),
             lock_round: None,
         };
 
         let precommit_event = SMREvent::PrecommitVote {
-            epoch_id:   0u64,
+            height:     0u64,
             round:      0u64,
-            epoch_hash: Hash::new(),
+            block_hash: Hash::new(),
             lock_round: None,
         };
 
