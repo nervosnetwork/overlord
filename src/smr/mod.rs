@@ -79,7 +79,7 @@ impl SMRHandler {
     }
 
     /// Trigger SMR to goto a new height.
-    pub fn new_epoch(&mut self, height: u64) -> ConsensusResult<()> {
+    pub fn new_height(&mut self, height: u64) -> ConsensusResult<()> {
         let trigger = TriggerType::NewHeight(height);
         self.tx
             .unbounded_send(SMRTrigger {

@@ -26,7 +26,7 @@ use crate::types::{
 };
 use crate::utils::auth_manage::AuthorityManage;
 use crate::wal::{WalInfo, WalLock};
-use crate::{Codec, Consensus, ConsensusResult, Crypto, INIT_height, Wal, INIT_ROUND};
+use crate::{Codec, Consensus, ConsensusResult, Crypto, Wal, INIT_HEIGHT, INIT_ROUND};
 
 const FUTURE_HEIGHT_GAP: u64 = 5;
 const FUTURE_ROUND_GAP: u64 = 10;
@@ -90,7 +90,7 @@ where
         auth.update(&mut authority_list, false);
 
         let state = State {
-            height:              INIT_height,
+            height:              INIT_HEIGHT,
             round:               INIT_ROUND,
             state_machine:       smr,
             address:             addr,
@@ -398,7 +398,7 @@ where
             self.re_check_qcs(qcs)?;
         }
 
-        self.state_machine.new_epoch(new_height)?;
+        self.state_machine.new_height(new_height)?;
         Ok(())
     }
 
@@ -670,7 +670,7 @@ where
                 let content = self
                     .hash_with_block
                     .get(&qc.block_hash)
-                    .ok_or_else(|| ConsensusError::Other("lose whole epoch".to_string()))?;
+                    .ok_or_else(|| ConsensusError::Other("lose whole block".to_string()))?;
 
                 Some(WalLock {
                     lock_round: round,
@@ -1585,7 +1585,7 @@ where
                 let block = self
                     .hash_with_block
                     .get(&qc.block_hash)
-                    .ok_or_else(|| ConsensusError::Other("lose whole epoch".to_string()))?;
+                    .ok_or_else(|| ConsensusError::Other("lose whole block".to_string()))?;
 
                 Some(WalLock {
                     lock_round: round,

@@ -4,13 +4,13 @@ use serde::{Deserialize, Serialize};
 use crate::types::Hash;
 use crate::wal::SMRBase;
 
-/// SMR steps. The default step is commit step because SMR needs rich status to start a new epoch.
+/// SMR steps. The default step is commit step because SMR needs rich status to start a new block.
 #[derive(Serialize, Deserialize, Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Step {
     /// Prepose step, in this step:
     /// Firstly, each node calculate the new proposer, then:
     /// Leader:
-    ///     proposer an epoch,
+    ///     proposer a block,
     /// Replica:
     ///     wait for a proposal and check it.
     /// Then goto prevote step.
@@ -41,8 +41,8 @@ pub enum Step {
     /// cycle. Otherwise, goto commit step.
     #[display(fmt = "Precommit step")]
     Precommit,
-    /// Commit step, in this step each node commit the epoch and wait for the rich status. After
-    /// receiving the it, all nodes will goto propose step and start a new epoch consensus.
+    /// Commit step, in this step each node commit the block and wait for the rich status. After
+    /// receiving the it, all nodes will goto propose step and start a new block consensus.
     #[display(fmt = "Commit step")]
     Commit,
 }
@@ -83,7 +83,7 @@ impl From<u8> for Step {
 pub enum SMREvent {
     /// New round event,
     /// for state: update round,
-    /// for timer: set a propose step timer. If `round == 0`, set an extra total epoch timer.
+    /// for timer: set a propose step timer. If `round == 0`, set an extra total height timer.
     #[display(fmt = "New round {} event", round)]
     NewRoundInfo {
         height:        u64,
@@ -136,8 +136,8 @@ pub enum TriggerType {
     /// Precommit quorum certificate trigger.
     #[display(fmt = "PrecommitQC")]
     PrecommitQC,
-    /// New Epoch trigger.
-    #[display(fmt = "New epoch {}", _0)]
+    /// New Height trigger.
+    #[display(fmt = "New height {}", _0)]
     NewHeight(u64),
     ///
     WalInfo,
@@ -182,10 +182,10 @@ impl From<u8> for TriggerType {
 /// A SMR trigger to touch off SMR process. For different trigger type,
 /// the field `hash` and `round` have different restrictions and meaning.
 /// While trigger type is `Proposal`:
-///     * `hash`: Proposal epoch hash,
+///     * `hash`: Proposal block hash,
 ///     * `round`: Optional lock round.
 /// While trigger type is `PrevoteQC` or `PrecommitQC`:
-///     * `hash`: QC epoch hash,
+///     * `hash`: QC block hash,
 ///     * `round`: QC round, this must be `Some`.
 /// While trigger type is `NewHeight`:
 ///     * `hash`: A empty hash,

@@ -371,6 +371,6 @@ pub struct VerifyResp {
     pub height: u64,
     /// Verified proposal hash.
     pub block_hash: Hash,
-    /// The epoch is pass or not.
+    /// The block is pass or not.
     pub is_pass: bool,
 }

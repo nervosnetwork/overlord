@@ -48,14 +48,14 @@ const INIT_ROUND: u64 = 0;
 /// Trait for some functions that consensus needs.
 #[async_trait]
 pub trait Consensus<T: Codec>: Send + Sync {
-    /// Get an block of the given height and return the block with its hash.
+    /// Get a block of the given height and return the block with its hash.
     async fn get_block(
         &self,
         ctx: Context,
         height: u64,
     ) -> Result<(T, Hash), Box<dyn Error + Send>>;
 
-    /// Check the correctness of an block. If is passed, return the integrated transcations to do
+    /// Check the correctness of a block. If is passed, return the integrated transcations to do
     /// data persistence.
     async fn check_block(
         &self,

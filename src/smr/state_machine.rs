@@ -11,7 +11,7 @@ use moodyblues_sdk::trace;
 use crate::smr::smr_types::{Lock, SMREvent, SMRTrigger, Step, TriggerSource, TriggerType};
 use crate::wal::SMRBase;
 use crate::{error::ConsensusError, smr::Event, types::Hash};
-use crate::{ConsensusResult, INIT_height, INIT_ROUND};
+use crate::{ConsensusResult, INIT_HEIGHT, INIT_ROUND};
 
 /// A smallest implementation of an atomic overlord state machine. It
 #[derive(Debug, Display)]
@@ -75,7 +75,7 @@ impl StateMachine {
         let (tx_2, rx_2) = unbounded();
 
         let state_machine = StateMachine {
-            height:     INIT_height,
+            height:     INIT_HEIGHT,
             round:      INIT_ROUND,
             step:       Step::default(),
             block_hash: Hash::new(),
