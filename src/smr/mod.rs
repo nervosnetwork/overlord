@@ -78,7 +78,7 @@ impl SMRHandler {
             .map_err(|_| ConsensusError::TriggerSMRErr(trigger_type))
     }
 
-    /// Trigger SMR to goto a new epoch.
+    /// Trigger SMR to goto a new height.
     pub fn new_epoch(&mut self, height: u64) -> ConsensusResult<()> {
         let trigger = TriggerType::NewHeight(height);
         self.tx

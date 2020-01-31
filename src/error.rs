@@ -51,7 +51,7 @@ pub enum ConsensusError {
     #[display(fmt = "State error {}", _0)]
     StateErr(String),
     ///
-    #[display(fmt = "Multiple proposal in epoch ID {}, round {}", _0, _1)]
+    #[display(fmt = "Multiple proposal in height {}, round {}", _0, _1)]
     MultiProposal(u64, u64),
     ///
     #[display(fmt = "Storage error {}", _0)]

@@ -41,9 +41,9 @@ enum MsgType {
 }
 
 /// Overlord state struct. It maintains the local state of the node, and monitor the SMR event. The
-/// `proposals` is used to cache the signed proposals that are with higher epoch ID or round. The
-/// `hash_with_epoch` field saves hash and its corresponding epoch with the current epoch ID and
-/// round. The `votes` field saves all signed votes and quorum certificates which epoch ID is higher
+/// `proposals` is used to cache the signed proposals that are with higher height or round. The
+/// `hash_with_epoch` field saves hash and its corresponding epoch with the current height and
+/// round. The `votes` field saves all signed votes and quorum certificates which height is higher
 /// than `current_epoch - 1`.
 #[derive(Debug)]
 pub struct State<T: Codec, F: Consensus<T>, C: Crypto, W: Wal> {
@@ -293,7 +293,7 @@ where
 
         let block_hash = resp.block_hash.clone();
         info!(
-            "Overlord: state receive verify response epoch ID {:?}, hash {:?}",
+            "Overlord: state receive verify response height {:?}, hash {:?}",
             resp.height, block_hash
         );
 
@@ -343,8 +343,8 @@ where
     /// of the `commit()` interface, or lastest status after the synchronization is completed send
     /// by the overlord handler.
     ///
-    /// If the difference between the status epoch ID and current's over one, get the last authority
-    /// list of the status epoch ID firstly. Then update the epoch ID, authority_list and the epoch
+    /// If the difference between the status height and current's over one, get the last authority
+    /// list of the status height firstly. Then update the height, authority_list and the epoch
     /// interval. Since it is possible to have received and cached the current epoch's proposals,
     /// votes and quorum certificates before, these should be re-checked as goto new epoch. Finally,
     /// trigger SMR to goto new epoch.
@@ -361,12 +361,12 @@ where
 
         trace::start_epoch(new_height);
 
-        // Update epoch ID and authority list.
+        // Update height and authority list.
         self.epoch_start = Instant::now();
         let mut auth_list = status.authority_list;
         self.authority.update(&mut auth_list, true);
 
-        // If the status' epoch ID is much higher than the current,
+        // If the status' height is much higher than the current,
         if get_last_flag {
             let mut tmp = self
                 .function
@@ -387,12 +387,12 @@ where
         self.votes.flush(new_height - 1);
         self.hash_with_epoch.clear();
 
-        // Re-check proposals that have been in the proposal collector, of the current epoch ID.
+        // Re-check proposals that have been in the proposal collector, of the current height.
         if let Some(proposals) = self.proposals.get_epoch_proposals(self.height) {
             self.re_check_proposals(proposals)?;
         }
 
-        // Re-check votes and quorum certificates in the vote collector, of the current epoch ID.
+        // Re-check votes and quorum certificates in the vote collector, of the current height.
         if let Some((votes, qcs)) = self.votes.get_epoch_votes(new_height) {
             self.re_check_votes(votes)?;
             self.re_check_qcs(qcs)?;
@@ -528,7 +528,7 @@ where
         })?;
 
         info!(
-            "Overlord: state trigger SMR epoch ID {}, round {}, type {:?}",
+            "Overlord: state trigger SMR height {}, round {}, type {:?}",
             self.height,
             self.round,
             TriggerType::Proposal
@@ -538,7 +538,7 @@ where
         Ok(())
     }
 
-    /// This function only handle signed proposals which epoch ID and round are equal to current.
+    /// This function only handle signed proposals which height and round are equal to current.
     /// Others will be ignored or stored in the proposal collector.
     async fn handle_signed_proposal(
         &mut self,
@@ -549,7 +549,7 @@ where
         let round = signed_proposal.proposal.round;
 
         info!(
-            "Overlord: state receive a signed proposal epoch ID {}, round {}",
+            "Overlord: state receive a signed proposal height {}, round {}",
             height, round,
         );
 
@@ -577,7 +577,7 @@ where
             MsgType::SignedProposal,
         )?;
 
-        // Deal with proposal's epoch ID is equal to the current epoch ID - 1 and round is higher
+        // Deal with proposal's height is equal to the current height - 1 and round is higher
         // than the last commit round. Retransmit prevote vote to the last commit proposal.
         if height == self.height - 1 {
             self.retransmit_qc(ctx.clone(), proposal.proposer).await?;
@@ -594,7 +594,7 @@ where
                 proposal.height == self.height,
             )? {
                 return Err(ConsensusError::AggregatedSignatureErr(format!(
-                    "aggregate signature below two thirds, proposal of epoch ID {:?}, round {:?}",
+                    "aggregate signature below two thirds, proposal of height {:?}, round {:?}",
                     proposal.height, proposal.round
                 )));
             }
@@ -607,7 +607,7 @@ where
             )
             .map_err(|err| {
                 ConsensusError::AggregatedSignatureErr(format!(
-                    "{:?} proposal of epoch ID {:?}, round {:?}",
+                    "{:?} proposal of height {:?}, round {:?}",
                     err, proposal.height, proposal.round
                 ))
             })?;
@@ -617,7 +617,7 @@ where
         };
 
         info!(
-            "Overlord: state trigger SMR proposal epoch ID {}, round {}",
+            "Overlord: state trigger SMR proposal height {}, round {}",
             self.height, self.round
         );
 
@@ -638,7 +638,7 @@ where
         })?;
 
         info!(
-            "Overlord: state trigger SMR epoch ID {}, round {}, type {:?}",
+            "Overlord: state trigger SMR height {}, round {}, type {:?}",
             self.height,
             self.round,
             TriggerType::Proposal
@@ -685,7 +685,7 @@ where
         }
 
         info!(
-            "Overlord: state receive {:?} vote event epoch ID {}, round {}",
+            "Overlord: state receive {:?} vote event height {}, round {}",
             vote_type.clone(),
             self.height,
             self.round
@@ -722,7 +722,7 @@ where
 
     async fn handle_commit(&mut self, hash: Hash) -> ConsensusResult<()> {
         info!(
-            "Overlord: state receive commit event epoch ID {}, round {}",
+            "Overlord: state receive commit event height {}, round {}",
             self.height, self.round
         );
 
@@ -741,7 +741,7 @@ where
             tmp.to_owned()
         } else {
             return Err(ConsensusError::Other(format!(
-                "Lose whole epoch epoch ID {}, round {}",
+                "Lose whole epoch height {}, round {}",
                 self.height, self.round
             )));
         };
@@ -787,7 +787,7 @@ where
             .map_err(|err| ConsensusError::Other(format!("commit error {:?}", err)))?;
 
         info!(
-            "Overlord: achieve consensus in epoch ID {} costs {} round",
+            "Overlord: achieve consensus in height {} costs {} round",
             self.height,
             self.round + 1
         );
@@ -806,9 +806,9 @@ where
         Ok(())
     }
 
-    /// The main process of handle signed vote is that only handle those epoch ID and round are both
-    /// equal to the current. The lower votes will be ignored directly even if the epoch ID is equal
-    /// to the `current epoch ID - 1` and the round is higher than the current round. The reason is
+    /// The main process of handle signed vote is that only handle those height and round are both
+    /// equal to the current. The lower votes will be ignored directly even if the height is equal
+    /// to the `current height - 1` and the round is higher than the current round. The reason is
     /// that the effective leader must in the lower epoch, and the task of handling signed votes
     /// will be done by the leader. For the higher votes, check the signature and save them in
     /// the vote collector. Whenevet the current vote is received, a statistic is made to check
@@ -832,7 +832,7 @@ where
         };
 
         info!(
-            "Overlord: state receive a signed {:?} vote epoch ID {}, round {}",
+            "Overlord: state receive a signed {:?} vote height {}, round {}",
             vote_type, height, round,
         );
 
@@ -891,7 +891,7 @@ where
 
         let mut block_hash = block_hash.unwrap();
         info!(
-            "Overlord: state counting a epoch hash that votes above threshold, epoch ID {}, round {}",
+            "Overlord: state counting a epoch hash that votes above threshold, height {}, round {}",
             self.height, self.round
         );
 
@@ -900,7 +900,7 @@ where
         let qc = self.generate_qc(block_hash.clone(), vote_type.clone())?;
 
         debug!(
-            "Overlord: state set QC epoch ID {}, round {}",
+            "Overlord: state set QC height {}, round {}",
             self.height, self.round
         );
 
@@ -917,7 +917,7 @@ where
         }
 
         info!(
-            "Overlord: state trigger SMR {:?} QC epoch ID {}, round {}",
+            "Overlord: state trigger SMR {:?} QC height {}, round {}",
             vote_type, self.height, self.round
         );
         self.state_machine.trigger(SMRTrigger {
@@ -931,7 +931,7 @@ where
 
         // This is for test
         info!(
-            "Overlord: state trigger SMR epoch ID {}, round {}, type {:?}",
+            "Overlord: state trigger SMR height {}, round {}, type {:?}",
             self.height, self.round, vote_type,
         );
         Ok(())
@@ -939,14 +939,14 @@ where
 
     /// The main process to handle aggregate votes contains four cases.
     ///
-    /// 1. The QC is later than current which means the QC's epoch ID is higher than current or is
+    /// 1. The QC is later than current which means the QC's height is higher than current or is
     /// equal to the current and the round is higher than current. In this cases, check the
     /// aggregate signature subject to availability, and save it.
     ///
-    /// 2. The QC is equal to the current epoch ID and round. In this case, check the aggregate
+    /// 2. The QC is equal to the current height and round. In this case, check the aggregate
     /// signature, then save it, and touch off SMR trigger.
     ///
-    /// 3. The QC is equal to the `current epoch ID - 1` and the round is higher than the last
+    /// 3. The QC is equal to the `current height - 1` and the round is higher than the last
     /// commit round. In this case, check the aggregate signature firstly. If the type of the QC
     /// is precommit, ignore it. Otherwise, retransmit precommit QC.
     ///
@@ -974,12 +974,12 @@ where
             qc_type, height, round,
         );
 
-        // If the vote epoch ID is lower than the current epoch ID, ignore it directly. If the vote
-        // epoch ID is higher than current epoch ID, save it and return Ok;
+        // If the vote height is lower than the current height, ignore it directly. If the vote
+        // height is higher than current height, save it and return Ok;
         match height.cmp(&self.height) {
             Ordering::Less => {
                 debug!(
-                    "Overlord: state receive an outdated QC, epoch ID {}, round {}",
+                    "Overlord: state receive an outdated QC, height {}, round {}",
                     height, round,
                 );
                 return Ok(());
@@ -988,7 +988,7 @@ where
             Ordering::Greater => {
                 if self.height + FUTURE_EPOCH_GAP > height && round < FUTURE_ROUND_GAP {
                     debug!(
-                        "Overlord: state receive a future QC, epoch ID {}, round {}",
+                        "Overlord: state receive a future QC, height {}, round {}",
                         height, round,
                     );
                     self.votes.set_qc(aggregated_vote);
@@ -1033,7 +1033,7 @@ where
         }
 
         info!(
-            "Overlord: state trigger SMR {:?} QC epoch ID {}, round {}",
+            "Overlord: state trigger SMR {:?} QC height {}, round {}",
             qc_type, self.height, self.round
         );
 
@@ -1048,7 +1048,7 @@ where
 
         // This is for test
         info!(
-            "Overlord: state trigger SMR epoch ID {}, round {}, type {:?}",
+            "Overlord: state trigger SMR height {}, round {}, type {:?}",
             self.height, self.round, qc_type,
         );
         Ok(())
@@ -1103,7 +1103,7 @@ where
                 })?;
 
                 info!(
-                    "Overlord: state trigger SMR epoch ID {}, round {}, type {:?}",
+                    "Overlord: state trigger SMR height {}, round {}, type {:?}",
                     self.height, self.round, qc.vote_type,
                 );
 
@@ -1135,7 +1135,7 @@ where
             }
 
             info!(
-                "Overlord: state trigger SMR {:?} QC epoch ID {}, round {}",
+                "Overlord: state trigger SMR {:?} QC height {}, round {}",
                 vote_type, self.height, self.round
             );
 
@@ -1153,7 +1153,7 @@ where
 
             // This is for test
             info!(
-                "Overlord: state trigger SMR epoch ID {}, round {}, type {:?}",
+                "Overlord: state trigger SMR height {}, round {}, type {:?}",
                 self.height, self.round, vote_type,
             );
         }
@@ -1294,7 +1294,7 @@ where
         Ok(())
     }
 
-    /// If self is not the proposer of the epoch ID and round, set leader address as the proposer
+    /// If self is not the proposer of the height and round, set leader address as the proposer
     /// address.
     fn is_proposer(&mut self) -> ConsensusResult<bool> {
         let proposer = self.authority.get_proposer(self.height, self.round, true)?;
@@ -1436,7 +1436,7 @@ where
 
     async fn transmit(&self, ctx: Context, msg: OverlordMsg<T>) {
         info!(
-            "Overlord: state transmit a message to leader epoch ID {}, round {}",
+            "Overlord: state transmit a message to leader height {}, round {}",
             self.height, self.round
         );
 
@@ -1488,7 +1488,7 @@ where
 
     async fn broadcast(&self, ctx: Context, msg: OverlordMsg<T>) {
         info!(
-            "Overlord: state broadcast a message to others epoch ID {}, round {}",
+            "Overlord: state broadcast a message to others height {}, round {}",
             self.height, self.round
         );
 
@@ -1518,7 +1518,7 @@ where
         trace::custom(
             "check_epoch".to_string(),
             Some(json!({
-                "epoch ID": height,
+                "height": height,
                 "round": self.round,
                 "epoch hash": hex::encode(hash.clone())
             })),
@@ -1736,7 +1736,7 @@ where
 
     /// Filter the proposals that do not need to be handed.
     /// 1. Outdated proposals
-    /// 2. A much higher epoch ID which is larger than the FUTURE_EPOCH_GAP
+    /// 2. A much higher height which is larger than the FUTURE_EPOCH_GAP
     /// 3. A much higher round which is larger than the FUTURE_ROUND_GAP
     fn filter_signed_proposal(
         &mut self,
@@ -1746,7 +1746,7 @@ where
     ) -> ConsensusResult<bool> {
         if height < self.height - 1 || (height == self.height && round < self.round) {
             debug!(
-                "Overlord: state receive an outdated signed proposal, epoch ID {}, round {}",
+                "Overlord: state receive an outdated signed proposal, height {}, round {}",
                 height, round,
             );
             return Ok(true);
@@ -1760,12 +1760,12 @@ where
             return Ok(true);
         }
 
-        // If the proposal epoch ID is higher than the current epoch ID or proposal epoch ID is
-        // equal to the current epoch ID and the proposal round is higher than the current round,
-        // cache it until that epoch ID.
+        // If the proposal height is higher than the current height or proposal height is
+        // equal to the current height and the proposal round is higher than the current round,
+        // cache it until that height.
         if (height == self.height && round != self.round) || height > self.height {
             debug!(
-                "Overlord: state receive a future signed proposal, epoch ID {}, round {}",
+                "Overlord: state receive a future signed proposal, height {}, round {}",
                 height, round,
             );
             self.proposals

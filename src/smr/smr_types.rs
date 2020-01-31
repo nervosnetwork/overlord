@@ -78,7 +78,7 @@ impl From<u8> for Step {
 
 /// SMR event that state and timer monitor this.
 /// **NOTICE**: The `height` field is just for the timer. Timer will take this to signal the timer
-/// epoch ID. State will ignore this field on handling event.
+/// height. State will ignore this field on handling event.
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
 pub enum SMREvent {
     /// New round event,
@@ -190,11 +190,11 @@ impl From<u8> for TriggerType {
 /// While trigger type is `NewHeight`:
 ///     * `hash`: A empty hash,
 ///     * `round`: This must be `None`.
-/// For each sources, while filling the `SMRTrigger`, the `height` field take the current epoch ID
+/// For each sources, while filling the `SMRTrigger`, the `height` field take the current height
 /// directly.
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
 #[display(
-    fmt = "{:?} trigger from {:?}, epoch ID {}",
+    fmt = "{:?} trigger from {:?}, height {}",
     trigger_type,
     source,
     height
@@ -208,7 +208,7 @@ pub struct SMRTrigger {
     pub hash: Hash,
     /// SMR trigger round, the meaning shown above.
     pub round: Option<u64>,
-    /// **NOTICE**: This field is only for timer to signed timer's epoch ID. Therefore, the SMR can
+    /// **NOTICE**: This field is only for timer to signed timer's height. Therefore, the SMR can
     /// filter out the outdated timers.
     pub height: u64,
     ///

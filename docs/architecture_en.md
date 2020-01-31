@@ -273,7 +273,7 @@ pub trait Consensus<T: Codec>: Send + Sync {
         commit: Commit<T>,
     ) -> Result<Status, Box<dyn Error + Send>>;
 
-    /// Get an authority list of the given epoch ID.
+    /// Get an authority list of the given height.
     async fn get_authority_list(
         &self, 
         _ctx: Vec<u8>, 

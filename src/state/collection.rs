@@ -18,7 +18,7 @@ where
     }
 
     /// Insert a signed proposal into the proposal collector. Return `Err()` while the proposal of
-    /// the given epoch ID and round exists.
+    /// the given height and round exists.
     pub fn insert(
         &mut self,
         height: u64,
@@ -32,7 +32,7 @@ where
             .map_err(|_| ConsensusError::MultiProposal(height, round))
     }
 
-    /// Get the signed proposal of the given epoch ID and round. Return `Err` when there is no
+    /// Get the signed proposal of the given height and round. Return `Err` when there is no
     /// signed proposal. Return `Err` when can not get it.
     pub fn get(&self, height: u64, round: u64) -> ConsensusResult<SignedProposal<T>> {
         if let Some(round_collector) = self.0.get(&height) {
@@ -40,7 +40,7 @@ where
                 .get(round)
                 .map_err(|_| {
                     ConsensusError::StorageErr(format!(
-                        "No proposal epoch ID {}, round {}",
+                        "No proposal height {}, round {}",
                         height, round
                     ))
                 })?
@@ -48,12 +48,12 @@ where
         }
 
         Err(ConsensusError::StorageErr(format!(
-            "No proposal epoch ID {}, round {}",
+            "No proposal height {}, round {}",
             height, round
         )))
     }
 
-    /// Get all proposals of the given epoch ID.
+    /// Get all proposals of the given height.
     pub fn get_epoch_proposals(&mut self, height: u64) -> Option<Vec<SignedProposal<T>>> {
         self.0.remove(&height).map_or_else(
             || None,
@@ -61,7 +61,7 @@ where
         )
     }
 
-    /// Remove items that epoch ID is less than `till`.
+    /// Remove items that height is less than `till`.
     pub fn flush(&mut self, till: u64) {
         self.0 = self.0.split_off(&till);
     }
@@ -126,7 +126,7 @@ impl VoteCollector {
     }
 
     /// Get an index of a `HashMap` that the key is vote hash and the value is address list, with
-    /// the given epoch ID, round and type.
+    /// the given height, round and type.
     pub fn get_vote_map(
         &mut self,
         epoch: u64,
@@ -138,7 +138,7 @@ impl VoteCollector {
             .and_then(|vrc| vrc.get_vote_map(round, vote_type.clone()))
             .ok_or_else(|| {
                 ConsensusError::StorageErr(format!(
-                    "Can not get {:?} vote map epoch ID {}, round {}",
+                    "Can not get {:?} vote map height {}, round {}",
                     vote_type, epoch, round
                 ))
             })
@@ -157,7 +157,7 @@ impl VoteCollector {
             .and_then(|vrc| vrc.get_votes(round, vote_type.clone(), hash))
             .ok_or_else(|| {
                 ConsensusError::StorageErr(format!(
-                    "Can not get {:?} votes epoch ID {}, round {}",
+                    "Can not get {:?} votes height {}, round {}",
                     vote_type, epoch, round
                 ))
             })
@@ -175,7 +175,7 @@ impl VoteCollector {
             .and_then(|vrc| vrc.get_qc_by_id(round, qc_type.clone()))
             .ok_or_else(|| {
                 ConsensusError::StorageErr(format!(
-                    "Can not get {:?} qc epoch ID {}, round {}",
+                    "Can not get {:?} qc height {}, round {}",
                     qc_type, epoch, round
                 ))
             })
@@ -192,7 +192,7 @@ impl VoteCollector {
             .and_then(|vrc| vrc.get_qc_by_hash(hash, qc_type))
     }
 
-    /// Get all votes and quorum certificates of the given epoch ID.
+    /// Get all votes and quorum certificates of the given height.
     pub fn get_epoch_votes(
         &mut self,
         height: u64,
@@ -220,7 +220,7 @@ impl VoteCollector {
         0
     }
 
-    /// Remove items that epoch ID is less than `till`.
+    /// Remove items that height is less than `till`.
     pub fn flush(&mut self, till: u64) {
         self.0 = self.0.split_off(&till);
     }

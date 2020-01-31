@@ -16,7 +16,7 @@ use crate::{ConsensusResult, INIT_height, INIT_ROUND};
 /// A smallest implementation of an atomic overlord state machine. It
 #[derive(Debug, Display)]
 #[rustfmt::skip]
-#[display(fmt = "State machine epoch ID {}, round {}, step {:?}", height, round, step)]
+#[display(fmt = "State machine height {}, round {}, step {:?}", height, round, step)]
 pub struct StateMachine {
     height:      u64,
     round:         u64,
@@ -98,7 +98,7 @@ impl StateMachine {
         self.set_timer_after_wal()
     }
 
-    /// Handle a new epoch trigger. If new epoch ID is higher than current, goto a new epoch and
+    /// Handle a new epoch trigger. If new height is higher than current, goto a new epoch and
     /// throw a new round info event.
     fn handle_new_epoch(&mut self, height: u64, source: TriggerSource) -> ConsensusResult<()> {
         info!("Overlord: SMR triggered by new epoch {}", height);
@@ -470,7 +470,7 @@ impl StateMachine {
         // While self step lt precommit and round is 0, self lock must be none.
         if self.step < Step::Precommit && self.round == 0 && self.lock.is_some() {
             return Err(ConsensusError::SelfCheckErr(format!(
-                "Invalid lock, epoch ID {}, round {}",
+                "Invalid lock, height {}, round {}",
                 self.height, self.round
             )));
         }
@@ -479,7 +479,7 @@ impl StateMachine {
         if self.step == Step::Precommit && (self.block_hash.is_empty().bitxor(self.lock.is_none()))
         {
             return Err(ConsensusError::SelfCheckErr(format!(
-                "Invalid status in precommit, epoch ID {}, round {}",
+                "Invalid status in precommit, height {}, round {}",
                 self.height, self.round
             )));
         }

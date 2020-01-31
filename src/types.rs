@@ -130,9 +130,9 @@ pub struct SignedProposal<T: Codec> {
 
 /// A proposal
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
-#[display(fmt = "Proposal epoch ID {}, round {}", height, round)]
+#[display(fmt = "Proposal height {}, round {}", height, round)]
 pub struct Proposal<T: Codec> {
-    /// Epoch ID of the proposal.
+    /// Height of the proposal.
     pub height: u64,
     /// Round of the proposal.
     pub round: u64,
@@ -180,7 +180,7 @@ impl Ord for SignedVote {
 }
 
 impl SignedVote {
-    /// Get the epoch ID of the signed vote.
+    /// Get the height of the signed vote.
     pub fn get_epoch(&self) -> u64 {
         self.vote.height
     }
@@ -213,13 +213,13 @@ pub struct AggregatedSignature {
 /// An aggregated vote.
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
 #[rustfmt::skip]
-#[display(fmt = "{:?} aggregated vote epoch ID {}, round {}", vote_type, height, round)]
+#[display(fmt = "{:?} aggregated vote height {}, round {}", vote_type, height, round)]
 pub struct AggregatedVote {
     /// Aggregated signature of the vote.
     pub signature: AggregatedSignature,
     /// Type of the vote.
     pub vote_type: VoteType,
-    /// Epoch ID of the vote.
+    /// Height of the vote.
     pub height: u64,
     /// Round of the vote.
     pub round: u64,
@@ -230,7 +230,7 @@ pub struct AggregatedVote {
 }
 
 impl AggregatedVote {
-    /// Get the epoch ID of the aggregate vote.
+    /// Get the height of the aggregate vote.
     pub fn get_epoch(&self) -> u64 {
         self.height
     }
@@ -258,9 +258,9 @@ impl AggregatedVote {
 
 /// A vote.
 #[derive(Clone, Debug, Display, PartialEq, Eq, Hash)]
-#[display(fmt = "{:?} vote epoch ID {}, round {}", vote_type, height, round)]
+#[display(fmt = "{:?} vote height {}, round {}", vote_type, height, round)]
 pub struct Vote {
-    /// Epoch ID of the vote.
+    /// Height of the vote.
     pub height: u64,
     /// Round of the vote.
     pub round: u64,
@@ -272,9 +272,9 @@ pub struct Vote {
 
 /// A commit.
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
-#[display(fmt = "Commit epoch ID {}", height)]
+#[display(fmt = "Commit height {}", height)]
 pub struct Commit<T: Codec> {
-    /// Epoch ID of the commit.
+    /// Height of the commit.
     pub height: u64,
     /// Commit content.
     pub content: T,
@@ -285,7 +285,7 @@ pub struct Commit<T: Codec> {
 /// A Proof.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Proof {
-    /// Epoch ID of the proof.
+    /// Height of the proof.
     pub height: u64,
     /// Round of the proof.
     pub round: u64,
@@ -297,9 +297,9 @@ pub struct Proof {
 
 /// A rich status.
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
-#[display(fmt = "Rich status epoch ID {}", height)]
+#[display(fmt = "Rich status height {}", height)]
 pub struct Status {
-    /// New epoch ID.
+    /// New height.
     pub height: u64,
     /// New block interval.
     pub interval: Option<u64>,
@@ -356,7 +356,7 @@ impl Node {
 /// A feed.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Feed<T: Codec> {
-    /// Epoch ID of the proposal.
+    /// Height of the proposal.
     pub(crate) height: u64,
     /// Feed content.
     pub(crate) content: T,
@@ -367,7 +367,7 @@ pub(crate) struct Feed<T: Codec> {
 /// A verify response.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VerifyResp {
-    /// The epoch ID of the verified epoch.
+    /// The height of the verified epoch.
     pub height: u64,
     /// Verified proposal hash.
     pub block_hash: Hash,

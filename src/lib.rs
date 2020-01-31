@@ -48,7 +48,7 @@ const INIT_ROUND: u64 = 0;
 /// Trait for some functions that consensus needs.
 #[async_trait]
 pub trait Consensus<T: Codec>: Send + Sync {
-    /// Get an epoch of the given epoch ID and return the epoch with its hash.
+    /// Get an epoch of the given height and return the epoch with its hash.
     async fn get_epoch(
         &self,
         ctx: Context,
@@ -73,7 +73,7 @@ pub trait Consensus<T: Codec>: Send + Sync {
         commit: Commit<T>,
     ) -> Result<Status, Box<dyn Error + Send>>;
 
-    /// Get an authority list of the given epoch ID.
+    /// Get an authority list of the given height.
     async fn get_authority_list(
         &self,
         ctx: Context,

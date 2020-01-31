@@ -56,7 +56,7 @@ impl AuthorityManage {
     }
 
     /// Get a proposer address of the epoch by a given seed. Return `Err` when `is_current` is
-    /// `false`, and the when last epoch ID's authority management is `None`.
+    /// `false`, and the when last height's authority management is `None`.
     pub fn get_proposer(
         &self,
         height: u64,
@@ -75,7 +75,7 @@ impl AuthorityManage {
     }
 
     /// Calculate whether the sum of vote weights from bitmap is above 2/3. Return `Err` when
-    /// `is_current` is `false`, and the when last epoch ID's authority management is `None`.
+    /// `is_current` is `false`, and the when last height's authority management is `None`.
     pub fn is_above_threshold(&self, bitmap: &[u8], is_current: bool) -> ConsensusResult<bool> {
         if is_current {
             self.current.is_above_threshold(bitmap)
@@ -102,7 +102,7 @@ impl AuthorityManage {
     }
 
     /// Check whether the authority management contains the given address. Return `Err` when
-    /// `is_current` is `false`, and the last epoch ID's authority management is `None`.
+    /// `is_current` is `false`, and the last height's authority management is `None`.
     pub fn contains(&self, address: &Address, is_current: bool) -> ConsensusResult<bool> {
         if is_current {
             Ok(self.current.contains(address))
@@ -116,7 +116,7 @@ impl AuthorityManage {
     }
 
     /// Get the sum of the vote weights. Return `Err` when `is_current` is `false`, and the last
-    /// epoch ID's authority management is `None`.
+    /// height's authority management is `None`.
     pub fn get_vote_weight_sum(&self, is_current: bool) -> ConsensusResult<u64> {
         if is_current {
             Ok(self.current.get_vote_weight_sum())
@@ -250,7 +250,7 @@ impl EpochAuthorityManage {
         self.address.contains(address)
     }
 
-    /// Get the sum of the vote weights in the current epoch ID.
+    /// Get the sum of the vote weights in the current height.
     fn get_vote_weight_sum(&self) -> u64 {
         self.vote_weight_sum
     }
