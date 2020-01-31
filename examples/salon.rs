@@ -163,7 +163,7 @@ impl Consensus<Speech> for Brain {
         Ok((Speech::from(thought.clone()), hash(&thought)))
     }
 
-    async fn check_epoch(
+    async fn check_block(
         &self,
         _ctx: Context,
         _height: u64,

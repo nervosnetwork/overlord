@@ -59,7 +59,7 @@ impl Consensus<Pill> for ConsensusHelper<Pill> {
         Ok((epoch, hash))
     }
 
-    async fn check_epoch(
+    async fn check_block(
         &self,
         _ctx: Context,
         _height: u64,

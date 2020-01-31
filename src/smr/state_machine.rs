@@ -45,7 +45,7 @@ impl Stream for StateMachine {
                 let msg = msg.unwrap();
                 let trigger_type = msg.trigger_type.clone();
                 let res = match trigger_type {
-                    TriggerType::NewHeight(height) => self.handle_new_epoch(height, msg.source),
+                    TriggerType::NewHeight(height) => self.handle_new_height(height, msg.source),
                     TriggerType::Proposal => {
                         self.handle_proposal(msg.hash, msg.round, msg.source, msg.height)
                     }
@@ -98,10 +98,10 @@ impl StateMachine {
         self.set_timer_after_wal()
     }
 
-    /// Handle a new epoch trigger. If new height is higher than current, goto a new epoch and
+    /// Handle a new height trigger. If new height is higher than current, goto new height and
     /// throw a new round info event.
-    fn handle_new_epoch(&mut self, height: u64, source: TriggerSource) -> ConsensusResult<()> {
-        info!("Overlord: SMR triggered by new epoch {}", height);
+    fn handle_new_height(&mut self, height: u64, source: TriggerSource) -> ConsensusResult<()> {
+        info!("Overlord: SMR triggered by new height {}", height);
 
         if source != TriggerSource::State {
             return Err(ConsensusError::Other(
@@ -112,7 +112,7 @@ impl StateMachine {
         }
 
         self.check()?;
-        self.goto_new_epoch(height);
+        self.goto_new_height(height);
 
         // throw new round info event
         self.throw_event(SMREvent::NewRoundInfo {
@@ -351,7 +351,7 @@ impl StateMachine {
         Ok(())
     }
 
-    // Check PoLC when triggered precommit QC by state. If the epoch hash of the QC is equal to self
+    // Check PoLC when triggered precommit QC by state. If the block hash of the QC is equal to self
     // lock, change self round and do commit, otherwise, it may be fork.
     fn check_polc(&mut self, hash: Hash, round: u64) -> ConsensusResult<()> {
         if let Some(lock) = self.lock.as_mut() {
@@ -368,9 +368,9 @@ impl StateMachine {
         Ok(())
     }
 
-    /// Goto a new epoch and clear everything.
-    fn goto_new_epoch(&mut self, height: u64) {
-        info!("Overlord: SMR goto new epoch: {}", height);
+    /// Goto new height and clear everything.
+    fn goto_new_height(&mut self, height: u64) {
+        info!("Overlord: SMR goto new height: {}", height);
         self.height = height;
         self.round = INIT_ROUND;
         trace::start_step((Step::Propose).to_string(), self.round, height);

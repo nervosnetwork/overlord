@@ -28,7 +28,7 @@ use crate::utils::auth_manage::AuthorityManage;
 use crate::wal::{WalInfo, WalLock};
 use crate::{Codec, Consensus, ConsensusResult, Crypto, INIT_height, Wal, INIT_ROUND};
 
-const FUTURE_EPOCH_GAP: u64 = 5;
+const FUTURE_HEIGHT_GAP: u64 = 5;
 const FUTURE_ROUND_GAP: u64 = 10;
 
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
@@ -42,9 +42,9 @@ enum MsgType {
 
 /// Overlord state struct. It maintains the local state of the node, and monitor the SMR event. The
 /// `proposals` is used to cache the signed proposals that are with higher height or round. The
-/// `hash_with_epoch` field saves hash and its corresponding epoch with the current height and
+/// `hash_with_block` field saves hash and its corresponding block with the current height and
 /// round. The `votes` field saves all signed votes and quorum certificates which height is higher
-/// than `current_epoch - 1`.
+/// than `current_height - 1`.
 #[derive(Debug)]
 pub struct State<T: Codec, F: Consensus<T>, C: Crypto, W: Wal> {
     height:              u64,
@@ -54,13 +54,13 @@ pub struct State<T: Codec, F: Consensus<T>, C: Crypto, W: Wal> {
     proposals:           ProposalCollector<T>,
     votes:               VoteCollector,
     authority:           AuthorityManage,
-    hash_with_epoch:     HashMap<Hash, T>,
+    hash_with_block:     HashMap<Hash, T>,
     is_full_transcation: HashMap<Hash, bool>,
     is_leader:           bool,
     leader_address:      Address,
     last_commit_qc:      Option<AggregatedVote>,
-    epoch_start:         Instant,
-    epoch_interval:      u64,
+    height_start:         Instant,
+    block_interval:      u64,
 
     resp_tx:  UnboundedSender<VerifyResp>,
     function: Arc<F>,
@@ -97,13 +97,13 @@ where
             proposals:           ProposalCollector::new(),
             votes:               VoteCollector::new(),
             authority:           auth,
-            hash_with_epoch:     HashMap::new(),
+            hash_with_block:     HashMap::new(),
             is_full_transcation: HashMap::new(),
             is_leader:           false,
             leader_address:      Address::default(),
             last_commit_qc:      None,
-            epoch_start:         Instant::now(),
-            epoch_interval:      interval,
+            height_start:         Instant::now(),
+            block_interval:      interval,
 
             resp_tx:  tx,
             function: consensus,
@@ -187,7 +187,7 @@ where
                 Ok(())
             }
 
-            OverlordMsg::RichStatus(rs) => self.goto_new_epoch(ctx.clone(), rs, true).await,
+            OverlordMsg::RichStatus(rs) => self.goto_new_height(ctx.clone(), rs, true).await,
 
             // This is for unit tests.
             #[cfg(test)]
@@ -298,7 +298,7 @@ where
         );
 
         trace::custom(
-            "check_epoch_response".to_string(),
+            "check_block_response".to_string(),
             Some(json!({
                 "height": self.height,
                 "hash": block_hash,
@@ -344,11 +344,11 @@ where
     /// by the overlord handler.
     ///
     /// If the difference between the status height and current's over one, get the last authority
-    /// list of the status height firstly. Then update the height, authority_list and the epoch
-    /// interval. Since it is possible to have received and cached the current epoch's proposals,
-    /// votes and quorum certificates before, these should be re-checked as goto new epoch. Finally,
-    /// trigger SMR to goto new epoch.
-    async fn goto_new_epoch(
+    /// list of the status height firstly. Then update the height, authority_list and the block
+    /// interval. Since it is possible to have received and cached the current height's proposals,
+    /// votes and quorum certificates before, these should be re-checked as goto new height. Finally,
+    /// trigger SMR to goto new height.
+    async fn goto_new_height(
         &mut self,
         ctx: Context,
         status: Status,
@@ -357,12 +357,12 @@ where
         let new_height = status.height;
         self.height = new_height;
         self.round = INIT_ROUND;
-        info!("Overlord: state goto new epoch {}", self.height);
+        info!("Overlord: state goto new height {}", self.height);
 
         trace::start_epoch(new_height);
 
         // Update height and authority list.
-        self.epoch_start = Instant::now();
+        self.height_start = Instant::now();
         let mut auth_list = status.authority_list;
         self.authority.update(&mut auth_list, true);
 
@@ -379,21 +379,21 @@ where
         }
 
         if let Some(interval) = status.interval {
-            self.epoch_interval = interval;
+            self.block_interval = interval;
         }
 
         // Clear outdated proposals and votes.
         self.proposals.flush(new_height - 1);
         self.votes.flush(new_height - 1);
-        self.hash_with_epoch.clear();
+        self.hash_with_block.clear();
 
         // Re-check proposals that have been in the proposal collector, of the current height.
-        if let Some(proposals) = self.proposals.get_epoch_proposals(self.height) {
+        if let Some(proposals) = self.proposals.get_height_proposals(self.height) {
             self.re_check_proposals(proposals)?;
         }
 
         // Re-check votes and quorum certificates in the vote collector, of the current height.
-        if let Some((votes, qcs)) = self.votes.get_epoch_votes(new_height) {
+        if let Some((votes, qcs)) = self.votes.get_height_votes(new_height) {
             self.re_check_votes(votes)?;
             self.re_check_qcs(qcs)?;
         }
@@ -434,9 +434,9 @@ where
                 .get_qc_by_id(self.height, round, VoteType::Prevote)
                 .map_err(|err| ConsensusError::ProposalErr(format!("{:?} when propose", err)))?;
             let content = self
-                .hash_with_epoch
+                .hash_with_block
                 .get(&qc.block_hash)
-                .ok_or_else(|| ConsensusError::Other("lose whole epoch".to_string()))?;
+                .ok_or_else(|| ConsensusError::Other("lose whole block".to_string()))?;
 
             Some(WalLock {
                 lock_round: round,
@@ -461,29 +461,29 @@ where
         //
         // 1. Proposal without a lock
         // If the lock round field of `NewRoundInfo` event from SMR is none, state should get a new
-        // epoch with its hash. These things consititute a Proposal. Then sign it and broadcast it
+        // block with its hash. These things consititute a Proposal. Then sign it and broadcast it
         // to other nodes.
         //
         // 2. Proposal with a lock
-        // The case is much more complex. State should get the whole epoch and prevote quorum
+        // The case is much more complex. State should get the whole block and prevote quorum
         // certificate form proposal collector and vote collector. Some necessary checks should be
         // done by doing this. These things consititute a Proposal. Then sign it and broadcast it to
         // other nodes.
         trace::start_step("become_leader".to_string(), self.round, self.height);
         self.is_leader = true;
         let ctx = Context::new();
-        let (epoch, hash, polc) = if lock_round.is_none() {
-            let (new_epoch, new_hash) = self
+        let (block, hash, polc) = if lock_round.is_none() {
+            let (new_block, new_hash) = self
                 .function
                 .get_epoch(ctx.clone(), self.height)
                 .await
-                .map_err(|err| ConsensusError::Other(format!("get epoch error {:?}", err)))?;
-            (new_epoch, new_hash, None)
+                .map_err(|err| ConsensusError::Other(format!("get block error {:?}", err)))?;
+            (new_block, new_hash, None)
         } else {
             let round = lock_round.clone().unwrap();
             let hash = lock_proposal.unwrap();
-            let epoch = self.hash_with_epoch.get(&hash).ok_or_else(|| {
-                ConsensusError::ProposalErr(format!("Lose whole epoch that hash is {:?}", hash))
+            let block = self.hash_with_block.get(&hash).ok_or_else(|| {
+                ConsensusError::ProposalErr(format!("Lose whole block that hash is {:?}", hash))
             })?;
 
             // Create PoLC by prevoteQC.
@@ -495,17 +495,17 @@ where
                 lock_round: round,
                 lock_votes: qc,
             };
-            (epoch.to_owned(), hash, Some(polc))
+            (block.to_owned(), hash, Some(polc))
         };
 
-        self.hash_with_epoch
+        self.hash_with_block
             .entry(hash.clone())
-            .or_insert_with(|| epoch.clone());
+            .or_insert_with(|| block.clone());
 
         let proposal = Proposal {
             height:     self.height,
             round:      self.round,
-            content:    epoch.clone(),
+            content:    block.clone(),
             block_hash: hash.clone(),
             lock:       polc.clone(),
             proposer:   self.address.clone(),
@@ -534,7 +534,7 @@ where
             TriggerType::Proposal
         );
 
-        self.check_epoch(ctx, hash, epoch).await;
+        self.check_block(ctx, hash, block).await;
         Ok(())
     }
 
@@ -622,9 +622,9 @@ where
         );
 
         let hash = proposal.block_hash.clone();
-        let epoch = proposal.content.clone();
+        let block = proposal.content.clone();
 
-        self.hash_with_epoch.insert(hash.clone(), proposal.content);
+        self.hash_with_block.insert(hash.clone(), proposal.content);
         self.proposals
             .insert(self.height, self.round, signed_proposal)?;
 
@@ -644,8 +644,8 @@ where
             TriggerType::Proposal
         );
 
-        debug!("Overlord: state check the whole epoch");
-        self.check_epoch(ctx, hash, epoch).await;
+        debug!("Overlord: state check the whole block");
+        self.check_block(ctx, hash, block).await;
         Ok(())
     }
 
@@ -655,7 +655,7 @@ where
         vote_type: VoteType,
         lock_round: Option<u64>,
     ) -> ConsensusResult<()> {
-        // If the vote epoch hash is empty, do nothing.
+        // If the vote block hash is empty, do nothing.
         if hash.is_empty() {
             // If SMR is trigger by timer, the wal step should be the next step.
             let step = match vote_type {
@@ -668,7 +668,7 @@ where
                     .votes
                     .get_qc_by_id(self.height, round, VoteType::Prevote)?;
                 let content = self
-                    .hash_with_epoch
+                    .hash_with_block
                     .get(&qc.block_hash)
                     .ok_or_else(|| ConsensusError::Other("lose whole epoch".to_string()))?;
 
@@ -731,17 +731,17 @@ where
             Some(json!({
                 "height": self.height,
                 "round": self.round,
-                "epoch hash": hex::encode(hash.clone()),
+                "block hash": hex::encode(hash.clone()),
             })),
         );
 
-        debug!("Overlord: state get origin epoch");
-        let epoch = self.height;
-        let content = if let Some(tmp) = self.hash_with_epoch.get(&hash) {
+        debug!("Overlord: state get origin block");
+        let height = self.height;
+        let content = if let Some(tmp) = self.hash_with_block.get(&hash) {
             tmp.to_owned()
         } else {
             return Err(ConsensusError::Other(format!(
-                "Lose whole epoch height {}, round {}",
+                "Lose whole block height {}, round {}",
                 self.height, self.round
             )));
         };
@@ -749,29 +749,29 @@ where
         debug!("Overlord: state generate proof");
         let qc = self
             .votes
-            .get_qc_by_hash(epoch, hash.clone(), VoteType::Precommit);
+            .get_qc_by_hash(height, hash.clone(), VoteType::Precommit);
         if qc.is_none() {
             return Err(ConsensusError::StorageErr("Lose precommit QC".to_string()));
         }
 
         let qc = qc.unwrap();
         let proof = Proof {
-            height:     epoch,
+            height,
             round:      self.round,
             block_hash: hash.clone(),
             signature:  qc.signature.clone(),
         };
         let commit = Commit {
-            height: epoch,
+            height,
             content,
             proof,
         };
 
         self.last_commit_qc = Some(qc.clone());
         let content = self
-            .hash_with_epoch
+            .hash_with_block
             .get(&hash)
-            .ok_or_else(|| ConsensusError::Other("lose whole epoch".to_string()))?;
+            .ok_or_else(|| ConsensusError::Other("lose whole block".to_string()))?;
         let polc = Some(WalLock {
             lock_round: self.round,
             lock_votes: qc,
@@ -782,7 +782,7 @@ where
         let ctx = Context::new();
         let status = self
             .function
-            .commit(ctx.clone(), epoch, commit)
+            .commit(ctx.clone(), height, commit)
             .await
             .map_err(|err| ConsensusError::Other(format!("commit error {:?}", err)))?;
 
@@ -795,21 +795,21 @@ where
         let mut auth_list = status.authority_list.clone();
         self.authority.update(&mut auth_list, true);
 
-        let cost = Instant::now() - self.epoch_start;
+        let cost = Instant::now() - self.height_start;
         if self.next_proposer(status.height, INIT_ROUND)?
-            && cost < Duration::from_millis(self.epoch_interval)
+            && cost < Duration::from_millis(self.block_interval)
         {
-            Delay::new(Duration::from_millis(self.epoch_interval) - cost).await;
+            Delay::new(Duration::from_millis(self.block_interval) - cost).await;
         }
 
-        self.goto_new_epoch(ctx, status, false).await?;
+        self.goto_new_height(ctx, status, false).await?;
         Ok(())
     }
 
     /// The main process of handle signed vote is that only handle those height and round are both
     /// equal to the current. The lower votes will be ignored directly even if the height is equal
     /// to the `current height - 1` and the round is higher than the current round. The reason is
-    /// that the effective leader must in the lower epoch, and the task of handling signed votes
+    /// that the effective leader must in the lower height, and the task of handling signed votes
     /// will be done by the leader. For the higher votes, check the signature and save them in
     /// the vote collector. Whenevet the current vote is received, a statistic is made to check
     /// if the sum of the voting weights corresponding to the hash exceeds the threshold.
@@ -823,7 +823,7 @@ where
             return Ok(());
         }
 
-        let height = signed_vote.get_epoch();
+        let height = signed_vote.get_height();
         let round = signed_vote.get_round();
         let vote_type = if signed_vote.is_prevote() {
             VoteType::Prevote
@@ -891,7 +891,7 @@ where
 
         let mut block_hash = block_hash.unwrap();
         info!(
-            "Overlord: state counting a epoch hash that votes above threshold, height {}, round {}",
+            "Overlord: state counting a block hash that votes above threshold, height {}, round {}",
             self.height, self.round
         );
 
@@ -961,7 +961,7 @@ where
             return Ok(());
         }
 
-        let height = aggregated_vote.get_epoch();
+        let height = aggregated_vote.get_height();
         let round = aggregated_vote.get_round();
         let qc_type = if aggregated_vote.is_prevote_qc() {
             VoteType::Prevote
@@ -970,7 +970,7 @@ where
         };
 
         info!(
-            "Overlord: state receive an {:?} QC epoch {}, round {}",
+            "Overlord: state receive an {:?} QC height {}, round {}",
             qc_type, height, round,
         );
 
@@ -986,7 +986,7 @@ where
             }
 
             Ordering::Greater => {
-                if self.height + FUTURE_EPOCH_GAP > height && round < FUTURE_ROUND_GAP {
+                if self.height + FUTURE_HEIGHT_GAP > height && round < FUTURE_ROUND_GAP {
                     debug!(
                         "Overlord: state receive a future QC, height {}, round {}",
                         height, round,
@@ -1025,7 +1025,7 @@ where
             qc_type.clone(),
         )?;
 
-        // Check if the epoch hash has been verified.
+        // Check if the block hash has been verified.
         let qc_hash = aggregated_vote.block_hash.clone();
         self.votes.set_qc(aggregated_vote);
         if !self.try_get_full_txs(&qc_hash) {
@@ -1386,7 +1386,7 @@ where
             .is_above_threshold(&signature.address_bitmap, height == self.height)?
         {
             return Err(ConsensusError::AggregatedSignatureErr(format!(
-                "{:?} QC of epoch {}, round {} is not above threshold",
+                "{:?} QC of height {}, round {} is not above threshold",
                 vote_type, self.height, self.round
             )));
         }
@@ -1462,7 +1462,7 @@ where
     }
 
     async fn retransmit_qc(&self, ctx: Context, address: Address) -> ConsensusResult<()> {
-        debug!("Overlord: state re-transmit last epoch vote");
+        debug!("Overlord: state re-transmit last height vote");
         if let Some(qc) = self.last_commit_qc.clone() {
             let _ = self
                 .function
@@ -1510,33 +1510,33 @@ where
             });
     }
 
-    async fn check_epoch(&mut self, ctx: Context, hash: Hash, epoch: T) {
+    async fn check_block(&mut self, ctx: Context, hash: Hash, block: T) {
         let height = self.height;
         let function = Arc::clone(&self.function);
         let resp_tx = self.resp_tx.clone();
 
         trace::custom(
-            "check_epoch".to_string(),
+            "check_block".to_string(),
             Some(json!({
                 "height": height,
                 "round": self.round,
-                "epoch hash": hex::encode(hash.clone())
+                "block hash": hex::encode(hash.clone())
             })),
         );
 
         tokio::spawn(async move {
             if let Err(e) =
-                check_current_epoch(ctx, function, height, hash.clone(), epoch, resp_tx).await
+                check_current_block(ctx, function, height, hash.clone(), block, resp_tx).await
             {
                 trace::error(
-                    "check_epoch".to_string(),
+                    "check_block".to_string(),
                     Some(json!({
                         "height": height,
                         "hash": hex::encode(hash),
                     })),
                 );
 
-                error!("Overlord: state check epoch failed: {:?}", e);
+                error!("Overlord: state check block failed: {:?}", e);
             }
         });
     }
@@ -1582,15 +1582,15 @@ where
                 .votes
                 .get_qc_by_id(self.height, round, VoteType::Prevote)
             {
-                let epoch = self
-                    .hash_with_epoch
+                let block = self
+                    .hash_with_block
                     .get(&qc.block_hash)
                     .ok_or_else(|| ConsensusError::Other("lose whole epoch".to_string()))?;
 
                 Some(WalLock {
                     lock_round: round,
                     lock_votes: qc,
-                    content:    epoch.clone(),
+                    content:    block.clone(),
                 })
             } else {
                 return Err(ConsensusError::Other("no qc".to_string()));
@@ -1635,7 +1635,7 @@ where
         let lock = wal_info.lock.clone().unwrap();
         let qc = lock.lock_votes.clone();
         self.votes.set_qc(qc.clone());
-        self.hash_with_epoch
+        self.hash_with_block
             .insert(qc.block_hash.clone(), lock.content.clone());
 
         match wal_info.step {
@@ -1736,7 +1736,7 @@ where
 
     /// Filter the proposals that do not need to be handed.
     /// 1. Outdated proposals
-    /// 2. A much higher height which is larger than the FUTURE_EPOCH_GAP
+    /// 2. A much higher height which is larger than the FUTURE_HEIGHT_GAP
     /// 3. A much higher round which is larger than the FUTURE_ROUND_GAP
     fn filter_signed_proposal(
         &mut self,
@@ -1750,8 +1750,8 @@ where
                 height, round,
             );
             return Ok(true);
-        } else if self.height + FUTURE_EPOCH_GAP < height {
-            warn!("Overlord: state receive a much higher epoch's proposal.");
+        } else if self.height + FUTURE_HEIGHT_GAP < height {
+            warn!("Overlord: state receive a much higher height's proposal.");
             return Ok(true);
         } else if (height == self.height && self.round + FUTURE_ROUND_GAP < round)
             || (height > self.height && round > FUTURE_ROUND_GAP)
@@ -1776,20 +1776,20 @@ where
     }
 }
 
-async fn check_current_epoch<U: Consensus<T>, T: Codec>(
+async fn check_current_block<U: Consensus<T>, T: Codec>(
     ctx: Context,
     function: Arc<U>,
     height: u64,
     hash: Hash,
-    epoch: T,
+    block: T,
     tx: UnboundedSender<VerifyResp>,
 ) -> ConsensusResult<()> {
     function
-        .check_epoch(ctx, height, hash.clone(), epoch)
+        .check_block(ctx, height, hash.clone(), block)
         .await
-        .map_err(|err| ConsensusError::Other(format!("check {} epoch error {:?}", height, err)))?;
+        .map_err(|err| ConsensusError::Other(format!("check {} block error {:?}", height, err)))?;
 
-    info!("Overlord: state check epoch {}", true);
+    info!("Overlord: state check epoblockch {}", true);
 
     tx.unbounded_send(VerifyResp {
         height,

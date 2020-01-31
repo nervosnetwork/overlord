@@ -258,7 +258,7 @@ pub trait Consensus<T: Codec>: Send + Sync {
 
     /// Check the correctness of an epoch. If is passed, return the integrated transcations to do
     /// data persistence.
-    async fn check_epoch(
+    async fn check_block(
         &self,
         _ctx: Vec<u8>,
         height: u64,

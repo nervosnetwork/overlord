@@ -181,7 +181,7 @@ impl Ord for SignedVote {
 
 impl SignedVote {
     /// Get the height of the signed vote.
-    pub fn get_epoch(&self) -> u64 {
+    pub fn get_height(&self) -> u64 {
         self.vote.height
     }
 
@@ -231,7 +231,7 @@ pub struct AggregatedVote {
 
 impl AggregatedVote {
     /// Get the height of the aggregate vote.
-    pub fn get_epoch(&self) -> u64 {
+    pub fn get_height(&self) -> u64 {
         self.height
     }
 
