@@ -45,7 +45,7 @@ impl<T: Codec> WalLock<T> {
     pub fn to_lock(&self) -> Lock {
         Lock {
             round: self.lock_round,
-            hash:  self.lock_votes.epoch_hash.clone(),
+            hash:  self.lock_votes.block_hash.clone(),
         }
     }
 }

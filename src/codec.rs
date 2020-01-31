@@ -42,7 +42,7 @@ impl<T: Codec> Encodable for Proposal<T> {
         s.begin_list(6)
             .append(&self.height)
             .append(&self.round)
-            .append(&self.epoch_hash.to_vec())
+            .append(&self.block_hash.to_vec())
             .append(&self.lock)
             .append(&self.proposer.to_vec())
             .append(&content);
@@ -56,7 +56,7 @@ impl<T: Codec> Decodable for Proposal<T> {
                 let height: u64 = r.val_at(0)?;
                 let round: u64 = r.val_at(1)?;
                 let tmp: Vec<u8> = r.val_at(2)?;
-                let epoch_hash = Hash::from(tmp);
+                let block_hash = Hash::from(tmp);
                 let lock = r.val_at(3)?;
                 let tmp: Vec<u8> = r.val_at(4)?;
                 let proposer = Address::from(tmp);
@@ -67,7 +67,7 @@ impl<T: Codec> Decodable for Proposal<T> {
                     height,
                     round,
                     content,
-                    epoch_hash,
+                    block_hash,
                     lock,
                     proposer,
                 })
@@ -138,7 +138,7 @@ impl Encodable for AggregatedVote {
             .append(&vote_type)
             .append(&self.height)
             .append(&self.round)
-            .append(&self.epoch_hash.to_vec())
+            .append(&self.block_hash.to_vec())
             .append(&self.leader.to_vec());
     }
 }
@@ -153,7 +153,7 @@ impl Decodable for AggregatedVote {
                 let height: u64 = r.val_at(2)?;
                 let round: u64 = r.val_at(3)?;
                 let tmp: Vec<u8> = r.val_at(4)?;
-                let epoch_hash = Hash::from(tmp);
+                let block_hash = Hash::from(tmp);
                 let tmp: Vec<u8> = r.val_at(5)?;
                 let leader = Address::from(tmp);
                 Ok(AggregatedVote {
@@ -161,7 +161,7 @@ impl Decodable for AggregatedVote {
                     vote_type,
                     height,
                     round,
-                    epoch_hash,
+                    block_hash,
                     leader,
                 })
             }
@@ -208,7 +208,7 @@ impl Encodable for Vote {
             .append(&self.height)
             .append(&self.round)
             .append(&vote_type)
-            .append(&self.epoch_hash.to_vec());
+            .append(&self.block_hash.to_vec());
     }
 }
 
@@ -221,12 +221,12 @@ impl Decodable for Vote {
                 let tmp: u8 = r.val_at(2)?;
                 let vote_type = VoteType::from(tmp);
                 let tmp: Vec<u8> = r.val_at(3)?;
-                let epoch_hash = Hash::from(tmp);
+                let block_hash = Hash::from(tmp);
                 Ok(Vote {
                     height,
                     round,
                     vote_type,
-                    epoch_hash,
+                    block_hash,
                 })
             }
             _ => Err(DecoderError::RlpInconsistentLengthAndData),
@@ -271,7 +271,7 @@ impl Encodable for Proof {
         s.begin_list(4)
             .append(&self.height)
             .append(&self.round)
-            .append(&self.epoch_hash.to_vec())
+            .append(&self.block_hash.to_vec())
             .append(&self.signature);
     }
 }
@@ -283,12 +283,12 @@ impl Decodable for Proof {
                 let height: u64 = r.val_at(0)?;
                 let round: u64 = r.val_at(1)?;
                 let tmp: Vec<u8> = r.val_at(2)?;
-                let epoch_hash = Hash::from(tmp);
+                let block_hash = Hash::from(tmp);
                 let signature: AggregatedSignature = r.val_at(3)?;
                 Ok(Proof {
                     height,
                     round,
-                    epoch_hash,
+                    block_hash,
                     signature,
                 })
             }
@@ -367,7 +367,7 @@ impl<T: Codec> Encodable for Feed<T> {
         let content = self.content.encode().unwrap().to_vec();
         s.begin_list(3)
             .append(&self.height)
-            .append(&self.epoch_hash.to_vec())
+            .append(&self.block_hash.to_vec())
             .append(&content);
     }
 }
@@ -378,13 +378,13 @@ impl<T: Codec> Decodable for Feed<T> {
             Prototype::List(3) => {
                 let height: u64 = r.val_at(0)?;
                 let tmp: Vec<u8> = r.val_at(1)?;
-                let epoch_hash = Hash::from(tmp);
+                let block_hash = Hash::from(tmp);
                 let tmp: Vec<u8> = r.val_at(2)?;
                 let content = Codec::decode(Bytes::from(tmp))
                     .map_err(|_| DecoderError::Custom("Codec decode error."))?;
                 Ok(Feed {
                     height,
-                    epoch_hash,
+                    block_hash,
                     content,
                 })
             }
@@ -503,13 +503,13 @@ mod test {
         fn new(content: T, lock: Option<PoLC>) -> Self {
             let height = random::<u64>();
             let round = random::<u64>();
-            let epoch_hash = gen_hash();
+            let block_hash = gen_hash();
             let proposer = gen_address();
             Proposal {
                 height,
                 round,
                 content,
-                epoch_hash,
+                block_hash,
                 lock,
                 proposer,
             }
@@ -542,7 +542,7 @@ mod test {
                 vote_type:  VoteType::from(vote_type),
                 height:     random::<u64>(),
                 round:      random::<u64>(),
-                epoch_hash: gen_hash(),
+                block_hash: gen_hash(),
                 leader:     gen_address(),
             }
         }
@@ -554,7 +554,7 @@ mod test {
                 height:     random::<u64>(),
                 round:      random::<u64>(),
                 vote_type:  VoteType::from(vote_type),
-                epoch_hash: gen_hash(),
+                block_hash: gen_hash(),
             }
         }
     }
@@ -576,7 +576,7 @@ mod test {
             Proof {
                 height:     random::<u64>(),
                 round:      random::<u64>(),
-                epoch_hash: gen_hash(),
+                block_hash: gen_hash(),
                 signature:  gen_aggr_signature(),
             }
         }
@@ -595,11 +595,11 @@ mod test {
     impl<T: Codec> Feed<T> {
         fn new(content: T) -> Self {
             let height = random::<u64>();
-            let epoch_hash = gen_hash();
+            let block_hash = gen_hash();
             Feed {
                 height,
                 content,
-                epoch_hash,
+                block_hash,
             }
         }
     }

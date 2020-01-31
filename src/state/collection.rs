@@ -251,7 +251,7 @@ impl VoteRoundCollector {
 
     fn set_qc(&mut self, qc: AggregatedVote) {
         self.qc_by_hash
-            .entry(qc.epoch_hash.clone())
+            .entry(qc.block_hash.clone())
             .or_insert_with(QuorumCertificate::new)
             .set_quorum_certificate(qc.clone());
 
@@ -522,7 +522,7 @@ mod test {
             height,
             round,
             content: Pill::new(),
-            epoch_hash: gen_hash(),
+            block_hash: gen_hash(),
             lock: None,
             proposer: gen_address(),
         };
@@ -544,7 +544,7 @@ mod test {
             height,
             round,
             vote_type,
-            epoch_hash: hash,
+            block_hash: hash,
         };
 
         SignedVote {
@@ -562,7 +562,7 @@ mod test {
             height,
             round,
             vote_type,
-            epoch_hash: gen_hash(),
+            block_hash: gen_hash(),
             leader: gen_address(),
         }
     }

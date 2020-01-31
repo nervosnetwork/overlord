@@ -1,5 +1,5 @@
-/// Test new epoch trigger process.
-mod new_epoch_test;
+/// Test new height trigger process.
+mod new_height_test;
 /// Test prevoteQC trigger process.
 mod precommit_test;
 /// Test prevoteQC trigger process.

@@ -19,7 +19,7 @@ async fn test_prevote_trigger() {
         SMREvent::PrecommitVote {
             height:     0u64,
             round:      0u64,
-            epoch_hash: hash.clone(),
+            block_hash: hash.clone(),
             lock_round: Some(0),
         },
         None,
@@ -36,7 +36,7 @@ async fn test_prevote_trigger() {
         SMREvent::PrecommitVote {
             height:     0u64,
             round:      0u64,
-            epoch_hash: hash,
+            block_hash: hash,
             lock_round: None,
         },
         Some(ConsensusError::PrevoteErr("Empty qc".to_string())),
@@ -58,7 +58,7 @@ async fn test_prevote_trigger() {
         SMREvent::PrecommitVote {
             height:     0u64,
             round:      1u64,
-            epoch_hash: lock_hash.clone(),
+            block_hash: lock_hash.clone(),
             lock_round: None,
         },
         Some(ConsensusError::PrevoteErr("Empty qc".to_string())),
@@ -80,7 +80,7 @@ async fn test_prevote_trigger() {
         SMREvent::PrecommitVote {
             height:     0u64,
             round:      1u64,
-            epoch_hash: lock_hash.clone(),
+            block_hash: lock_hash.clone(),
             lock_round: None,
         },
         Some(ConsensusError::SelfCheckErr("".to_string())),
@@ -97,7 +97,7 @@ async fn test_prevote_trigger() {
         SMREvent::PrecommitVote {
             height:     0u64,
             round:      1u64,
-            epoch_hash: Hash::new(),
+            block_hash: Hash::new(),
             lock_round: None,
         },
         Some(ConsensusError::PrevoteErr("Empty qc".to_string())),
@@ -115,7 +115,7 @@ async fn test_prevote_trigger() {
         SMREvent::PrecommitVote {
             height:     0u64,
             round:      1u64,
-            epoch_hash: vote_hash.clone(),
+            block_hash: vote_hash.clone(),
             lock_round: Some(1),
         },
         None,
@@ -134,7 +134,7 @@ async fn test_prevote_trigger() {
         SMREvent::PrecommitVote {
             height:     0u64,
             round:      1u64,
-            epoch_hash: hash.clone(),
+            block_hash: hash.clone(),
             lock_round: None,
         },
         Some(ConsensusError::PrevoteErr("Empty qc".to_string())),
@@ -153,7 +153,7 @@ async fn test_prevote_trigger() {
         SMREvent::PrecommitVote {
             height:     0u64,
             round:      1u64,
-            epoch_hash: hash.clone(),
+            block_hash: hash.clone(),
             lock_round: Some(1),
         },
         None,
@@ -170,7 +170,7 @@ async fn test_prevote_trigger() {
     //     SMREvent::PrecommitVote {
     //         height:   0u64,
     //         round:      1u64,
-    //         epoch_hash: Hash::new(),
+    //         block_hash: Hash::new(),
     //     },
     //     Some(ConsensusError::RoundDiff { local: 1, vote: 0 }),
     //     None,

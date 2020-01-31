@@ -98,7 +98,7 @@ pub enum SMREvent {
     PrevoteVote {
         height:     u64,
         round:      u64,
-        epoch_hash: Hash,
+        block_hash: Hash,
         lock_round: Option<u64>,
     },
 
@@ -109,7 +109,7 @@ pub enum SMREvent {
     PrecommitVote {
         height:     u64,
         round:      u64,
-        epoch_hash: Hash,
+        block_hash: Hash,
         lock_round: Option<u64>,
     },
     /// Commit event,

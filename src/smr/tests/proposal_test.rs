@@ -20,7 +20,7 @@ async fn test_proposal_trigger() {
         SMREvent::PrevoteVote {
             height:     0u64,
             round:      0u64,
-            epoch_hash: hash,
+            block_hash: hash,
             lock_round: None,
         },
         None,
@@ -38,7 +38,7 @@ async fn test_proposal_trigger() {
         SMREvent::PrevoteVote {
             height:     0u64,
             round:      0u64,
-            epoch_hash: hash,
+            block_hash: hash,
             lock_round: None,
         },
         Some(ConsensusError::ProposalErr("Empty qc".to_string())),
@@ -56,7 +56,7 @@ async fn test_proposal_trigger() {
         SMREvent::PrevoteVote {
             height:     0u64,
             round:      1u64,
-            epoch_hash: hash,
+            block_hash: hash,
             lock_round: None,
         },
         Some(ConsensusError::ProposalErr("Invalid lock".to_string())),
@@ -74,7 +74,7 @@ async fn test_proposal_trigger() {
         SMREvent::PrevoteVote {
             height:     0u64,
             round:      1u64,
-            epoch_hash: hash,
+            block_hash: hash,
             lock_round: None,
         },
         None,
@@ -92,7 +92,7 @@ async fn test_proposal_trigger() {
         SMREvent::PrevoteVote {
             height:     0u64,
             round:      1u64,
-            epoch_hash: hash,
+            block_hash: hash,
             lock_round: None,
         },
         Some(ConsensusError::SelfCheckErr("".to_string())),
@@ -110,7 +110,7 @@ async fn test_proposal_trigger() {
         SMREvent::PrevoteVote {
             height:     0u64,
             round:      1u64,
-            epoch_hash: hash,
+            block_hash: hash,
             lock_round: None,
         },
         Some(ConsensusError::SelfCheckErr("".to_string())),
@@ -128,7 +128,7 @@ async fn test_proposal_trigger() {
         SMREvent::PrevoteVote {
             height:     0u64,
             round:      1u64,
-            epoch_hash: hash,
+            block_hash: hash,
             lock_round: None,
         },
         Some(ConsensusError::ProposalErr("Empty qc".to_string())),
@@ -146,7 +146,7 @@ async fn test_proposal_trigger() {
         SMREvent::PrevoteVote {
             height:     0u64,
             round:      1u64,
-            epoch_hash: hash,
+            block_hash: hash,
             lock_round: None,
         },
         Some(ConsensusError::ProposalErr("Empty qc".to_string())),
@@ -166,7 +166,7 @@ async fn test_proposal_trigger() {
         SMREvent::PrevoteVote {
             height:     0u64,
             round:      1u64,
-            epoch_hash: hash,
+            block_hash: hash,
             lock_round: None,
         },
         Some(ConsensusError::ProposalErr("Empty qc".to_string())),
@@ -186,7 +186,7 @@ async fn test_proposal_trigger() {
         SMREvent::PrevoteVote {
             height:     0u64,
             round:      1u64,
-            epoch_hash: hash,
+            block_hash: hash,
             lock_round: None,
         },
         Some(ConsensusError::ProposalErr("Empty qc".to_string())),
@@ -206,7 +206,7 @@ async fn test_proposal_trigger() {
         SMREvent::PrevoteVote {
             height:     0u64,
             round:      1u64,
-            epoch_hash: hash,
+            block_hash: hash,
             lock_round: None,
         },
         Some(ConsensusError::ProposalErr("Empty qc".to_string())),
@@ -226,7 +226,7 @@ async fn test_proposal_trigger() {
         SMREvent::PrevoteVote {
             height:     0u64,
             round:      1u64,
-            epoch_hash: lock_hash,
+            block_hash: lock_hash,
             lock_round: None,
         },
         Some(ConsensusError::SelfCheckErr("".to_string())),
@@ -246,7 +246,7 @@ async fn test_proposal_trigger() {
         SMREvent::PrevoteVote {
             height:     0u64,
             round:      1u64,
-            epoch_hash: lock_hash.clone(),
+            block_hash: lock_hash.clone(),
             lock_round: None,
         },
         Some(ConsensusError::ProposalErr("Empty qc".to_string())),
@@ -266,7 +266,7 @@ async fn test_proposal_trigger() {
         SMREvent::PrevoteVote {
             height:     0u64,
             round:      1u64,
-            epoch_hash: lock_hash.clone(),
+            block_hash: lock_hash.clone(),
             lock_round: Some(0),
         },
         None,
@@ -286,7 +286,7 @@ async fn test_proposal_trigger() {
         SMREvent::PrevoteVote {
             height:     0u64,
             round:      1u64,
-            epoch_hash: lock_hash.clone(),
+            block_hash: lock_hash.clone(),
             lock_round: None,
         },
         Some(ConsensusError::ProposalErr("Invalid lock".to_string())),
@@ -307,7 +307,7 @@ async fn test_proposal_trigger() {
         SMREvent::PrevoteVote {
             height:     0u64,
             round:      2u64,
-            epoch_hash: lock_hash.clone(),
+            block_hash: lock_hash.clone(),
             lock_round: Some(1),
         },
         None,
@@ -328,7 +328,7 @@ async fn test_proposal_trigger() {
         SMREvent::PrevoteVote {
             height:     0u64,
             round:      3u64,
-            epoch_hash: hash,
+            block_hash: hash,
             lock_round: None,
         },
         Some(ConsensusError::SelfCheckErr(
@@ -350,7 +350,7 @@ async fn test_proposal_trigger() {
         SMREvent::PrevoteVote {
             height:     0u64,
             round:      2u64,
-            epoch_hash: lock_hash.clone(),
+            block_hash: lock_hash.clone(),
             lock_round: Some(1),
         },
         None,

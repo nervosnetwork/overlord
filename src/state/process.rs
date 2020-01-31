@@ -223,12 +223,12 @@ where
             }
 
             SMREvent::PrevoteVote {
-                epoch_hash,
+                block_hash,
                 lock_round,
                 ..
             } => {
                 if let Err(e) = self
-                    .handle_vote_event(epoch_hash, VoteType::Prevote, lock_round)
+                    .handle_vote_event(block_hash, VoteType::Prevote, lock_round)
                     .await
                 {
                     trace::error(
@@ -245,12 +245,12 @@ where
             }
 
             SMREvent::PrecommitVote {
-                epoch_hash,
+                block_hash,
                 lock_round,
                 ..
             } => {
                 if let Err(e) = self
-                    .handle_vote_event(epoch_hash, VoteType::Precommit, lock_round)
+                    .handle_vote_event(block_hash, VoteType::Precommit, lock_round)
                     .await
                 {
                     trace::error(
@@ -291,45 +291,45 @@ where
             return Ok(());
         }
 
-        let epoch_hash = resp.epoch_hash.clone();
+        let block_hash = resp.block_hash.clone();
         info!(
             "Overlord: state receive verify response epoch ID {:?}, hash {:?}",
-            resp.height, epoch_hash
+            resp.height, block_hash
         );
 
         trace::custom(
             "check_epoch_response".to_string(),
             Some(json!({
                 "height": self.height,
-                "hash": epoch_hash,
+                "hash": block_hash,
                 "is_pass": true,
             })),
         );
 
         self.is_full_transcation
-            .insert(epoch_hash.clone(), resp.is_pass);
+            .insert(block_hash.clone(), resp.is_pass);
 
         if let Some(qc) =
             self.votes
-                .get_qc_by_hash(self.height, epoch_hash.clone(), VoteType::Precommit)
+                .get_qc_by_hash(self.height, block_hash.clone(), VoteType::Precommit)
         {
             self.state_machine.trigger(SMRTrigger {
                 trigger_type: TriggerType::PrecommitQC,
                 source:       TriggerSource::State,
-                hash:         qc.epoch_hash,
+                hash:         qc.block_hash,
                 round:        Some(self.round),
                 height:       self.height,
                 wal_info:     None,
             })?;
         } else if let Some(qc) =
             self.votes
-                .get_qc_by_hash(self.height, epoch_hash, VoteType::Prevote)
+                .get_qc_by_hash(self.height, block_hash, VoteType::Prevote)
         {
             if qc.round == self.round {
                 self.state_machine.trigger(SMRTrigger {
                     trigger_type: TriggerType::PrevoteQC,
                     source:       TriggerSource::State,
-                    hash:         qc.epoch_hash,
+                    hash:         qc.block_hash,
                     round:        Some(self.round),
                     height:       self.height,
                     wal_info:     None,
@@ -435,7 +435,7 @@ where
                 .map_err(|err| ConsensusError::ProposalErr(format!("{:?} when propose", err)))?;
             let content = self
                 .hash_with_epoch
-                .get(&qc.epoch_hash)
+                .get(&qc.block_hash)
                 .ok_or_else(|| ConsensusError::Other("lose whole epoch".to_string()))?;
 
             Some(WalLock {
@@ -506,7 +506,7 @@ where
             height:     self.height,
             round:      self.round,
             content:    epoch.clone(),
-            epoch_hash: hash.clone(),
+            block_hash: hash.clone(),
             lock:       polc.clone(),
             proposer:   self.address.clone(),
         };
@@ -562,7 +562,7 @@ where
             height,
             round,
             hex::encode(signed_proposal.proposal.proposer.clone()),
-            hex::encode(signed_proposal.proposal.epoch_hash.clone()),
+            hex::encode(signed_proposal.proposal.block_hash.clone()),
             None,
         );
 
@@ -621,7 +621,7 @@ where
             self.height, self.round
         );
 
-        let hash = proposal.epoch_hash.clone();
+        let hash = proposal.block_hash.clone();
         let epoch = proposal.content.clone();
 
         self.hash_with_epoch.insert(hash.clone(), proposal.content);
@@ -669,7 +669,7 @@ where
                     .get_qc_by_id(self.height, round, VoteType::Prevote)?;
                 let content = self
                     .hash_with_epoch
-                    .get(&qc.epoch_hash)
+                    .get(&qc.block_hash)
                     .ok_or_else(|| ConsensusError::Other("lose whole epoch".to_string()))?;
 
                 Some(WalLock {
@@ -705,7 +705,7 @@ where
             height:     self.height,
             round:      self.round,
             vote_type:  vote_type.clone(),
-            epoch_hash: hash,
+            block_hash: hash,
         })?;
 
         if self.is_leader {
@@ -758,7 +758,7 @@ where
         let proof = Proof {
             height:     epoch,
             round:      self.round,
-            epoch_hash: hash.clone(),
+            block_hash: hash.clone(),
             signature:  qc.signature.clone(),
         };
         let commit = Commit {
@@ -818,7 +818,7 @@ where
         ctx: Context,
         signed_vote: SignedVote,
     ) -> ConsensusResult<()> {
-        if signed_vote.vote.epoch_hash.is_empty() {
+        if signed_vote.vote.block_hash.is_empty() {
             warn!("Overlord: state receive an empty signed vote");
             return Ok(());
         }
@@ -848,7 +848,7 @@ where
             height,
             round,
             hex::encode(signed_vote.voter.clone()),
-            hex::encode(signed_vote.vote.epoch_hash.clone()),
+            hex::encode(signed_vote.vote.block_hash.clone()),
             Some(json!({ "vote type": tmp_type })),
         );
 
@@ -882,14 +882,14 @@ where
 
         self.votes
             .insert_vote(signed_vote.get_hash(), signed_vote, voter);
-        let epoch_hash = self.counting_vote(vote_type.clone())?;
+        let block_hash = self.counting_vote(vote_type.clone())?;
 
-        if epoch_hash.is_none() {
+        if block_hash.is_none() {
             debug!("Overlord: state counting of vote and no one above threshold");
             return Ok(());
         }
 
-        let mut epoch_hash = epoch_hash.unwrap();
+        let mut block_hash = block_hash.unwrap();
         info!(
             "Overlord: state counting a epoch hash that votes above threshold, epoch ID {}, round {}",
             self.height, self.round
@@ -897,7 +897,7 @@ where
 
         // Build the quorum certificate needs to aggregate signatures into an aggregate
         // signature besides the address bitmap.
-        let qc = self.generate_qc(epoch_hash.clone(), vote_type.clone())?;
+        let qc = self.generate_qc(block_hash.clone(), vote_type.clone())?;
 
         debug!(
             "Overlord: state set QC epoch ID {}, round {}",
@@ -908,11 +908,11 @@ where
         self.broadcast(ctx, OverlordMsg::AggregatedVote(qc)).await;
 
         if vote_type == VoteType::Prevote {
-            match self.check_full_txs(epoch_hash) {
-                Some(tmp) => epoch_hash = tmp,
+            match self.check_full_txs(block_hash) {
+                Some(tmp) => block_hash = tmp,
                 None => return Ok(()),
             }
-        } else if !self.try_get_full_txs(&epoch_hash) {
+        } else if !self.try_get_full_txs(&block_hash) {
             return Ok(());
         }
 
@@ -923,7 +923,7 @@ where
         self.state_machine.trigger(SMRTrigger {
             trigger_type: vote_type.clone().into(),
             source:       TriggerSource::State,
-            hash:         epoch_hash,
+            hash:         block_hash,
             round:        Some(round),
             height:       self.height,
             wal_info:     None,
@@ -956,7 +956,7 @@ where
         _ctx: Context,
         aggregated_vote: AggregatedVote,
     ) -> ConsensusResult<()> {
-        if aggregated_vote.epoch_hash.is_empty() {
+        if aggregated_vote.block_hash.is_empty() {
             warn!("Overlord: state receive an empty aggregated vote");
             return Ok(());
         }
@@ -1012,7 +1012,7 @@ where
             height,
             round,
             hex::encode(aggregated_vote.leader.clone()),
-            hex::encode(aggregated_vote.epoch_hash.clone()),
+            hex::encode(aggregated_vote.block_hash.clone()),
             Some(json!({ "qc type": qc_type.to_string() })),
         );
 
@@ -1026,7 +1026,7 @@ where
         )?;
 
         // Check if the epoch hash has been verified.
-        let qc_hash = aggregated_vote.epoch_hash.clone();
+        let qc_hash = aggregated_vote.block_hash.clone();
         self.votes.set_qc(aggregated_vote);
         if !self.try_get_full_txs(&qc_hash) {
             return Ok(());
@@ -1070,18 +1070,18 @@ where
                 .votes
                 .get_qc_by_id(self.height, self.round, vote_type.clone())
             {
-                let mut epoch_hash = qc.epoch_hash.clone();
-                if !epoch_hash.is_empty() {
+                let mut block_hash = qc.block_hash.clone();
+                if !block_hash.is_empty() {
                     if vote_type == VoteType::Prevote {
-                        match self.check_full_txs(epoch_hash) {
-                            Some(tmp) => epoch_hash = tmp,
+                        match self.check_full_txs(block_hash) {
+                            Some(tmp) => block_hash = tmp,
                             None => {
                                 self.save_wal_before_vote(vote_type.into(), lock_round)
                                     .await?;
                                 return Ok(());
                             }
                         }
-                    } else if !self.try_get_full_txs(&epoch_hash) {
+                    } else if !self.try_get_full_txs(&block_hash) {
                         self.save_wal_before_vote(vote_type.into(), lock_round)
                             .await?;
                         return Ok(());
@@ -1096,7 +1096,7 @@ where
                 self.state_machine.trigger(SMRTrigger {
                     trigger_type: qc.vote_type.clone().into(),
                     source:       TriggerSource::State,
-                    hash:         epoch_hash,
+                    hash:         block_hash,
                     round:        Some(self.round),
                     height:       self.height,
                     wal_info:     None,
@@ -1109,23 +1109,23 @@ where
 
                 return Ok(());
             }
-        } else if let Some(mut epoch_hash) = self.counting_vote(vote_type.clone())? {
-            let qc = self.generate_qc(epoch_hash.clone(), vote_type.clone())?;
+        } else if let Some(mut block_hash) = self.counting_vote(vote_type.clone())? {
+            let qc = self.generate_qc(block_hash.clone(), vote_type.clone())?;
             self.votes.set_qc(qc.clone());
             self.broadcast(Context::new(), OverlordMsg::AggregatedVote(qc))
                 .await;
 
-            if !epoch_hash.is_empty() {
+            if !block_hash.is_empty() {
                 if vote_type == VoteType::Prevote {
-                    match self.check_full_txs(epoch_hash) {
-                        Some(tmp) => epoch_hash = tmp,
+                    match self.check_full_txs(block_hash) {
+                        Some(tmp) => block_hash = tmp,
                         None => {
                             self.save_wal_before_vote(vote_type.into(), lock_round)
                                 .await?;
                             return Ok(());
                         }
                     }
-                } else if !self.try_get_full_txs(&epoch_hash) {
+                } else if !self.try_get_full_txs(&block_hash) {
                     self.save_wal_before_vote(vote_type.into(), lock_round)
                         .await?;
                     return Ok(());
@@ -1145,7 +1145,7 @@ where
             self.state_machine.trigger(SMRTrigger {
                 trigger_type: vote_type.clone().into(),
                 source:       TriggerSource::State,
-                hash:         epoch_hash,
+                hash:         block_hash,
                 round:        Some(self.round),
                 height:       self.height,
                 wal_info:     None,
@@ -1188,12 +1188,12 @@ where
 
     fn generate_qc(
         &mut self,
-        epoch_hash: Hash,
+        block_hash: Hash,
         vote_type: VoteType,
     ) -> ConsensusResult<AggregatedVote> {
         let mut votes =
             self.votes
-                .get_votes(self.height, self.round, vote_type.clone(), &epoch_hash)?;
+                .get_votes(self.height, self.round, vote_type.clone(), &block_hash)?;
         votes.sort();
 
         debug!("Overlord: state build aggregated signature");
@@ -1223,7 +1223,7 @@ where
             vote_type,
             height: self.height,
             round: self.round,
-            epoch_hash,
+            block_hash,
             leader: self.address.clone(),
         };
         Ok(qc)
@@ -1584,7 +1584,7 @@ where
             {
                 let epoch = self
                     .hash_with_epoch
-                    .get(&qc.epoch_hash)
+                    .get(&qc.block_hash)
                     .ok_or_else(|| ConsensusError::Other("lose whole epoch".to_string()))?;
 
                 Some(WalLock {
@@ -1636,7 +1636,7 @@ where
         let qc = lock.lock_votes.clone();
         self.votes.set_qc(qc.clone());
         self.hash_with_epoch
-            .insert(qc.epoch_hash.clone(), lock.content.clone());
+            .insert(qc.block_hash.clone(), lock.content.clone());
 
         match wal_info.step {
             Step::Propose => {
@@ -1654,7 +1654,7 @@ where
                         height:     self.height,
                         round:      self.round,
                         content:    lock.content.clone(),
-                        epoch_hash: qc.epoch_hash.clone(),
+                        block_hash: qc.block_hash.clone(),
                         lock:       Some(lock.to_polc()),
                         proposer:   self.address.clone(),
                     };
@@ -1665,7 +1665,7 @@ where
                     self.state_machine.trigger(SMRTrigger {
                         trigger_type: TriggerType::Proposal,
                         source:       TriggerSource::State,
-                        hash:         qc.epoch_hash.clone(),
+                        hash:         qc.block_hash.clone(),
                         round:        Some(lock.lock_round),
                         height:       self.height,
                         wal_info:     None,
@@ -1695,7 +1695,7 @@ where
             }
 
             Step::Commit => {
-                self.handle_commit(qc.epoch_hash.clone()).await?;
+                self.handle_commit(qc.block_hash.clone()).await?;
             }
         }
         Ok(())
@@ -1793,7 +1793,7 @@ async fn check_current_epoch<U: Consensus<T>, T: Codec>(
 
     tx.unbounded_send(VerifyResp {
         height,
-        epoch_hash: hash,
+        block_hash: hash,
         is_pass: true,
     })
     .map_err(|e| ConsensusError::ChannelErr(e.to_string()))

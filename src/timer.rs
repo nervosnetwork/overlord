@@ -297,7 +297,7 @@ mod test {
             SMREvent::PrevoteVote {
                 height:     0u64,
                 round:      0u64,
-                epoch_hash: Hash::new(),
+                block_hash: Hash::new(),
                 lock_round: None,
             },
             gen_output(TriggerType::PrevoteQC, Some(0), 0),
@@ -309,7 +309,7 @@ mod test {
             SMREvent::PrecommitVote {
                 height:     0u64,
                 round:      0u64,
-                epoch_hash: Hash::new(),
+                block_hash: Hash::new(),
                 lock_round: None,
             },
             gen_output(TriggerType::PrecommitQC, Some(0), 0),
@@ -338,14 +338,14 @@ mod test {
         let prevote_event = SMREvent::PrevoteVote {
             height:     0u64,
             round:      0u64,
-            epoch_hash: Hash::new(),
+            block_hash: Hash::new(),
             lock_round: None,
         };
 
         let precommit_event = SMREvent::PrecommitVote {
             height:     0u64,
             round:      0u64,
-            epoch_hash: Hash::new(),
+            block_hash: Hash::new(),
             lock_round: None,
         };
 

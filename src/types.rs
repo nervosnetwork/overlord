@@ -139,7 +139,7 @@ pub struct Proposal<T: Codec> {
     /// Proposal content.
     pub content: T,
     /// Proposal epoch hash.
-    pub epoch_hash: Hash,
+    pub block_hash: Hash,
     /// Optional field. If the proposal has a PoLC, this contains the lock round and lock votes.
     pub lock: Option<PoLC>,
     /// Proposer address.
@@ -192,7 +192,7 @@ impl SignedVote {
 
     /// Get the hash of the signed vote.
     pub fn get_hash(&self) -> Hash {
-        self.vote.epoch_hash.clone()
+        self.vote.block_hash.clone()
     }
 
     /// If the signed vote is a prevote vote.
@@ -224,7 +224,7 @@ pub struct AggregatedVote {
     /// Round of the vote.
     pub round: u64,
     /// Proposal hash of the vote.
-    pub epoch_hash: Hash,
+    pub block_hash: Hash,
     /// The leader that aggregate the signed votes.
     pub leader: Address,
 }
@@ -251,7 +251,7 @@ impl AggregatedVote {
             height:     self.height,
             round:      self.round,
             vote_type:  self.vote_type.clone(),
-            epoch_hash: self.epoch_hash.clone(),
+            block_hash: self.block_hash.clone(),
         }
     }
 }
@@ -267,7 +267,7 @@ pub struct Vote {
     /// Type of the vote.
     pub vote_type: VoteType,
     /// Epoch hash of the vote.
-    pub epoch_hash: Hash,
+    pub block_hash: Hash,
 }
 
 /// A commit.
@@ -290,7 +290,7 @@ pub struct Proof {
     /// Round of the proof.
     pub round: u64,
     /// Epoch hash of the proof.
-    pub epoch_hash: Hash,
+    pub block_hash: Hash,
     /// Aggregated signature of the proof.
     pub signature: AggregatedSignature,
 }
@@ -361,7 +361,7 @@ pub(crate) struct Feed<T: Codec> {
     /// Feed content.
     pub(crate) content: T,
     /// The epoch hash.
-    pub(crate) epoch_hash: Hash,
+    pub(crate) block_hash: Hash,
 }
 
 /// A verify response.
@@ -370,7 +370,7 @@ pub struct VerifyResp {
     /// The epoch ID of the verified epoch.
     pub height: u64,
     /// Verified proposal hash.
-    pub epoch_hash: Hash,
+    pub block_hash: Hash,
     /// The epoch is pass or not.
     pub is_pass: bool,
 }
