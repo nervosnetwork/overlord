@@ -138,7 +138,7 @@ pub enum TriggerType {
     PrecommitQC,
     /// New Epoch trigger.
     #[display(fmt = "New epoch {}", _0)]
-    NewEpoch(u64),
+    NewHeight(u64),
     ///
     WalInfo,
 }
@@ -155,7 +155,7 @@ pub enum TriggerSource {
 }
 
 impl Into<u8> for TriggerType {
-    /// It should not occur that call `TriggerType::NewEpoch(*).into()`.
+    /// It should not occur that call `TriggerType::NewHeight(*).into()`.
     fn into(self) -> u8 {
         match self {
             TriggerType::Proposal => 0u8,
@@ -187,7 +187,7 @@ impl From<u8> for TriggerType {
 /// While trigger type is `PrevoteQC` or `PrecommitQC`:
 ///     * `hash`: QC epoch hash,
 ///     * `round`: QC round, this must be `Some`.
-/// While trigger type is `NewEpoch`:
+/// While trigger type is `NewHeight`:
 ///     * `hash`: A empty hash,
 ///     * `round`: This must be `None`.
 /// For each sources, while filling the `SMRTrigger`, the `height` field take the current epoch ID

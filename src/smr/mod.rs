@@ -80,7 +80,7 @@ impl SMRHandler {
 
     /// Trigger SMR to goto a new epoch.
     pub fn new_epoch(&mut self, height: u64) -> ConsensusResult<()> {
-        let trigger = TriggerType::NewEpoch(height);
+        let trigger = TriggerType::NewHeight(height);
         self.tx
             .unbounded_send(SMRTrigger {
                 trigger_type: trigger.clone(),

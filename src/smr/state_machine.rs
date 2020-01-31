@@ -45,7 +45,7 @@ impl Stream for StateMachine {
                 let msg = msg.unwrap();
                 let trigger_type = msg.trigger_type.clone();
                 let res = match trigger_type {
-                    TriggerType::NewEpoch(height) => self.handle_new_epoch(height, msg.source),
+                    TriggerType::NewHeight(height) => self.handle_new_epoch(height, msg.source),
                     TriggerType::Proposal => {
                         self.handle_proposal(msg.hash, msg.round, msg.source, msg.height)
                     }
