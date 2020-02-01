@@ -1086,8 +1086,6 @@ where
                             .await?;
                         return Ok(());
                     }
-                } else {
-                    return Err(ConsensusError::Other("Empty qc".to_string()));
                 }
 
                 // Save wal with the lastest lock.
@@ -1130,8 +1128,6 @@ where
                         .await?;
                     return Ok(());
                 }
-            } else {
-                return Err(ConsensusError::Other("empty qc".to_string()));
             }
 
             info!(
