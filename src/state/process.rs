@@ -818,11 +818,6 @@ where
         ctx: Context,
         signed_vote: SignedVote,
     ) -> ConsensusResult<()> {
-        if signed_vote.vote.block_hash.is_empty() {
-            warn!("Overlord: state receive an empty signed vote");
-            return Ok(());
-        }
-
         let height = signed_vote.get_height();
         let round = signed_vote.get_round();
         let vote_type = if signed_vote.is_prevote() {
@@ -836,9 +831,7 @@ where
             vote_type, height, round,
         );
 
-        if height != self.height - 1
-            && (!self.is_leader || height != self.height || round != self.round)
-        {
+        if self.filter_message(height, round) {
             return Ok(());
         }
 
@@ -882,6 +875,11 @@ where
 
         self.votes
             .insert_vote(signed_vote.get_hash(), signed_vote, voter);
+            
+        if height > self.height {
+            return Ok(());
+        }
+
         let block_hash = self.counting_vote(vote_type.clone())?;
 
         if block_hash.is_none() {
@@ -1740,19 +1738,7 @@ where
         round: u64,
         signed_proposal: &SignedProposal<T>,
     ) -> ConsensusResult<bool> {
-        if height < self.height - 1 || (height == self.height && round < self.round) {
-            debug!(
-                "Overlord: state receive an outdated signed proposal, height {}, round {}",
-                height, round,
-            );
-            return Ok(true);
-        } else if self.height + FUTURE_HEIGHT_GAP < height {
-            warn!("Overlord: state receive a much higher height's proposal.");
-            return Ok(true);
-        } else if (height == self.height && self.round + FUTURE_ROUND_GAP < round)
-            || (height > self.height && round > FUTURE_ROUND_GAP)
-        {
-            warn!("Overlord: state receive a much higher round's proposal.");
+        if self.filter_message(height, round) {
             return Ok(true);
         }
 
@@ -1769,6 +1755,29 @@ where
             return Ok(true);
         }
         Ok(false)
+    }
+
+    fn filter_message(&self, height: u64, round: u64) -> bool {
+        if height < self.height - 1 || (height == self.height && round < self.round) {
+            debug!(
+                "Overlord: state receive an outdated message height {}, self height {}",
+                height, self.height
+            );
+            return true;
+        } else if self.height + FUTURE_HEIGHT_GAP < height {
+            debug!(
+                "Overlord: state receive a future message height {}, self height {}",
+                height, self.height
+            );
+            return true;
+        } else if (height == self.height && self.round + FUTURE_ROUND_GAP < round)
+            || (height > self.height && round > FUTURE_ROUND_GAP)
+        {
+            debug!("Overlord: state receive a much higher round message");
+            return true;
+        }
+
+        false
     }
 }
 
