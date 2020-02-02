@@ -221,16 +221,16 @@ async fn test_proposal_trigger() {
     let lock_hash = gen_hash();
     let lock = Lock::new(0, lock_hash.clone());
     test_cases.push(StateMachineTestCase::new(
-        InnerState::new(1, Step::Propose, hash, Some(lock)),
+        InnerState::new(1, Step::Propose, hash.clone(), Some(lock)),
         SMRTrigger::new(lock_hash.clone(), TriggerType::Proposal, None, 0),
         SMREvent::PrevoteVote {
             height:     0u64,
             round:      1u64,
-            block_hash: lock_hash,
-            lock_round: None,
+            block_hash: hash,
+            lock_round: Some(0),
         },
-        Some(ConsensusError::SelfCheckErr("".to_string())),
         None,
+        Some((0, lock_hash)),
     ));
 
     // Test case 13:

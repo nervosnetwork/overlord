@@ -459,7 +459,7 @@ impl StateMachine {
         debug!("Overlord: SMR do self check");
 
         // Lock hash must be same as proposal hash, if has.
-        if self.height == 0
+        if self.round == 0
             && self.lock.is_some()
             && self.lock.clone().unwrap().hash != self.block_hash
         {

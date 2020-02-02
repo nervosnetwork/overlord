@@ -54,15 +54,15 @@ async fn test_prevote_trigger() {
     };
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Prevote, hash.clone(), Some(lock)),
-        SMRTrigger::new(hash, TriggerType::PrevoteQC, Some(1), 0),
+        SMRTrigger::new(hash.clone(), TriggerType::PrevoteQC, Some(1), 0),
         SMREvent::PrecommitVote {
             height:     0u64,
             round:      1u64,
-            block_hash: lock_hash.clone(),
+            block_hash: hash,
             lock_round: None,
         },
-        Some(ConsensusError::PrevoteErr("Empty qc".to_string())),
-        Some((0, lock_hash)),
+        None,
+        None,
     ));
 
     // Test case 04:
@@ -76,15 +76,15 @@ async fn test_prevote_trigger() {
     };
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Prevote, Hash::new(), Some(lock)),
-        SMRTrigger::new(hash, TriggerType::PrevoteQC, Some(1), 0),
+        SMRTrigger::new(hash.clone(), TriggerType::PrevoteQC, Some(1), 0),
         SMREvent::PrecommitVote {
             height:     0u64,
             round:      1u64,
-            block_hash: lock_hash.clone(),
-            lock_round: None,
+            block_hash: hash.clone(),
+            lock_round: Some(1),
         },
-        Some(ConsensusError::SelfCheckErr("".to_string())),
-        Some((0, lock_hash)),
+        None,
+        Some((1, hash)),
     ));
 
     // Test case 05:
