@@ -875,7 +875,7 @@ where
 
         self.votes
             .insert_vote(signed_vote.get_hash(), signed_vote, voter);
-            
+
         if height > self.height {
             return Ok(());
         }
@@ -954,11 +954,6 @@ where
         _ctx: Context,
         aggregated_vote: AggregatedVote,
     ) -> ConsensusResult<()> {
-        if aggregated_vote.block_hash.is_empty() {
-            warn!("Overlord: state receive an empty aggregated vote");
-            return Ok(());
-        }
-
         let height = aggregated_vote.get_height();
         let round = aggregated_vote.get_round();
         let qc_type = if aggregated_vote.is_prevote_qc() {
