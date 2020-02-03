@@ -1175,7 +1175,7 @@ where
         );
 
         for (hash, set) in vote_map.iter() {
-            let mut acc = 0u8;
+            let mut acc = 0u32;
             for addr in set.iter() {
                 acc += self.authority.get_vote_weight(addr)?;
             }

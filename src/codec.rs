@@ -389,8 +389,8 @@ impl Decodable for Node {
             Prototype::List(3) => {
                 let tmp: Vec<u8> = r.val_at(0)?;
                 let address = Address::from(tmp);
-                let propose_weight: u8 = r.val_at(1)?;
-                let vote_weight: u8 = r.val_at(2)?;
+                let propose_weight: u32 = r.val_at(1)?;
+                let vote_weight: u32 = r.val_at(2)?;
                 Ok(Node {
                     address,
                     propose_weight,

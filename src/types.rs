@@ -326,9 +326,9 @@ pub struct Node {
     pub address: Address,
     /// The propose weight of the node. The field is only effective in `features =
     /// "random_leader"`.
-    pub propose_weight: u8,
+    pub propose_weight: u32,
     /// The vote weight of the node.
-    pub vote_weight: u8,
+    pub vote_weight: u32,
 }
 
 impl PartialOrd for Node {
@@ -348,19 +348,19 @@ impl Node {
     pub fn new(addr: Address) -> Self {
         Node {
             address:        addr,
-            propose_weight: 1u8,
-            vote_weight:    1u8,
+            propose_weight: 1u32,
+            vote_weight:    1u32,
         }
     }
 
     /// Set a new propose weight of the node. Propose weight is only effective in `features =
     /// "random_leader"`.
-    pub fn set_propose_weight(&mut self, propose_weight: u8) {
+    pub fn set_propose_weight(&mut self, propose_weight: u32) {
         self.propose_weight = propose_weight;
     }
 
     /// Set a new vote weight of the node.
-    pub fn set_vote_weight(&mut self, vote_weight: u8) {
+    pub fn set_vote_weight(&mut self, vote_weight: u32) {
         self.vote_weight = vote_weight;
     }
 }
