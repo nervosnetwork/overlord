@@ -74,6 +74,7 @@ impl Consensus<Pill> for ConsensusHelper<Pill> {
         let status = Status {
             height:         height + 1,
             interval:       None,
+            timer_config:   None,
             authority_list: self.auth_list.clone(),
         };
         Ok(status)

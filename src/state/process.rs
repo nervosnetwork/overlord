@@ -363,7 +363,7 @@ where
 
         // Update height and authority list.
         self.height_start = Instant::now();
-        let mut auth_list = status.authority_list;
+        let mut auth_list = status.authority_list.clone();
         self.authority.update(&mut auth_list, true);
 
         // If the status' height is much higher than the current,
@@ -398,7 +398,7 @@ where
             self.re_check_qcs(qcs)?;
         }
 
-        self.state_machine.new_height(new_height)?;
+        self.state_machine.new_height_status(status.into())?;
         Ok(())
     }
 

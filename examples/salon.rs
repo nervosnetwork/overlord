@@ -194,6 +194,7 @@ impl Consensus<Speech> for Brain {
         Ok(Status {
             height:         height + 1,
             interval:       Some(SPEECH_INTERVAL),
+            timer_config:   None,
             authority_list: self.speaker_list.clone(),
         })
     }
@@ -258,6 +259,7 @@ impl Speaker {
                 OverlordMsg::RichStatus(Status {
                     height:         1,
                     interval:       Some(SPEECH_INTERVAL),
+                    timer_config:   None,
                     authority_list: speaker_list,
                 }),
             )

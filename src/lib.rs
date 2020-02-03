@@ -148,7 +148,7 @@ pub trait Crypto: Send {
 }
 
 /// The setting of the timeout interval of each step.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct DurationConfig {
     /// The proportion of propose timeout to the height interval.
     pub propose_ratio: u64,
@@ -156,6 +156,16 @@ pub struct DurationConfig {
     pub prevote_ratio: u64,
     /// The proportion of precommit timeout to the height interval.
     pub precommit_ratio: u64,
+}
+
+impl Default for DurationConfig {
+    fn default() -> Self {
+        DurationConfig {
+            propose_ratio:   0u64,
+            prevote_ratio:   0u64,
+            precommit_ratio: 0u64,
+        }
+    }
 }
 
 impl DurationConfig {

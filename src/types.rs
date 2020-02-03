@@ -4,8 +4,8 @@ use bytes::Bytes;
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
 
-use crate::smr::smr_types::{Step, TriggerType};
-use crate::Codec;
+use crate::smr::smr_types::{SMRStatus, Step, TriggerType};
+use crate::{Codec, DurationConfig};
 
 /// Address type.
 pub type Address = Bytes;
@@ -303,8 +303,20 @@ pub struct Status {
     pub height: u64,
     /// New block interval.
     pub interval: Option<u64>,
+    /// New timeout configuration.
+    pub timer_config: Option<DurationConfig>,
     /// New authority list.
     pub authority_list: Vec<Node>,
+}
+
+impl Into<SMRStatus> for Status {
+    fn into(self) -> SMRStatus {
+        SMRStatus {
+            height:       self.height,
+            new_interval: self.interval,
+            new_config:   self.timer_config,
+        }
+    }
 }
 
 /// A node info.
