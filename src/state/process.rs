@@ -359,7 +359,7 @@ where
         self.round = INIT_ROUND;
         info!("Overlord: state goto new height {}", self.height);
 
-        trace::start_epoch(new_height);
+        trace::start_block(new_height);
 
         // Update height and authority list.
         self.height_start = Instant::now();

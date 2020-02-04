@@ -89,6 +89,8 @@ async fn test_precommit_trigger() {
             round:         1u64,
             lock_round:    Some(0),
             lock_proposal: Some(hash.clone()),
+            new_interval:  None,
+            new_config:    None,
         },
         None,
         Some((0, hash)),
