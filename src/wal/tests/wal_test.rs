@@ -83,6 +83,8 @@ async fn test_wal() {
         round:         0,
         lock_round:    None,
         lock_proposal: None,
+        new_interval:  None,
+        new_config:    None,
     };
     let case_01 = WalTestCase {
         address: auth_list[0].address.clone(),
@@ -109,6 +111,8 @@ async fn test_wal() {
         round:         0,
         lock_round:    None,
         lock_proposal: None,
+        new_interval:  None,
+        new_config:    None,
     };
     let case_02 = WalTestCase {
         address: auth_list[0].address.clone(),
@@ -163,6 +167,8 @@ async fn test_wal() {
         round:         1,
         lock_round:    Some(0),
         lock_proposal: Some(qc.block_hash.clone()),
+        new_interval:  None,
+        new_config:    None,
     };
     let case_03 = WalTestCase {
         address: auth_list[0].address.clone(),
@@ -202,6 +208,8 @@ async fn test_wal() {
         round:         1,
         lock_round:    Some(0),
         lock_proposal: Some(qc.block_hash.clone()),
+        new_interval:  None,
+        new_config:    None,
     };
     let case_04 = WalTestCase {
         address: auth_list[0].address.clone(),

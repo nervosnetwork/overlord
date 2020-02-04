@@ -117,12 +117,25 @@ impl Timer {
     fn set_timer(&mut self, event: SMREvent) -> ConsensusResult<()> {
         let mut is_propose_timer = false;
         match event.clone() {
-            SMREvent::NewRoundInfo { height, round, .. } => {
+            SMREvent::NewRoundInfo {
+                height,
+                round,
+                new_interval,
+                new_config,
+                ..
+            } => {
                 if height > self.height {
                     self.height = height;
                 }
                 self.round = round;
                 is_propose_timer = true;
+
+                if let Some(interval) = new_interval {
+                    self.config.set_interval(interval);
+                }
+                if let Some(config) = new_config {
+                    self.config.update(config);
+                }
             }
             SMREvent::Commit(_) => return Ok(()),
             _ => (),
@@ -287,6 +300,8 @@ mod test {
                 round:         0,
                 lock_round:    None,
                 lock_proposal: None,
+                new_interval:  None,
+                new_config:    None,
             },
             gen_output(TriggerType::Proposal, None, 0),
         )
@@ -333,6 +348,8 @@ mod test {
             round:         0,
             lock_round:    None,
             lock_proposal: None,
+            new_interval:  None,
+            new_config:    None,
         };
 
         let prevote_event = SMREvent::PrevoteVote {

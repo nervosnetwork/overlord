@@ -51,7 +51,7 @@ impl AuthorityManage {
 
     /// Get a vote weight that correspond to the given address. Return `Err` when the given address
     /// is not in the authority list.
-    pub fn get_vote_weight(&self, addr: &Address) -> ConsensusResult<&u8> {
+    pub fn get_vote_weight(&self, addr: &Address) -> ConsensusResult<&u32> {
         self.current.get_vote_weight(addr)
     }
 
@@ -148,7 +148,7 @@ impl AuthorityManage {
 struct HeightAuthorityManage {
     address:            Vec<Address>,
     propose_weights:    Vec<u64>,
-    vote_weight_map:    HashMap<Address, u8>,
+    vote_weight_map:    HashMap<Address, u32>,
     propose_weight_sum: u64,
     vote_weight_sum:    u64,
 }
@@ -184,7 +184,7 @@ impl HeightAuthorityManage {
     }
 
     /// Get a vote weight of the node.
-    fn get_vote_weight(&self, addr: &Address) -> ConsensusResult<&u8> {
+    fn get_vote_weight(&self, addr: &Address) -> ConsensusResult<&u32> {
         self.vote_weight_map
             .get(addr)
             .ok_or_else(|| ConsensusError::InvalidAddress)
@@ -289,12 +289,12 @@ mod test {
 
         let mut authority_list = Vec::new();
         for _ in 0..len {
-            authority_list.push(gen_node(gen_address(), random::<u8>(), random::<u8>()));
+            authority_list.push(gen_node(gen_address(), random::<u32>(), random::<u32>()));
         }
         authority_list
     }
 
-    fn gen_node(addr: Address, propose_weight: u8, vote_weight: u8) -> Node {
+    fn gen_node(addr: Address, propose_weight: u32, vote_weight: u32) -> Node {
         let mut node = Node::new(addr);
         node.set_propose_weight(propose_weight);
         node.set_vote_weight(vote_weight);
@@ -378,10 +378,10 @@ mod test {
     #[test]
     fn test_vote_threshold() {
         let mut authority_list = vec![
-            gen_node(gen_address(), 1u8, 1u8),
-            gen_node(gen_address(), 1u8, 1u8),
-            gen_node(gen_address(), 1u8, 1u8),
-            gen_node(gen_address(), 1u8, 1u8),
+            gen_node(gen_address(), 1u32, 1u32),
+            gen_node(gen_address(), 1u32, 1u32),
+            gen_node(gen_address(), 1u32, 1u32),
+            gen_node(gen_address(), 1u32, 1u32),
         ];
         authority_list.sort();
         let mut authority = AuthorityManage::new();
@@ -450,10 +450,10 @@ mod test {
     #[test]
     fn test_poll_leader() {
         let mut authority_list = vec![
-            gen_node(gen_address(), 1u8, 1u8),
-            gen_node(gen_address(), 1u8, 1u8),
-            gen_node(gen_address(), 1u8, 1u8),
-            gen_node(gen_address(), 1u8, 1u8),
+            gen_node(gen_address(), 1u32, 1u32),
+            gen_node(gen_address(), 1u32, 1u32),
+            gen_node(gen_address(), 1u32, 1u32),
+            gen_node(gen_address(), 1u32, 1u32),
         ];
         authority_list.sort();
         let mut authority = AuthorityManage::new();

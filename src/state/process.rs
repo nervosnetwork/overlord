@@ -363,7 +363,7 @@ where
 
         // Update height and authority list.
         self.height_start = Instant::now();
-        let mut auth_list = status.authority_list;
+        let mut auth_list = status.authority_list.clone();
         self.authority.update(&mut auth_list, true);
 
         // If the status' height is much higher than the current,
@@ -398,7 +398,7 @@ where
             self.re_check_qcs(qcs)?;
         }
 
-        self.state_machine.new_height(new_height)?;
+        self.state_machine.new_height_status(status.into())?;
         Ok(())
     }
 
@@ -1175,7 +1175,7 @@ where
         );
 
         for (hash, set) in vote_map.iter() {
-            let mut acc = 0u8;
+            let mut acc = 0u32;
             for addr in set.iter() {
                 acc += self.authority.get_vote_weight(addr)?;
             }

@@ -7,7 +7,7 @@ use crate::types::{
     Signature, SignedProposal, SignedVote, Status, Vote, VoteType,
 };
 use crate::wal::{WalInfo, WalLock};
-use crate::Codec;
+use crate::{Codec, DurationConfig};
 
 // impl Encodable and Decodable trait for SignedProposal
 impl<T: Codec> Encodable for SignedProposal<T> {
@@ -297,17 +297,51 @@ impl Decodable for Proof {
     }
 }
 
+impl Encodable for DurationConfig {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        s.begin_list(3)
+            .append(&self.propose_ratio)
+            .append(&self.prevote_ratio)
+            .append(&self.precommit_ratio);
+    }
+}
+
+impl Decodable for DurationConfig {
+    fn decode(r: &Rlp) -> Result<Self, DecoderError> {
+        match r.prototype()? {
+            Prototype::List(3) => {
+                let propose_ratio: u64 = r.val_at(0)?;
+                let prevote_ratio: u64 = r.val_at(1)?;
+                let precommit_ratio: u64 = r.val_at(2)?;
+                Ok(DurationConfig {
+                    propose_ratio,
+                    prevote_ratio,
+                    precommit_ratio,
+                })
+            }
+            _ => Err(DecoderError::RlpInconsistentLengthAndData),
+        }
+    }
+}
+
 // impl Encodable and Decodable trait for Status
 impl Encodable for Status {
     fn rlp_append(&self, s: &mut RlpStream) {
-        let tmp = if self.interval.is_none() {
+        let interval = if self.interval.is_none() {
             0u64
         } else {
             self.interval.clone().unwrap()
         };
-        s.begin_list(3)
+
+        let config = if self.timer_config.is_none() {
+            DurationConfig::default()
+        } else {
+            self.timer_config.clone().unwrap()
+        };
+        s.begin_list(4)
             .append(&self.height)
-            .append(&tmp)
+            .append(&interval)
+            .append(&config)
             .append_list(&self.authority_list);
     }
 }
@@ -315,15 +349,22 @@ impl Encodable for Status {
 impl Decodable for Status {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         match r.prototype()? {
-            Prototype::List(3) => {
+            Prototype::List(4) => {
                 let height: u64 = r.val_at(0)?;
                 let tmp: u64 = r.val_at(1)?;
-                let authority_list: Vec<Node> = r.list_at(2)?;
                 let interval = if tmp == 0 { None } else { Some(tmp) };
+                let tmp: DurationConfig = r.val_at(2)?;
+                let timer_config = if tmp == DurationConfig::default() {
+                    None
+                } else {
+                    Some(tmp)
+                };
+                let authority_list: Vec<Node> = r.list_at(3)?;
 
                 Ok(Status {
                     height,
                     interval,
+                    timer_config,
                     authority_list,
                 })
             }
@@ -348,8 +389,8 @@ impl Decodable for Node {
             Prototype::List(3) => {
                 let tmp: Vec<u8> = r.val_at(0)?;
                 let address = Address::from(tmp);
-                let propose_weight: u8 = r.val_at(1)?;
-                let vote_weight: u8 = r.val_at(2)?;
+                let propose_weight: u32 = r.val_at(1)?;
+                let vote_weight: u32 = r.val_at(2)?;
                 Ok(Node {
                     address,
                     propose_weight,
@@ -583,10 +624,21 @@ mod test {
     }
 
     impl Status {
-        fn new(time: Option<u64>) -> Self {
+        fn new(time: Option<u64>, is_update_config: bool) -> Self {
+            let config = if is_update_config {
+                Some(DurationConfig {
+                    propose_ratio:   random::<u64>(),
+                    prevote_ratio:   random::<u64>(),
+                    precommit_ratio: random::<u64>(),
+                })
+            } else {
+                None
+            };
+
             Status {
                 height:         random::<u64>(),
                 interval:       time,
+                timer_config:   config,
                 authority_list: vec![Node::new(gen_address())],
             }
         }
@@ -692,12 +744,12 @@ mod test {
         assert_eq!(commit, res);
 
         // Test Status
-        let status = Status::new(None);
+        let status = Status::new(None, true);
         let res: Status = rlp::decode(&status.rlp_bytes()).unwrap();
         assert_eq!(status, res);
 
         // Test Status
-        let status = Status::new(Some(3000));
+        let status = Status::new(Some(3000), false);
         let res: Status = rlp::decode(&status.rlp_bytes()).unwrap();
         assert_eq!(status, res);
 

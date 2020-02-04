@@ -13,7 +13,7 @@ use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::{FusedStream, Stream, StreamExt};
 use log::error;
 
-use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
+use crate::smr::smr_types::{SMREvent, SMRStatus, SMRTrigger, TriggerSource, TriggerType};
 use crate::smr::state_machine::StateMachine;
 use crate::types::Hash;
 use crate::{error::ConsensusError, ConsensusResult};
@@ -79,8 +79,9 @@ impl SMRHandler {
     }
 
     /// Trigger SMR to goto a new height.
-    pub fn new_height(&mut self, height: u64) -> ConsensusResult<()> {
-        let trigger = TriggerType::NewHeight(height);
+    pub fn new_height_status(&mut self, status: SMRStatus) -> ConsensusResult<()> {
+        let height = status.height;
+        let trigger = TriggerType::NewHeight(status);
         self.tx
             .unbounded_send(SMRTrigger {
                 trigger_type: trigger.clone(),

@@ -1,4 +1,5 @@
-use std::{cell::Cell, time::Duration};
+use std::cell::Cell;
+use std::time::Duration;
 
 use crate::smr::smr_types::SMREvent;
 use crate::DurationConfig;
@@ -17,10 +18,14 @@ impl TimerConfig {
     pub fn new(interval: u64) -> Self {
         TimerConfig {
             interval:  Cell::new(interval),
-            propose:   (24, 30),
-            prevote:   (10, 30),
-            precommit: (5, 30),
+            propose:   (24, 10),
+            prevote:   (10, 10),
+            precommit: (5, 10),
         }
+    }
+
+    pub fn set_interval(&self, interval: u64) {
+        self.interval.set(interval);
     }
 
     pub fn update(&mut self, config: DurationConfig) {

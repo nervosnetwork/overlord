@@ -8,7 +8,9 @@ use futures::stream::Stream;
 use log::{debug, info};
 use moodyblues_sdk::trace;
 
-use crate::smr::smr_types::{Lock, SMREvent, SMRTrigger, Step, TriggerSource, TriggerType};
+use crate::smr::smr_types::{
+    Lock, SMREvent, SMRStatus, SMRTrigger, Step, TriggerSource, TriggerType,
+};
 use crate::wal::SMRBase;
 use crate::{error::ConsensusError, smr::Event, types::Hash};
 use crate::{ConsensusResult, INIT_HEIGHT, INIT_ROUND};
@@ -45,7 +47,7 @@ impl Stream for StateMachine {
                 let msg = msg.unwrap();
                 let trigger_type = msg.trigger_type.clone();
                 let res = match trigger_type {
-                    TriggerType::NewHeight(height) => self.handle_new_height(height, msg.source),
+                    TriggerType::NewHeight(status) => self.handle_new_height(status, msg.source),
                     TriggerType::Proposal => {
                         self.handle_proposal(msg.hash, msg.round, msg.source, msg.height)
                     }
@@ -100,9 +102,14 @@ impl StateMachine {
 
     /// Handle a new height trigger. If new height is higher than current, goto new height and
     /// throw a new round info event.
-    fn handle_new_height(&mut self, height: u64, source: TriggerSource) -> ConsensusResult<()> {
-        info!("Overlord: SMR triggered by new height {}", height);
+    fn handle_new_height(
+        &mut self,
+        status: SMRStatus,
+        source: TriggerSource,
+    ) -> ConsensusResult<()> {
+        info!("Overlord: SMR triggered by new height {}", status.height);
 
+        let height = status.height;
         if source != TriggerSource::State {
             return Err(ConsensusError::Other(
                 "Rich status source error".to_string(),
@@ -120,6 +127,8 @@ impl StateMachine {
             round:         INIT_ROUND,
             lock_round:    None,
             lock_proposal: None,
+            new_interval:  status.new_interval,
+            new_config:    status.new_config,
         })?;
         Ok(())
     }
@@ -324,6 +333,8 @@ impl StateMachine {
                 round: self.round + 1,
                 lock_round,
                 lock_proposal,
+                new_interval: None,
+                new_config: None,
             })?;
             self.goto_next_round();
             return Ok(());
@@ -399,6 +410,8 @@ impl StateMachine {
                 round: self.round,
                 lock_round,
                 lock_proposal,
+                new_interval: None,
+                new_config: None,
             },
             Step::Prevote => SMREvent::PrevoteVote {
                 height: self.height,

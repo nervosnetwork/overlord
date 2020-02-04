@@ -1,4 +1,4 @@
-use crate::smr::smr_types::{Lock, SMREvent, SMRTrigger, Step, TriggerType};
+use crate::smr::smr_types::{Lock, SMREvent, SMRStatus, SMRTrigger, Step, TriggerType};
 use crate::smr::tests::{gen_hash, trigger_test, InnerState, StateMachineTestCase};
 use crate::{error::ConsensusError, types::Hash};
 
@@ -12,12 +12,19 @@ async fn test_new_height() {
     // The output should be new round info.
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(0, Step::Propose, Hash::new(), None),
-        SMRTrigger::new(Hash::new(), TriggerType::NewHeight(1), None, 0),
+        SMRTrigger::new(
+            Hash::new(),
+            TriggerType::NewHeight(SMRStatus::new(1)),
+            None,
+            0,
+        ),
         SMREvent::NewRoundInfo {
             height:        1u64,
             round:         0u64,
             lock_round:    None,
             lock_proposal: None,
+            new_interval:  None,
+            new_config:    None,
         },
         None,
         None,
@@ -33,12 +40,19 @@ async fn test_new_height() {
     };
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Propose, hash, Some(lock)),
-        SMRTrigger::new(Hash::new(), TriggerType::NewHeight(1), None, 0),
+        SMRTrigger::new(
+            Hash::new(),
+            TriggerType::NewHeight(SMRStatus::new(1)),
+            None,
+            0,
+        ),
         SMREvent::NewRoundInfo {
             height:        1u64,
             round:         0u64,
             lock_round:    None,
             lock_proposal: None,
+            new_interval:  None,
+            new_config:    None,
         },
         Some(ConsensusError::SelfCheckErr("".to_string())),
         None,
@@ -51,12 +65,19 @@ async fn test_new_height() {
     let lock = Lock::new(0u64, hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(0, Step::Propose, Hash::new(), Some(lock)),
-        SMRTrigger::new(Hash::new(), TriggerType::NewHeight(1), None, 0),
+        SMRTrigger::new(
+            Hash::new(),
+            TriggerType::NewHeight(SMRStatus::new(1)),
+            None,
+            0,
+        ),
         SMREvent::NewRoundInfo {
             height:        1u64,
             round:         0u64,
             lock_round:    None,
             lock_proposal: None,
+            new_interval:  None,
+            new_config:    None,
         },
         Some(ConsensusError::SelfCheckErr("".to_string())),
         None,
@@ -68,12 +89,19 @@ async fn test_new_height() {
     let hash = gen_hash();
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(0, Step::Propose, hash, None),
-        SMRTrigger::new(Hash::new(), TriggerType::NewHeight(1), None, 0),
+        SMRTrigger::new(
+            Hash::new(),
+            TriggerType::NewHeight(SMRStatus::new(1)),
+            None,
+            0,
+        ),
         SMREvent::NewRoundInfo {
             height:        1u64,
             round:         0u64,
             lock_round:    None,
             lock_proposal: None,
+            new_interval:  None,
+            new_config:    None,
         },
         Some(ConsensusError::SelfCheckErr("".to_string())),
         None,
@@ -85,12 +113,19 @@ async fn test_new_height() {
     let hash = Hash::new();
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(0, Step::Prevote, hash, None),
-        SMRTrigger::new(Hash::new(), TriggerType::NewHeight(1), None, 0),
+        SMRTrigger::new(
+            Hash::new(),
+            TriggerType::NewHeight(SMRStatus::new(1)),
+            None,
+            0,
+        ),
         SMREvent::NewRoundInfo {
             height:        1u64,
             round:         0u64,
             lock_round:    None,
             lock_proposal: None,
+            new_interval:  None,
+            new_config:    None,
         },
         None,
         None,
@@ -102,12 +137,19 @@ async fn test_new_height() {
     let hash = gen_hash();
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(0, Step::Prevote, hash, None),
-        SMRTrigger::new(Hash::new(), TriggerType::NewHeight(1), None, 0),
+        SMRTrigger::new(
+            Hash::new(),
+            TriggerType::NewHeight(SMRStatus::new(1)),
+            None,
+            0,
+        ),
         SMREvent::NewRoundInfo {
             height:        1u64,
             round:         0u64,
             lock_round:    None,
             lock_proposal: None,
+            new_interval:  None,
+            new_config:    None,
         },
         None,
         None,
@@ -120,12 +162,19 @@ async fn test_new_height() {
     let lock = Lock::new(0u64, hash.clone());
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(1, Step::Prevote, hash, Some(lock)),
-        SMRTrigger::new(Hash::new(), TriggerType::NewHeight(1), None, 0),
+        SMRTrigger::new(
+            Hash::new(),
+            TriggerType::NewHeight(SMRStatus::new(1)),
+            None,
+            0,
+        ),
         SMREvent::NewRoundInfo {
             height:        1u64,
             round:         0u64,
             lock_round:    None,
             lock_proposal: None,
+            new_interval:  None,
+            new_config:    None,
         },
         None,
         None,

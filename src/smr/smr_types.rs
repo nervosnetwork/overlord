@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::Hash;
 use crate::wal::SMRBase;
+use crate::DurationConfig;
 
 /// SMR steps. The default step is commit step because SMR needs rich status to start a new block.
 #[derive(Serialize, Deserialize, Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord)]
@@ -90,6 +91,8 @@ pub enum SMREvent {
         round:         u64,
         lock_round:    Option<u64>,
         lock_proposal: Option<Hash>,
+        new_interval:  Option<u64>,
+        new_config:    Option<DurationConfig>,
     },
     /// Prevote event,
     /// for state: transmit a prevote vote,
@@ -137,9 +140,10 @@ pub enum TriggerType {
     #[display(fmt = "PrecommitQC")]
     PrecommitQC,
     /// New Height trigger.
-    #[display(fmt = "New height {}", _0)]
-    NewHeight(u64),
-    ///
+    #[display(fmt = "New height")]
+    NewHeight(SMRStatus),
+    /// Wal info
+    #[display(fmt = "WalInfo")]
     WalInfo,
 }
 
@@ -222,4 +226,26 @@ pub struct Lock {
     pub round: u64,
     /// Lock hash.
     pub hash: Hash,
+}
+
+/// SMR new status.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SMRStatus {
+    /// New height.
+    pub height: u64,
+    /// New height interval.
+    pub new_interval: Option<u64>,
+    /// New timeout configuration.
+    pub new_config: Option<DurationConfig>,
+}
+
+#[cfg(test)]
+impl SMRStatus {
+    pub fn new(height: u64) -> Self {
+        SMRStatus {
+            height,
+            new_interval: None,
+            new_config: None,
+        }
+    }
 }
