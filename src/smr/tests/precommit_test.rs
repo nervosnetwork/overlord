@@ -84,8 +84,13 @@ async fn test_precommit_trigger() {
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(0, Step::Precommit, Hash::new(), Some(lock)),
         SMRTrigger::new(Hash::new(), TriggerType::PrecommitQC, Some(0), 0),
-        SMREvent::Commit(hash.clone()),
-        Some(ConsensusError::PrecommitErr("Empty qc".to_string())),
+        SMREvent::NewRoundInfo {
+            height:        0u64,
+            round:         1u64,
+            lock_round:    Some(0),
+            lock_proposal: Some(hash.clone()),
+        },
+        None,
         Some((0, hash)),
     ));
 
@@ -135,8 +140,8 @@ async fn test_precommit_trigger() {
             new_interval:  None,
             new_config:    None,
         },
-        Some(ConsensusError::PrecommitErr("Empty qc".to_string())),
-        Some((0, hash)),
+        None,
+        None,
     ));
 
     // // Test case 10:

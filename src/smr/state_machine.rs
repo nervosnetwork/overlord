@@ -258,8 +258,6 @@ impl StateMachine {
             })?;
             self.goto_step(Step::Precommit);
             return Ok(());
-        } else if prevote_hash.is_empty() {
-            return Err(ConsensusError::PrevoteErr("Empty qc".to_string()));
         }
 
         // A prevote QC from timer which means prevote timeout can not lead to unlock. Therefore,
@@ -327,7 +325,8 @@ impl StateMachine {
             .clone()
             .map_or_else(|| (None, None), |lock| (Some(lock.round), Some(lock.hash)));
 
-        if source == TriggerSource::Timer {
+        if source == TriggerSource::Timer || precommit_hash.is_empty() {
+            self.round = precommit_round;
             self.throw_event(SMREvent::NewRoundInfo {
                 height: self.height,
                 round: self.round + 1,
@@ -473,7 +472,7 @@ impl StateMachine {
         debug!("Overlord: SMR do self check");
 
         // Lock hash must be same as proposal hash, if has.
-        if self.height == 0
+        if self.round == 0
             && self.lock.is_some()
             && self.lock.clone().unwrap().hash != self.block_hash
         {
