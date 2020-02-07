@@ -98,6 +98,7 @@ impl From<u8> for VoteType {
 }
 
 /// Overlord messages.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
 pub enum OverlordMsg<T: Codec> {
     /// Signed proposal message.
@@ -112,10 +113,24 @@ pub enum OverlordMsg<T: Codec> {
     /// Rich status message.
     #[display(fmt = "Rich Status")]
     RichStatus(Status),
+    /// Signed choke message
+    #[display(fmt = "Choke Message")]
+    SignedChoke(SignedChoke),
 
     /// This is only for easier testing.
     #[cfg(test)]
     Commit(Commit<T>),
+}
+
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum UpdateFrom {
+    ///
+    PrevoteQC(AggregatedVote),
+    ///
+    PrecommitQC(AggregatedVote),
+    ///
+    ChokeQC(AggregatedChoke),
 }
 
 /// A signed proposal.
@@ -202,7 +217,7 @@ impl SignedVote {
 }
 
 /// An aggregate signature.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct AggregatedSignature {
     /// Aggregated signature.
     pub signature: Signature,
@@ -211,7 +226,7 @@ pub struct AggregatedSignature {
 }
 
 /// An aggregated vote.
-#[derive(Clone, Debug, Display, PartialEq, Eq)]
+#[derive(Clone, Debug, Display, PartialEq, Eq, Hash)]
 #[rustfmt::skip]
 #[display(fmt = "{:?} aggregated vote height {}, round {}", vote_type, height, round)]
 pub struct AggregatedVote {
@@ -385,4 +400,58 @@ pub struct VerifyResp {
     pub block_hash: Hash,
     /// The block is pass or not.
     pub is_pass: bool,
+}
+
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct AggregatedChoke {
+    ///
+    pub chokes: Vec<SignedChoke>,
+    ///
+    pub signature: Signature,
+}
+
+#[allow(clippy::len_without_is_empty)]
+impl AggregatedChoke {
+    ///
+    pub fn len(&self) -> usize {
+        self.chokes.len()
+    }
+}
+
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct SignedChoke {
+    ///
+    pub signature: Signature,
+    ///
+    pub choke: Choke,
+    ///
+    pub address: Address,
+}
+
+/// A choke message.
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct Choke {
+    ///
+    pub height: u64,
+    ///
+    pub round: u64,
+    ///
+    pub from: UpdateFrom,
+}
+
+impl Choke {
+    pub(crate) fn to_hash(&self) -> HashChoke {
+        HashChoke {
+            height: self.height,
+            round:  self.round,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct HashChoke {
+    pub(crate) height: u64,
+    pub(crate) round:  u64,
 }

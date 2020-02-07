@@ -1,6 +1,9 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use crate::types::{Address, AggregatedVote, Hash, SignedProposal, SignedVote, VoteType};
+use crate::types::{
+    Address, AggregatedChoke, AggregatedVote, Hash, SignedChoke, SignedProposal, SignedVote,
+    VoteType,
+};
 use crate::{error::ConsensusError, Codec, ConsensusResult};
 
 /// A struct to collect signed proposals in each height. It stores each height and the corresponding
@@ -448,6 +451,56 @@ impl Votes {
 
     fn vote_count(&self) -> usize {
         self.by_address.len()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ChokeCollector {
+    chokes: BTreeMap<u64, HashSet<SignedChoke>>,
+    qcs:    HashMap<u64, AggregatedChoke>,
+}
+
+impl ChokeCollector {
+    pub fn new() -> Self {
+        ChokeCollector {
+            chokes: BTreeMap::new(),
+            qcs:    HashMap::new(),
+        }
+    }
+
+    pub fn insert(&mut self, round: u64, signed_choke: SignedChoke) {
+        self.chokes
+            .entry(round)
+            .or_insert_with(HashSet::new)
+            .insert(signed_choke);
+    }
+
+    pub fn set_qc(&mut self, round: u64, qc: AggregatedChoke) {
+        self.qcs.insert(round, qc);
+    }
+
+    pub fn get_chokes(&self, round: u64) -> Option<Vec<SignedChoke>> {
+        self.chokes
+            .get(&round)
+            .map(|set| set.iter().cloned().collect::<Vec<_>>())
+    }
+
+    pub fn get_qc(&self, round: u64) -> Option<AggregatedChoke> {
+        self.qcs.get(&round).cloned()
+    }
+
+    pub fn max_round_above_threshold(&self, nodes_num: usize) -> Option<u64> {
+        for (round, set) in self.chokes.iter().rev() {
+            if set.len() * 3 > nodes_num * 2 {
+                return Some(*round);
+            }
+        }
+        None
+    }
+
+    pub fn clear(&mut self) {
+        self.chokes.clear();
+        self.qcs.clear();
     }
 }
 

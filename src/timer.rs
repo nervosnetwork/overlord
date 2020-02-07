@@ -190,6 +190,13 @@ impl Timer {
                 (TriggerType::PrecommitQC, Some(round), height)
             }
 
+            SMREvent::Brake {height, round} => {
+                if height < self.height {
+                    return Ok(());
+                }
+                (TriggerType::BrakeTimeout, Some(round), height)
+            }
+
             _ => return Err(ConsensusError::TimerErr("No commit timer".to_string())),
         };
 
@@ -250,7 +257,7 @@ mod test {
     use futures::channel::mpsc::unbounded;
     use futures::stream::StreamExt;
 
-    use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
+    use crate::smr::smr_types::{FromWhere, SMREvent, SMRTrigger, TriggerSource, TriggerType};
     use crate::smr::{Event, SMRHandler};
     use crate::{timer::Timer, types::Hash};
 
@@ -302,6 +309,7 @@ mod test {
                 lock_proposal: None,
                 new_interval:  None,
                 new_config:    None,
+                from_where:    FromWhere::PrecommitQC(0),
             },
             gen_output(TriggerType::Proposal, None, 0),
         )
@@ -350,6 +358,7 @@ mod test {
             lock_proposal: None,
             new_interval:  None,
             new_config:    None,
+            from_where:    FromWhere::PrecommitQC(0),
         };
 
         let prevote_event = SMREvent::PrevoteVote {

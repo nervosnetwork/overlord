@@ -9,7 +9,7 @@ use log::{debug, info};
 use moodyblues_sdk::trace;
 
 use crate::smr::smr_types::{
-    Lock, SMREvent, SMRStatus, SMRTrigger, Step, TriggerSource, TriggerType,
+    FromWhere, Lock, SMREvent, SMRStatus, SMRTrigger, Step, TriggerSource, TriggerType,
 };
 use crate::wal::SMRBase;
 use crate::{error::ConsensusError, smr::Event, types::Hash};
@@ -57,6 +57,14 @@ impl Stream for StateMachine {
                     TriggerType::PrecommitQC => {
                         self.handle_precommit(msg.hash, msg.round, msg.source, msg.height)
                     }
+                    TriggerType::BrakeTimeout => {
+                        assert!(msg.source == TriggerSource::Timer);
+                        self.handle_brake_timeout(msg.height, msg.round)
+                    }
+                    TriggerType::ContinueRound => {
+                        assert!(msg.source == TriggerSource::State);
+                        self.handle_continue_round(msg.height, msg.round)
+                    }
                     TriggerType::WalInfo => self.handle_wal(msg.wal_info.unwrap()),
                 };
 
@@ -87,6 +95,41 @@ impl StateMachine {
         };
 
         (state_machine, Event::new(rx_1), Event::new(rx_2))
+    }
+
+    fn handle_brake_timeout(&mut self, height: u64, round: Option<u64>) -> ConsensusResult<()> {
+        let round = round.ok_or_else(|| ConsensusError::BrakeErr("No round".to_string()))?;
+
+        if height != self.height || round != self.round {
+            Ok(())
+        } else {
+            self.throw_event(SMREvent::Brake { height, round })
+        }
+    }
+
+    fn handle_continue_round(&mut self, height: u64, round: Option<u64>) -> ConsensusResult<()> {
+        let round = round.ok_or_else(|| ConsensusError::BrakeErr("No new round".to_string()))?;
+
+        if height != self.height || round < self.round {
+            return Ok(());
+        }
+
+        self.round = round - 1;
+        let (lock_round, lock_proposal) = self
+            .lock
+            .clone()
+            .map_or_else(|| (None, None), |lock| (Some(lock.round), Some(lock.hash)));
+        self.throw_event(SMREvent::NewRoundInfo {
+            height: self.height,
+            round: self.round + 1,
+            lock_round,
+            lock_proposal,
+            new_interval: None,
+            new_config: None,
+            from_where: FromWhere::ChokeQC(round - 1),
+        })?;
+        self.goto_next_round();
+        Ok(())
     }
 
     fn handle_wal(&mut self, info: SMRBase) -> ConsensusResult<()> {
@@ -129,6 +172,7 @@ impl StateMachine {
             lock_proposal: None,
             new_interval:  status.new_interval,
             new_config:    status.new_config,
+            from_where:    FromWhere::PrecommitQC(u64::max_value()),
         })?;
         Ok(())
     }
@@ -159,6 +203,10 @@ impl StateMachine {
 
         // If the proposal trigger is from timer, goto prevote step directly.
         if source == TriggerSource::Timer {
+            if self.step == Step::Brake {
+                return Ok(());
+            }
+
             // This event is for timer to set a prevote timer.
             let round = if let Some(lock) = &self.lock {
                 Some(lock.round)
@@ -242,6 +290,10 @@ impl StateMachine {
         );
 
         if source == TriggerSource::Timer {
+            if prevote_round != self.round {
+                return Ok(());
+            }
+
             // This event is for timer to set a precommit timer.
             let round = if let Some(lock) = &self.lock {
                 Some(lock.round)
@@ -273,8 +325,23 @@ impl StateMachine {
             self.update_polc(prevote_hash, vote_round);
         }
 
-        if self.round > vote_round {
+        if vote_round > self.round {
+            let (lock_round, lock_proposal) = self
+                .lock
+                .clone()
+                .map_or_else(|| (None, None), |lock| (Some(lock.round), Some(lock.hash)));
+
             self.round = vote_round;
+            self.throw_event(SMREvent::NewRoundInfo {
+                height: self.height,
+                round: self.round + 1,
+                lock_round,
+                lock_proposal,
+                new_interval: None,
+                new_config: None,
+                from_where: FromWhere::PrevoteQC(vote_round),
+            })?;
+            self.goto_next_round();
         }
 
         // throw precommit vote event
@@ -325,7 +392,16 @@ impl StateMachine {
             .clone()
             .map_or_else(|| (None, None), |lock| (Some(lock.round), Some(lock.hash)));
 
-        if source == TriggerSource::Timer || precommit_hash.is_empty() {
+        if source == TriggerSource::Timer {
+            if precommit_round != self.round {
+                return Ok(());
+            }
+
+            return self.throw_event(SMREvent::Brake {
+                height: self.height,
+                round:  self.round,
+            });
+        } else if precommit_hash.is_empty() {
             self.round = precommit_round;
             self.throw_event(SMREvent::NewRoundInfo {
                 height: self.height,
@@ -334,11 +410,11 @@ impl StateMachine {
                 lock_proposal,
                 new_interval: None,
                 new_config: None,
+                from_where: FromWhere::PrecommitQC(precommit_round),
             })?;
+
             self.goto_next_round();
             return Ok(());
-        } else if precommit_hash.is_empty() {
-            return Err(ConsensusError::PrecommitErr("Empty qc".to_string()));
         }
 
         self.check()?;
@@ -411,6 +487,8 @@ impl StateMachine {
                 lock_proposal,
                 new_interval: None,
                 new_config: None,
+                // TODO@Eason Gao: This is wrong.
+                from_where: FromWhere::PrecommitQC(u64::max_value()),
             },
             Step::Prevote => SMREvent::PrevoteVote {
                 height: self.height,

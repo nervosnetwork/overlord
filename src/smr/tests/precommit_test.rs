@@ -1,4 +1,4 @@
-use crate::smr::smr_types::{Lock, SMREvent, SMRTrigger, Step, TriggerType};
+use crate::smr::smr_types::{FromWhere, Lock, SMREvent, SMRTrigger, Step, TriggerType};
 use crate::smr::tests::{gen_hash, trigger_test, InnerState, StateMachineTestCase};
 use crate::{error::ConsensusError, types::Hash};
 
@@ -35,6 +35,7 @@ async fn test_precommit_trigger() {
             lock_proposal: None,
             new_interval:  None,
             new_config:    None,
+            from_where:    FromWhere::PrecommitQC(0),
         },
         Some(ConsensusError::PrecommitErr("Empty qc".to_string())),
         None,
@@ -71,6 +72,7 @@ async fn test_precommit_trigger() {
             lock_proposal: Some(hash.clone()),
             new_interval:  None,
             new_config:    None,
+            from_where:    FromWhere::PrecommitQC(0),
         },
         Some(ConsensusError::PrecommitErr("Empty qc".to_string())),
         Some((0, hash)),
@@ -91,6 +93,7 @@ async fn test_precommit_trigger() {
             lock_proposal: Some(hash.clone()),
             new_interval:  None,
             new_config:    None,
+            from_where:    FromWhere::PrecommitQC(0),
         },
         None,
         Some((0, hash)),
@@ -141,6 +144,7 @@ async fn test_precommit_trigger() {
             lock_proposal: None,
             new_interval:  None,
             new_config:    None,
+            from_where:    FromWhere::PrecommitQC(0),
         },
         None,
         None,

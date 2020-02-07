@@ -31,6 +31,9 @@ pub enum ConsensusError {
     #[display(fmt = "Precommit error {}", _0)]
     PrecommitErr(String),
     ///
+    #[display(fmt = "Brake error {}", _0)]
+    BrakeErr(String),
+    ///
     #[display(fmt = "Self round is {}, vote round is {}", local, vote)]
     RoundDiff {
         ///

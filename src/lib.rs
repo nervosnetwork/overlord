@@ -156,6 +156,8 @@ pub struct DurationConfig {
     pub prevote_ratio: u64,
     /// The proportion of precommit timeout to the height interval.
     pub precommit_ratio: u64,
+    /// The proportion of retry choke message timeout to the height interval.
+    pub brake_ratio: u64,
 }
 
 impl Default for DurationConfig {
@@ -164,17 +166,24 @@ impl Default for DurationConfig {
             propose_ratio:   0u64,
             prevote_ratio:   0u64,
             precommit_ratio: 0u64,
+            brake_ratio:     0u64,
         }
     }
 }
 
 impl DurationConfig {
     /// Create a consensus timeout configuration.
-    pub fn new(propose_ratio: u64, prevote_ratio: u64, precommit_ratio: u64) -> Self {
+    pub fn new(
+        propose_ratio: u64,
+        prevote_ratio: u64,
+        precommit_ratio: u64,
+        brake_ratio: u64,
+    ) -> Self {
         DurationConfig {
             propose_ratio,
             prevote_ratio,
             precommit_ratio,
+            brake_ratio,
         }
     }
 
@@ -189,6 +198,10 @@ impl DurationConfig {
     pub(crate) fn get_precommit_config(&self) -> (u64, u64) {
         (self.precommit_ratio, 10u64)
     }
+
+    pub(crate) fn get_brake_config(&self) -> (u64, u64) {
+        (self.brake_ratio, 10u64)
+    }
 }
 
 #[cfg(test)]
@@ -197,9 +210,10 @@ mod test {
 
     #[test]
     fn test_duration_config() {
-        let config = DurationConfig::new(1, 2, 3);
+        let config = DurationConfig::new(1, 2, 3, 4);
         assert_eq!(config.get_propose_config(), (1, 10));
         assert_eq!(config.get_prevote_config(), (2, 10));
         assert_eq!(config.get_precommit_config(), (3, 10));
+        assert_eq!(config.get_brake_config(), (4, 10));
     }
 }

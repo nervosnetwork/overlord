@@ -3,8 +3,9 @@ use rlp::{Decodable, DecoderError, Encodable, Prototype, Rlp, RlpStream};
 
 use crate::smr::smr_types::Step;
 use crate::types::{
-    Address, AggregatedSignature, AggregatedVote, Commit, Feed, Hash, Node, PoLC, Proof, Proposal,
-    Signature, SignedProposal, SignedVote, Status, Vote, VoteType,
+    Address, AggregatedChoke, AggregatedSignature, AggregatedVote, Choke, Commit, Feed, Hash,
+    HashChoke, Node, PoLC, Proof, Proposal, Signature, SignedChoke, SignedProposal, SignedVote,
+    Status, UpdateFrom, Vote, VoteType,
 };
 use crate::wal::{WalInfo, WalLock};
 use crate::{Codec, DurationConfig};
@@ -299,24 +300,27 @@ impl Decodable for Proof {
 
 impl Encodable for DurationConfig {
     fn rlp_append(&self, s: &mut RlpStream) {
-        s.begin_list(3)
+        s.begin_list(4)
             .append(&self.propose_ratio)
             .append(&self.prevote_ratio)
-            .append(&self.precommit_ratio);
+            .append(&self.precommit_ratio)
+            .append(&self.brake_ratio);
     }
 }
 
 impl Decodable for DurationConfig {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         match r.prototype()? {
-            Prototype::List(3) => {
+            Prototype::List(4) => {
                 let propose_ratio: u64 = r.val_at(0)?;
                 let prevote_ratio: u64 = r.val_at(1)?;
                 let precommit_ratio: u64 = r.val_at(2)?;
+                let brake_ratio: u64 = r.val_at(3)?;
                 Ok(DurationConfig {
                     propose_ratio,
                     prevote_ratio,
                     precommit_ratio,
+                    brake_ratio,
                 })
             }
             _ => Err(DecoderError::RlpInconsistentLengthAndData),
@@ -495,6 +499,114 @@ impl<T: Codec> Decodable for WalInfo<T> {
     }
 }
 
+impl Encodable for Choke {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        s.begin_list(4).append(&self.height).append(&self.round);
+
+        match &self.from {
+            UpdateFrom::PrevoteQC(qc) => {
+                s.append(&0u8).append(qc);
+            }
+            UpdateFrom::PrecommitQC(qc) => {
+                s.append(&1u8).append(qc);
+            }
+            UpdateFrom::ChokeQC(qc) => {
+                s.append(&2u8).append(qc);
+            }
+        }
+    }
+}
+
+impl Decodable for Choke {
+    fn decode(r: &Rlp) -> Result<Self, DecoderError> {
+        match r.prototype()? {
+            Prototype::List(4) => {
+                let height: u64 = r.val_at(0)?;
+                let round: u64 = r.val_at(1)?;
+                let from_where: u8 = r.val_at(2)?;
+                let from = match from_where {
+                    0u8 => {
+                        let tmp: AggregatedVote = r.val_at(3)?;
+                        UpdateFrom::PrevoteQC(tmp)
+                    }
+                    1u8 => {
+                        let tmp: AggregatedVote = r.val_at(3)?;
+                        UpdateFrom::PrecommitQC(tmp)
+                    }
+                    2u8 => {
+                        let tmp: AggregatedChoke = r.val_at(3)?;
+                        UpdateFrom::ChokeQC(tmp)
+                    }
+                    _ => unreachable!(),
+                };
+                Ok(Choke {
+                    height,
+                    round,
+                    from,
+                })
+            }
+            _ => Err(DecoderError::RlpInconsistentLengthAndData),
+        }
+    }
+}
+
+impl Encodable for SignedChoke {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        s.begin_list(3)
+            .append(&self.signature.to_vec())
+            .append(&self.choke)
+            .append(&self.address.to_vec());
+    }
+}
+
+impl Decodable for SignedChoke {
+    fn decode(r: &Rlp) -> Result<Self, DecoderError> {
+        match r.prototype()? {
+            Prototype::List(2) => {
+                let tmp: Vec<u8> = r.val_at(0)?;
+                let signature = Signature::from(tmp);
+                let choke: Choke = r.val_at(1)?;
+                let tmp: Vec<u8> = r.val_at(2)?;
+                let address = Address::from(tmp);
+                Ok(SignedChoke {
+                    signature,
+                    choke,
+                    address,
+                })
+            }
+            _ => Err(DecoderError::RlpInconsistentLengthAndData),
+        }
+    }
+}
+
+impl Encodable for AggregatedChoke {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        s.begin_list(2)
+            .append(&self.signature.to_vec())
+            .append_list(&self.chokes);
+    }
+}
+
+impl Decodable for AggregatedChoke {
+    fn decode(r: &Rlp) -> Result<Self, DecoderError> {
+        match r.prototype()? {
+            Prototype::List(2) => {
+                let tmp: Vec<u8> = r.val_at(0)?;
+                let signature = Signature::from(tmp);
+                let chokes: Vec<SignedChoke> = r.list_at(1)?;
+                Ok(AggregatedChoke { signature, chokes })
+            }
+            _ => Err(DecoderError::RlpInconsistentLengthAndData),
+        }
+    }
+}
+
+impl Encodable for HashChoke {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        s.begin_list(2).append(&self.height).append(&self.round);
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::error::Error;
@@ -630,6 +742,7 @@ mod test {
                     propose_ratio:   random::<u64>(),
                     prevote_ratio:   random::<u64>(),
                     precommit_ratio: random::<u64>(),
+                    brake_ratio:     random::<u64>(),
                 })
             } else {
                 None
