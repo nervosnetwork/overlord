@@ -814,6 +814,11 @@ where
             .sign(self.util.hash(Bytes::from(encode(&choke))))
             .map_err(|err| ConsensusError::CryptoErr(format!("sign choke error {:?}", err)))?;
 
+        info!(
+            "Overlord: brake in height {}, round {}",
+            self.height, self.round
+        );
+
         self.broadcast(
             Context::new(),
             OverlordMsg::SignedChoke(SignedChoke {
@@ -1311,6 +1316,11 @@ where
             return self.retransmit_qc(ctx, signed_choke.address).await;
         }
 
+        info!(
+            "Overlord: state receive a choke of height {}, round {}",
+            choke_height, choke_round
+        );
+
         if choke_round > self.round {
             match choke.from {
                 UpdateFrom::PrevoteQC(qc) => {
@@ -1341,6 +1351,12 @@ where
                 chokes:    signed_chokes,
                 signature: sig,
             });
+
+            info!(
+                "Overlord: state trigger SMR go on {} round of height {}",
+                round + 1,
+                self.height
+            );
 
             self.state_machine.trigger(SMRTrigger {
                 trigger_type: TriggerType::ContinueRound,

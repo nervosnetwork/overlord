@@ -103,6 +103,10 @@ impl StateMachine {
         if height != self.height || round != self.round {
             Ok(())
         } else {
+            info!(
+                "Overlord: SMR brake timeout height {}, round {}",
+                self.height, round
+            );
             self.throw_event(SMREvent::Brake { height, round })
         }
     }
@@ -113,6 +117,8 @@ impl StateMachine {
         if height != self.height || round < self.round {
             return Ok(());
         }
+
+        info!("Overlord: SMR continue round {}", round);
 
         self.round = round - 1;
         let (lock_round, lock_proposal) = self
@@ -396,6 +402,7 @@ impl StateMachine {
             if precommit_round != self.round {
                 return Ok(());
             }
+            self.goto_step(Step::Brake);
 
             return self.throw_event(SMREvent::Brake {
                 height: self.height,
