@@ -806,7 +806,7 @@ where
 
         let signature = self
             .util
-            .sign(self.util.hash(Bytes::from(encode(&choke))))
+            .sign(self.util.hash(Bytes::from(encode(&choke.to_hash()))))
             .map_err(|err| ConsensusError::CryptoErr(format!("sign choke error {:?}", err)))?;
 
         info!(
