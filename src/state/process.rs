@@ -494,12 +494,7 @@ where
 
             FromWhere::PrecommitQC(round) => {
                 let qc = if round == u64::max_value() {
-                    self.last_commit_qc.clone().ok_or_else(|| {
-                        ConsensusError::Other(format!(
-                            "lost last commit qc height {}, round {}, last commit round {}",
-                            self.height, self.round, round
-                        ))
-                    })?
+                    self.last_commit_qc.clone().unwrap_or_else(mock_init_qc)
                 } else {
                     self.votes
                         .get_qc_by_id(self.height, round, VoteType::Precommit)?
