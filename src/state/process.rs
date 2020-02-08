@@ -808,21 +808,20 @@ where
             .util
             .sign(self.util.hash(Bytes::from(encode(&choke.to_hash()))))
             .map_err(|err| ConsensusError::CryptoErr(format!("sign choke error {:?}", err)))?;
+        let signed_choke = SignedChoke {
+            signature,
+            choke,
+            address: self.address.clone(),
+        };
 
         info!(
             "Overlord: brake in height {}, round {}",
             self.height, self.round
         );
 
-        self.broadcast(
-            Context::new(),
-            OverlordMsg::SignedChoke(SignedChoke {
-                signature,
-                choke,
-                address: self.address.clone(),
-            }),
-        )
-        .await;
+        self.chokes.insert(self.round, signed_choke.clone());
+        self.broadcast(Context::new(), OverlordMsg::SignedChoke(signed_choke))
+            .await;
         Ok(())
     }
 
