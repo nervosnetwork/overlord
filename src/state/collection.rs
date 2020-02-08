@@ -498,6 +498,21 @@ impl ChokeCollector {
         None
     }
 
+    pub fn print_round_choke_log(&self, round: u64) {
+        if let Some(set) = self.chokes.get(&round) {
+            let num = set.len();
+            let voters = set.iter().map(|sc| sc.address.clone()).collect::<Vec<_>>();
+            log::info!(
+                "Overlord: {} chokes in round {}, voters {:?}",
+                num,
+                round,
+                voters
+            );
+        } else {
+            log::info!("Overlord: no choke in round {}", round);
+        }
+    }
+
     pub fn clear(&mut self) {
         self.chokes.clear();
         self.qcs.clear();

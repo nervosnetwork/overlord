@@ -402,6 +402,8 @@ impl StateMachine {
             if precommit_round != self.round {
                 return Ok(());
             }
+
+            info!("Overlord: SMR goto brake step");
             self.goto_step(Step::Brake);
 
             return self.throw_event(SMREvent::Brake {

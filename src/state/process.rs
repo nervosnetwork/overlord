@@ -822,6 +822,7 @@ where
         self.chokes.insert(self.round, signed_choke.clone());
         self.broadcast(Context::new(), OverlordMsg::SignedChoke(signed_choke))
             .await;
+        self.check_choke_above_threshold()?;
         Ok(())
     }
 
@@ -1328,41 +1329,7 @@ where
         }
 
         self.chokes.insert(choke_round, signed_choke);
-        if let Some(round) = self
-            .chokes
-            .max_round_above_threshold(self.authority.current_len())
-        {
-            // aggregate chokes.
-            let signed_chokes = self.chokes.get_chokes(round).unwrap();
-            let mut sigs = Vec::with_capacity(signed_chokes.len());
-            let mut voters = Vec::with_capacity(signed_chokes.len());
-            for sc in signed_chokes.iter() {
-                sigs.push(sc.signature.clone());
-                voters.push(sc.address.clone());
-            }
-            let sig = self.aggregate_signatures(sigs, voters.clone())?;
-            self.chokes.set_qc(round, AggregatedChoke {
-                height: self.height,
-                signature: sig,
-                round,
-                voters,
-            });
-
-            info!(
-                "Overlord: state trigger SMR go on {} round of height {}",
-                round + 1,
-                self.height
-            );
-
-            self.state_machine.trigger(SMRTrigger {
-                trigger_type: TriggerType::ContinueRound,
-                source:       TriggerSource::State,
-                hash:         Hash::new(),
-                round:        Some(round + 1),
-                height:       self.height,
-                wal_info:     None,
-            })?;
-        }
+        self.check_choke_above_threshold()?;
         Ok(())
     }
 
@@ -1721,6 +1688,48 @@ where
 
                 error!("Overlord: state broadcast message failed {:?}", err);
             });
+    }
+
+    fn check_choke_above_threshold(&mut self) -> ConsensusResult<()> {
+        self.chokes.print_round_choke_log(self.round);
+        if let Some(round) = self
+            .chokes
+            .max_round_above_threshold(self.authority.current_len())
+        {
+            info!("Overlord: round {} chokes above threshold", round);
+
+            // aggregate chokes.
+            let signed_chokes = self.chokes.get_chokes(round).unwrap();
+            let mut sigs = Vec::with_capacity(signed_chokes.len());
+            let mut voters = Vec::with_capacity(signed_chokes.len());
+            for sc in signed_chokes.iter() {
+                sigs.push(sc.signature.clone());
+                voters.push(sc.address.clone());
+            }
+            let sig = self.aggregate_signatures(sigs, voters.clone())?;
+            self.chokes.set_qc(round, AggregatedChoke {
+                height: self.height,
+                signature: sig,
+                round,
+                voters,
+            });
+
+            info!(
+                "Overlord: state trigger SMR go on {} round of height {}",
+                round + 1,
+                self.height
+            );
+
+            self.state_machine.trigger(SMRTrigger {
+                trigger_type: TriggerType::ContinueRound,
+                source:       TriggerSource::State,
+                hash:         Hash::new(),
+                round:        Some(round + 1),
+                height:       self.height,
+                wal_info:     None,
+            })?;
+        }
+        Ok(())
     }
 
     async fn check_block(&mut self, ctx: Context, hash: Hash, block: T) {
