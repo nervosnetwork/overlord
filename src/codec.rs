@@ -562,7 +562,7 @@ impl Encodable for SignedChoke {
 impl Decodable for SignedChoke {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         match r.prototype()? {
-            Prototype::List(2) => {
+            Prototype::List(3) => {
                 let tmp: Vec<u8> = r.val_at(0)?;
                 let signature = Signature::from(tmp);
                 let choke: Choke = r.val_at(1)?;
@@ -581,20 +581,35 @@ impl Decodable for SignedChoke {
 
 impl Encodable for AggregatedChoke {
     fn rlp_append(&self, s: &mut RlpStream) {
-        s.begin_list(2)
-            .append(&self.signature.to_vec())
-            .append_list(&self.chokes);
+        s.begin_list(4)
+            .append(&self.height)
+            .append(&self.round)
+            .append(&self.signature.to_vec());
+        let tmp: Vec<Vec<u8>> = self
+            .voters
+            .iter()
+            .map(|addr| addr.to_vec())
+            .collect::<Vec<_>>();
+        s.append_list::<Vec<u8>, _>(&tmp);
     }
 }
 
 impl Decodable for AggregatedChoke {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         match r.prototype()? {
-            Prototype::List(2) => {
-                let tmp: Vec<u8> = r.val_at(0)?;
+            Prototype::List(4) => {
+                let height: u64 = r.val_at(0)?;
+                let round: u64 = r.val_at(1)?;
+                let tmp: Vec<u8> = r.val_at(2)?;
                 let signature = Signature::from(tmp);
-                let chokes: Vec<SignedChoke> = r.list_at(1)?;
-                Ok(AggregatedChoke { signature, chokes })
+                let tmp: Vec<Vec<u8>> = r.list_at(3)?;
+                let voters = tmp.into_iter().map(Address::from).collect::<Vec<_>>();
+                Ok(AggregatedChoke {
+                    height,
+                    round,
+                    signature,
+                    voters,
+                })
             }
             _ => Err(DecoderError::RlpInconsistentLengthAndData),
         }
@@ -735,6 +750,37 @@ mod test {
         }
     }
 
+    impl AggregatedChoke {
+        fn new() -> Self {
+            AggregatedChoke {
+                height:    random::<u64>(),
+                round:     random::<u64>(),
+                signature: gen_signature(),
+                voters:    vec![gen_address(), gen_address()],
+            }
+        }
+    }
+
+    impl Choke {
+        fn new(from: UpdateFrom) -> Self {
+            Choke {
+                height: random::<u64>(),
+                round: random::<u64>(),
+                from,
+            }
+        }
+    }
+
+    impl SignedChoke {
+        fn new(from: UpdateFrom) -> Self {
+            SignedChoke {
+                signature: gen_signature(),
+                address:   gen_address(),
+                choke:     Choke::new(from),
+            }
+        }
+    }
+
     impl Status {
         fn new(time: Option<u64>, is_update_config: bool) -> Self {
             let config = if is_update_config {
@@ -870,6 +916,24 @@ mod test {
         let feed = Feed::new(Pill::new());
         let res: Feed<Pill> = rlp::decode(&feed.rlp_bytes()).unwrap();
         assert_eq!(feed, res);
+
+        // Test Aggregated Choke
+        let aggregated_choke = AggregatedChoke::new();
+        let res: AggregatedChoke = rlp::decode(&aggregated_choke.rlp_bytes()).unwrap();
+        assert_eq!(aggregated_choke, res);
+
+        // Test Signed Choke
+        let signed_choke = SignedChoke::new(UpdateFrom::PrevoteQC(AggregatedVote::new(1u8)));
+        let res: SignedChoke = rlp::decode(&signed_choke.rlp_bytes()).unwrap();
+        assert_eq!(signed_choke, res);
+
+        let signed_choke = SignedChoke::new(UpdateFrom::PrecommitQC(AggregatedVote::new(2u8)));
+        let res: SignedChoke = rlp::decode(&signed_choke.rlp_bytes()).unwrap();
+        assert_eq!(signed_choke, res);
+
+        let signed_choke = SignedChoke::new(UpdateFrom::ChokeQC(AggregatedChoke::new()));
+        let res: SignedChoke = rlp::decode(&signed_choke.rlp_bytes()).unwrap();
+        assert_eq!(signed_choke, res);
 
         // Test Wal Info
         let pill = Pill::new();

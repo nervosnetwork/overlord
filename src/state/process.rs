@@ -1341,10 +1341,12 @@ where
                 sigs.push(sc.signature.clone());
                 voters.push(sc.address.clone());
             }
-            let sig = self.aggregate_signatures(sigs, voters)?;
+            let sig = self.aggregate_signatures(sigs, voters.clone())?;
             self.chokes.set_qc(round, AggregatedChoke {
-                chokes:    signed_chokes,
+                height: self.height,
                 signature: sig,
+                round,
+                voters,
             });
 
             info!(
@@ -1377,13 +1379,9 @@ where
         }
 
         // verify aggregated signature.
-        let choke = aggregated_choke.chokes.first().unwrap().choke.to_hash();
+        let choke = aggregated_choke.to_hash();
         let choke_hash = self.util.hash(Bytes::from(encode(&choke)));
-        let voters = aggregated_choke
-            .chokes
-            .iter()
-            .map(|sc| sc.address.clone())
-            .collect::<Vec<_>>();
+        let voters = aggregated_choke.voters.clone();
         self.util
             .verify_aggregated_signature(aggregated_choke.signature.clone(), choke_hash, voters)
             .map_err(|err| {

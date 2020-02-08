@@ -406,16 +406,27 @@ pub struct VerifyResp {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct AggregatedChoke {
     ///
-    pub chokes: Vec<SignedChoke>,
+    pub height: u64,
+    ///
+    pub round: u64,
     ///
     pub signature: Signature,
+    ///
+    pub voters: Vec<Address>,
 }
 
 #[allow(clippy::len_without_is_empty)]
 impl AggregatedChoke {
     ///
     pub fn len(&self) -> usize {
-        self.chokes.len()
+        self.voters.len()
+    }
+
+    pub(crate) fn to_hash(&self) -> HashChoke {
+        HashChoke {
+            height: self.height,
+            round:  self.round,
+        }
     }
 }
 
