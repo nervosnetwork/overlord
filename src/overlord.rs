@@ -99,7 +99,7 @@ where
         timer.run();
 
         // Run state.
-        state.run(rx, evt_1, resp).await?;
+        state.run(rx, evt_1, resp).await;
 
         Ok(())
     }

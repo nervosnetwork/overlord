@@ -138,15 +138,29 @@ where
         mut raw_rx: UnboundedReceiver<(Context, OverlordMsg<T>)>,
         mut event: Event,
         mut verify_resp: UnboundedReceiver<VerifyResp>,
-    ) -> ConsensusResult<()> {
+    ) {
         info!("Overlord: state start running");
-        self.start_with_wal().await?;
+        if let Err(e) = self.start_with_wal().await {
+            error!("Overlord: start with wal error {:?}", e);
+        }
 
         loop {
             select! {
-                raw = raw_rx.next() => self.handle_msg(raw).await?,
-                evt = event.next() => self.handle_event(evt).await?,
-                res = verify_resp.next() => self.handle_resp(res)?,
+                raw = raw_rx.next() => {
+                    if let Err(e) = self.handle_msg(raw).await {
+                        error!("Overlord: state {:?} error", e);
+                    }
+                }
+                evt = event.next() => {
+                    if let Err(e) = self.handle_event(evt).await{
+                        error!("Overlord: state {:?} error", e);
+                    }
+                }
+                res = verify_resp.next() => {
+                    if let Err(e) = self.handle_resp(res) {
+                        error!("Overlord: state {:?} error", e);
+                    }
+                }
             }
         }
     }
@@ -220,7 +234,20 @@ where
                 Ok(())
             }
 
-            OverlordMsg::RichStatus(rs) => self.goto_new_height(ctx.clone(), rs, true).await,
+            OverlordMsg::RichStatus(rs) => {
+                if let Err(e) = self.goto_new_height(ctx.clone(), rs, true).await {
+                    trace::error(
+                        "goto new height".to_string(),
+                        Some(json!({
+                            "height": self.height,
+                            "round": self.round,
+                        })),
+                    );
+
+                    error!("Overlord: state handle signed choke error {:?}", e);
+                }
+                Ok(())
+            }
 
             // This is for unit tests.
             #[cfg(test)]
