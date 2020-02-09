@@ -167,10 +167,7 @@ impl StateMachine {
             return Err(ConsensusError::Other("Delayed status".to_string()));
         }
 
-        self.check()?;
         self.goto_new_height(height);
-
-        // throw new round info event
         self.throw_event(SMREvent::NewRoundInfo {
             height:        self.height,
             round:         INIT_ROUND,
