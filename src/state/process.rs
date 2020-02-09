@@ -581,7 +581,10 @@ where
             proposer:   self.address.clone(),
         };
 
-        // **TODO: parallelism**
+        info!(
+            "Overlord: state broadcast a signed proposal height {}, round {}",
+            self.height, self.round
+        );
         self.broadcast(
             Context::new(),
             OverlordMsg::SignedProposal(self.sign_proposal(proposal)?),
@@ -782,6 +785,10 @@ where
             self.votes
                 .insert_vote(signed_vote.get_hash(), signed_vote, self.address.clone());
         } else {
+            info!(
+                "Overlord: state transmit a signed vote, height {}, round {}",
+                self.height, self.round
+            );
             self.transmit(Context::new(), OverlordMsg::SignedVote(signed_vote))
                 .await;
         }
@@ -815,7 +822,7 @@ where
         };
 
         info!(
-            "Overlord: brake in height {}, round {}",
+            "Overlord: state broadcast a signed brake in height {}, round {}",
             self.height, self.round
         );
 
@@ -903,7 +910,7 @@ where
 
         let cost = Instant::now() - self.height_start;
         info!("Overlord: height {} cost {:?}", self.height, cost);
-        
+
         if self.next_proposer(status.height, INIT_ROUND)?
             && cost < Duration::from_millis(self.block_interval)
         {
@@ -1011,6 +1018,11 @@ where
         );
 
         self.votes.set_qc(qc.clone());
+
+        info!(
+            "Overlord: state broadcast a {:?} QC, height {}, round {}",
+            vote_type, qc.height, qc.round
+        );
         self.broadcast(ctx, OverlordMsg::AggregatedVote(qc)).await;
 
         if vote_type == VoteType::Prevote {
@@ -1216,6 +1228,10 @@ where
         } else if let Some(mut block_hash) = self.counting_vote(vote_type.clone())? {
             let qc = self.generate_qc(block_hash.clone(), vote_type.clone())?;
             self.votes.set_qc(qc.clone());
+            info!(
+                "Overlord: state broadcast a {:?} QC, height {}, round {}",
+                vote_type, qc.height, qc.round
+            );
             self.broadcast(Context::new(), OverlordMsg::AggregatedVote(qc))
                 .await;
 
@@ -1621,9 +1637,9 @@ where
     }
 
     async fn transmit(&self, ctx: Context, msg: OverlordMsg<T>) {
-        info!(
-            "Overlord: state transmit a {:?} message to leader height {}, round {}",
-            msg, self.height, self.round
+        debug!(
+            "Overlord: state transmit a message to leader height {}, round {}",
+            self.height, self.round
         );
 
         let _ = self
@@ -1673,9 +1689,9 @@ where
     }
 
     async fn broadcast(&self, ctx: Context, msg: OverlordMsg<T>) {
-        info!(
-            "Overlord: state broadcast a {:?} message to others height {}, round {}",
-            msg, self.height, self.round
+        debug!(
+            "Overlord: state broadcast a message to others height {}, round {}",
+            self.height, self.round
         );
 
         let _ = self
@@ -1891,6 +1907,10 @@ where
                         proposer:   self.address.clone(),
                     };
                     let signed_proposal = self.sign_proposal(proposal)?;
+                    info!(
+                        "Overlord: state broadcast a signed proposal height {}, round {}",
+                        self.height, self.round
+                    );
                     self.broadcast(Context::new(), OverlordMsg::SignedProposal(signed_proposal))
                         .await;
 
@@ -1919,6 +1939,10 @@ where
                 })?;
 
                 if !self.is_leader {
+                    info!(
+                        "Overlord: state transmit a signed vote, height {}, round {}",
+                        self.height, self.round
+                    );
                     self.transmit(Context::new(), OverlordMsg::SignedVote(signed_vote))
                         .await;
                 } else {
