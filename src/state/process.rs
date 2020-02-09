@@ -1309,6 +1309,10 @@ where
             return Ok(());
         } else if choke_height == self.height - 1 {
             return self.retransmit_qc(ctx, signed_choke.address).await;
+        } 
+        
+        if choke_round < self.round {
+            return Ok(());
         }
 
         info!(

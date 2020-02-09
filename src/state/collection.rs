@@ -501,7 +501,10 @@ impl ChokeCollector {
     pub fn print_round_choke_log(&self, round: u64) {
         if let Some(set) = self.chokes.get(&round) {
             let num = set.len();
-            let voters = set.iter().map(|sc| sc.address.clone()).collect::<Vec<_>>();
+            let voters = set
+                .iter()
+                .map(|sc| hex::encode(sc.address.clone()))
+                .collect::<Vec<_>>();
             log::info!(
                 "Overlord: {} chokes in round {}, voters {:?}",
                 num,

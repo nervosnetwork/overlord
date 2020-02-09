@@ -114,7 +114,7 @@ impl StateMachine {
     fn handle_continue_round(&mut self, height: u64, round: Option<u64>) -> ConsensusResult<()> {
         let round = round.ok_or_else(|| ConsensusError::BrakeErr("No new round".to_string()))?;
 
-        if height != self.height || round < self.round {
+        if height != self.height || round <= self.round {
             return Ok(());
         }
 
@@ -203,8 +203,11 @@ impl StateMachine {
         }
 
         info!(
-            "Overlord: SMR triggered by a proposal hash {:?}, from {:?}",
-            proposal_hash, source
+            "Overlord: SMR triggered by a proposal hash {:?}, from {:?}, height {}, round {}",
+            hex::encode(proposal_hash.clone()),
+            source,
+            self.height,
+            self.round
         );
 
         // If the proposal trigger is from timer, goto prevote step directly.
@@ -291,8 +294,11 @@ impl StateMachine {
         }
 
         info!(
-            "Overlord: SMR triggered by prevote QC hash {:?} from {:?}",
-            prevote_hash, source
+            "Overlord: SMR triggered by prevote QC hash {:?} from {:?}, height {}, round {}",
+            hex::encode(prevote_hash.clone()),
+            source,
+            self.height,
+            self.round
         );
 
         if source == TriggerSource::Timer {
@@ -389,8 +395,11 @@ impl StateMachine {
         }
 
         info!(
-            "Overlord: SMR triggered by precommit QC hash {:?}, from {:?}",
-            precommit_hash, source
+            "Overlord: SMR triggered by precommit QC hash {:?}, from {:?}, height {}, round {}",
+            hex::encode(precommit_hash.clone()),
+            source,
+            self.height,
+            self.round
         );
 
         let (lock_round, lock_proposal) = self
@@ -403,7 +412,10 @@ impl StateMachine {
                 return Ok(());
             }
 
-            info!("Overlord: SMR goto brake step");
+            info!(
+                "Overlord: SMR goto brake step, height {}, round {}",
+                self.height, self.round
+            );
             self.goto_step(Step::Brake);
 
             return self.throw_event(SMREvent::Brake {
