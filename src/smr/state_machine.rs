@@ -588,8 +588,8 @@ impl StateMachine {
         // }
 
         // // While in precommit step, the lock and the proposal hash must be NOR.
-        // if self.step == Step::Precommit && (self.block_hash.is_empty().bitxor(self.lock.is_none()))
-        // {
+        // if self.step == Step::Precommit &&
+        // (self.block_hash.is_empty().bitxor(self.lock.is_none())) {
         //     return Err(ConsensusError::SelfCheckErr(format!(
         //         "Invalid status in precommit, height {}, round {}",
         //         self.height, self.round

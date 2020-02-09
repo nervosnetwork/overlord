@@ -343,7 +343,10 @@ where
             }
 
             SMREvent::Brake { height, round } => {
-                assert!(height == self.height);
+                if height != self.height {
+                    return Ok(());
+                }
+
                 if let Err(e) = self.handle_brake(round).await {
                     trace::error(
                         "handle_brake_event".to_string(),
