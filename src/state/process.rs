@@ -902,6 +902,8 @@ where
         self.authority.update(&mut auth_list, true);
 
         let cost = Instant::now() - self.height_start;
+        info!("Overlord: height {} cost {:?}", self.height, cost);
+        
         if self.next_proposer(status.height, INIT_ROUND)?
             && cost < Duration::from_millis(self.block_interval)
         {
