@@ -1703,7 +1703,7 @@ where
             if round < self.round {
                 return Ok(());
             }
-            
+
             info!("Overlord: round {} chokes above threshold", round);
 
             // aggregate chokes.
