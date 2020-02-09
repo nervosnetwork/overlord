@@ -1700,6 +1700,10 @@ where
             .chokes
             .max_round_above_threshold(self.authority.current_len())
         {
+            if round < self.round {
+                return Ok(());
+            }
+            
             info!("Overlord: round {} chokes above threshold", round);
 
             // aggregate chokes.
