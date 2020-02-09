@@ -1620,8 +1620,8 @@ where
 
     async fn transmit(&self, ctx: Context, msg: OverlordMsg<T>) {
         info!(
-            "Overlord: state transmit a message to leader height {}, round {}",
-            self.height, self.round
+            "Overlord: state transmit a {:?} message to leader height {}, round {}",
+            msg, self.height, self.round
         );
 
         let _ = self
@@ -1672,8 +1672,8 @@ where
 
     async fn broadcast(&self, ctx: Context, msg: OverlordMsg<T>) {
         info!(
-            "Overlord: state broadcast a message to others height {}, round {}",
-            self.height, self.round
+            "Overlord: state broadcast a {:?} message to others height {}, round {}",
+            msg, self.height, self.round
         );
 
         let _ = self
