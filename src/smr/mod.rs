@@ -6,6 +6,7 @@ mod state_machine;
 #[cfg(test)]
 mod tests;
 
+use std::ops::Drop;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -64,6 +65,12 @@ pub struct SMRHandler {
     tx: UnboundedSender<SMRTrigger>,
 }
 
+impl Drop for SMRHandler {
+    fn drop(&mut self) {
+        error!("Overlord: SMRHandler dropping!");
+    }
+}
+
 impl SMRHandler {
     /// Create a new SMR.
     pub fn new(sender: UnboundedSender<SMRTrigger>) -> Self {
@@ -99,6 +106,12 @@ impl SMRHandler {
 #[derive(Debug)]
 pub struct Event {
     rx: UnboundedReceiver<SMREvent>,
+}
+
+impl Drop for Event {
+    fn drop(&mut self) {
+        error!("Overlord: Event dropping!");
+    }
 }
 
 impl Stream for Event {
