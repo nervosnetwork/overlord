@@ -1,11 +1,11 @@
-use std::ops::BitXor;
+use std::ops::{BitXor, Drop};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use derive_more::Display;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::Stream;
-use log::{debug, info};
+use log::{debug, error, info};
 use moodyblues_sdk::trace;
 
 use crate::smr::smr_types::{
@@ -75,6 +75,12 @@ impl Stream for StateMachine {
                 }
             }
         }
+    }
+}
+
+impl Drop for StateMachine {
+    fn drop(&mut self) {
+        error!("Overlord: SMR dropping!");
     }
 }
 
@@ -444,14 +450,12 @@ impl StateMachine {
 
     fn throw_event(&mut self, event: SMREvent) -> ConsensusResult<()> {
         info!("Overlord: SMR throw {:?} event", event);
-        self.event
-            .0
-            .unbounded_send(event.clone())
-            .map_err(|_| ConsensusError::ThrowEventErr(format!("{}", event.clone())))?;
-        self.event
-            .1
-            .unbounded_send(event.clone())
-            .map_err(|_| ConsensusError::ThrowEventErr(format!("{}", event)))?;
+        self.event.0.unbounded_send(event.clone()).map_err(|err| {
+            ConsensusError::ThrowEventErr(format!("event: {}, error: {:?}", event.clone(), err))
+        })?;
+        self.event.1.unbounded_send(event.clone()).map_err(|err| {
+            ConsensusError::ThrowEventErr(format!("event: {}, error: {:?}", event.clone(), err))
+        })?;
         Ok(())
     }
 
