@@ -571,30 +571,30 @@ impl StateMachine {
     fn check(&mut self) -> ConsensusResult<()> {
         debug!("Overlord: SMR do self check");
 
-        // Lock hash must be same as proposal hash, if has.
-        if self.round == 0
-            && self.lock.is_some()
-            && self.lock.clone().unwrap().hash != self.block_hash
-        {
-            return Err(ConsensusError::SelfCheckErr("Lock".to_string()));
-        }
+        // // Lock hash must be same as proposal hash, if has.
+        // if self.round == 0
+        //     && self.lock.is_some()
+        //     && self.lock.clone().unwrap().hash != self.block_hash
+        // {
+        //     return Err(ConsensusError::SelfCheckErr("Lock".to_string()));
+        // }
 
-        // While self step lt precommit and round is 0, self lock must be none.
-        if self.step < Step::Precommit && self.round == 0 && self.lock.is_some() {
-            return Err(ConsensusError::SelfCheckErr(format!(
-                "Invalid lock, height {}, round {}",
-                self.height, self.round
-            )));
-        }
+        // // While self step lt precommit and round is 0, self lock must be none.
+        // if self.step < Step::Precommit && self.round == 0 && self.lock.is_some() {
+        //     return Err(ConsensusError::SelfCheckErr(format!(
+        //         "Invalid lock, height {}, round {}",
+        //         self.height, self.round
+        //     )));
+        // }
 
-        // While in precommit step, the lock and the proposal hash must be NOR.
-        if self.step == Step::Precommit && (self.block_hash.is_empty().bitxor(self.lock.is_none()))
-        {
-            return Err(ConsensusError::SelfCheckErr(format!(
-                "Invalid status in precommit, height {}, round {}",
-                self.height, self.round
-            )));
-        }
+        // // While in precommit step, the lock and the proposal hash must be NOR.
+        // if self.step == Step::Precommit && (self.block_hash.is_empty().bitxor(self.lock.is_none()))
+        // {
+        //     return Err(ConsensusError::SelfCheckErr(format!(
+        //         "Invalid status in precommit, height {}, round {}",
+        //         self.height, self.round
+        //     )));
+        // }
         Ok(())
     }
 
