@@ -121,7 +121,7 @@ impl Timer {
     }
 
     fn set_timer(&mut self, event: SMREvent) -> ConsensusResult<()> {
-        let mut is_propose_timer = false;
+        let mut is_brake_timer = false;
         match event.clone() {
             SMREvent::NewRoundInfo {
                 height,
@@ -134,7 +134,6 @@ impl Timer {
                     self.height = height;
                 }
                 self.round = round;
-                is_propose_timer = true;
 
                 if let Some(interval) = new_interval {
                     self.config.set_interval(interval);
@@ -143,13 +142,13 @@ impl Timer {
                     self.config.update(config);
                 }
             }
+            SMREvent::Brake { .. } => is_brake_timer = true,
             SMREvent::Commit(_) => return Ok(()),
             _ => (),
         };
 
         let mut interval = self.config.get_timeout(event.clone())?;
-
-        if is_propose_timer {
+        if !is_brake_timer {
             let mut coef = self.round as u32;
             if coef > 10 {
                 coef = 10;
@@ -158,13 +157,11 @@ impl Timer {
         }
 
         info!("Overlord: timer set {:?} timer", event);
-
         let smr_timer = TimeoutInfo::new(interval, event, self.sender.clone());
 
         tokio::spawn(async move {
             smr_timer.await;
         });
-
         Ok(())
     }
 

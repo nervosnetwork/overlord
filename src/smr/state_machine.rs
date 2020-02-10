@@ -1,4 +1,4 @@
-use std::ops::{BitXor, Drop};
+use std::ops::Drop;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
