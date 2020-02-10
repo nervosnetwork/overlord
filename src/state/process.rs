@@ -17,12 +17,13 @@ use rlp::encode;
 use serde_json::json;
 
 use crate::error::ConsensusError;
-use crate::smr::smr_types::{SMREvent, SMRTrigger, Step, TriggerSource, TriggerType};
+use crate::smr::smr_types::{FromWhere, SMREvent, SMRTrigger, Step, TriggerSource, TriggerType};
 use crate::smr::{Event, SMRHandler};
-use crate::state::collection::{ProposalCollector, VoteCollector};
+use crate::state::collection::{ChokeCollector, ProposalCollector, VoteCollector};
 use crate::types::{
-    Address, AggregatedSignature, AggregatedVote, Commit, Hash, Node, OverlordMsg, PoLC, Proof,
-    Proposal, Signature, SignedProposal, SignedVote, Status, VerifyResp, Vote, VoteType,
+    Address, AggregatedChoke, AggregatedSignature, AggregatedVote, Choke, Commit, Hash, Node,
+    OverlordMsg, PoLC, Proof, Proposal, Signature, SignedChoke, SignedProposal, SignedVote, Status,
+    UpdateFrom, VerifyResp, Vote, VoteType,
 };
 use crate::utils::auth_manage::AuthorityManage;
 use crate::wal::{WalInfo, WalLock};
@@ -53,12 +54,14 @@ pub struct State<T: Codec, F: Consensus<T>, C: Crypto, W: Wal> {
     address:             Address,
     proposals:           ProposalCollector<T>,
     votes:               VoteCollector,
+    chokes:              ChokeCollector,
     authority:           AuthorityManage,
     hash_with_block:     HashMap<Hash, T>,
     is_full_transcation: HashMap<Hash, bool>,
     is_leader:           bool,
     leader_address:      Address,
     last_commit_qc:      Option<AggregatedVote>,
+    update_from_where:   UpdateFrom,
     height_start:        Instant,
     block_interval:      u64,
 
@@ -96,12 +99,14 @@ where
             address:             addr,
             proposals:           ProposalCollector::new(),
             votes:               VoteCollector::new(),
+            chokes:              ChokeCollector::new(),
             authority:           auth,
             hash_with_block:     HashMap::new(),
             is_full_transcation: HashMap::new(),
             is_leader:           false,
             leader_address:      Address::default(),
             last_commit_qc:      None,
+            update_from_where:   UpdateFrom::PrecommitQC(mock_init_qc()),
             height_start:        Instant::now(),
             block_interval:      interval,
 
@@ -120,15 +125,29 @@ where
         mut raw_rx: UnboundedReceiver<(Context, OverlordMsg<T>)>,
         mut event: Event,
         mut verify_resp: UnboundedReceiver<VerifyResp>,
-    ) -> ConsensusResult<()> {
+    ) {
         info!("Overlord: state start running");
-        self.start_with_wal().await?;
+        if let Err(e) = self.start_with_wal().await {
+            error!("Overlord: start with wal error {:?}", e);
+        }
 
         loop {
             select! {
-                raw = raw_rx.next() => self.handle_msg(raw).await?,
-                evt = event.next() => self.handle_event(evt).await?,
-                res = verify_resp.next() => self.handle_resp(res)?,
+                raw = raw_rx.next() => {
+                    if let Err(e) = self.handle_msg(raw).await {
+                        error!("Overlord: state {:?} error", e);
+                    }
+                }
+                evt = event.next() => {
+                    if let Err(e) = self.handle_event(evt).await{
+                        error!("Overlord: state {:?} error", e);
+                    }
+                }
+                res = verify_resp.next() => {
+                    if let Err(e) = self.handle_resp(res) {
+                        error!("Overlord: state {:?} error", e);
+                    }
+                }
             }
         }
     }
@@ -187,7 +206,35 @@ where
                 Ok(())
             }
 
-            OverlordMsg::RichStatus(rs) => self.goto_new_height(ctx.clone(), rs, true).await,
+            OverlordMsg::SignedChoke(sc) => {
+                if let Err(e) = self.handle_signed_choke(ctx.clone(), sc).await {
+                    trace::error(
+                        "handle_choke".to_string(),
+                        Some(json!({
+                            "height": self.height,
+                            "round": self.round,
+                        })),
+                    );
+
+                    error!("Overlord: state handle signed choke error {:?}", e);
+                }
+                Ok(())
+            }
+
+            OverlordMsg::RichStatus(rs) => {
+                if let Err(e) = self.goto_new_height(ctx.clone(), rs, true).await {
+                    trace::error(
+                        "goto new height".to_string(),
+                        Some(json!({
+                            "height": self.height,
+                            "round": self.round,
+                        })),
+                    );
+
+                    error!("Overlord: state handle signed choke error {:?}", e);
+                }
+                Ok(())
+            }
 
             // This is for unit tests.
             #[cfg(test)]
@@ -202,10 +249,11 @@ where
                 round,
                 lock_round,
                 lock_proposal,
+                from_where,
                 ..
             } => {
                 if let Err(e) = self
-                    .handle_new_round(round, lock_round, lock_proposal)
+                    .handle_new_round(round, lock_round, lock_proposal, from_where)
                     .await
                 {
                     trace::error(
@@ -281,6 +329,25 @@ where
                 Ok(())
             }
 
+            SMREvent::Brake { height, round } => {
+                if height != self.height {
+                    return Ok(());
+                }
+
+                if let Err(e) = self.handle_brake(round).await {
+                    trace::error(
+                        "handle_brake_event".to_string(),
+                        Some(json!({
+                            "height": self.height,
+                            "round": self.round,
+                        })),
+                    );
+
+                    error!("Overlord: state handle brake error {:?}", e);
+                }
+                Ok(())
+            }
+
             _ => unreachable!(),
         }
     }
@@ -293,8 +360,8 @@ where
 
         let block_hash = resp.block_hash.clone();
         info!(
-            "Overlord: state receive verify response height {:?}, hash {:?}",
-            resp.height, block_hash
+            "Overlord: state receive verify response height {}, round {}, hash {:?}",
+            resp.height, self.round, block_hash
         );
 
         trace::custom(
@@ -386,6 +453,7 @@ where
         self.proposals.flush(new_height - 1);
         self.votes.flush(new_height - 1);
         self.hash_with_block.clear();
+        self.chokes.clear();
 
         // Re-check proposals that have been in the proposal collector, of the current height.
         if let Some(proposals) = self.proposals.get_height_proposals(self.height) {
@@ -411,6 +479,7 @@ where
         round: u64,
         lock_round: Option<u64>,
         lock_proposal: Option<Hash>,
+        from_where: FromWhere,
     ) -> ConsensusResult<()> {
         info!("Overlord: state goto new round {}", round);
         trace::start_round(round, self.height);
@@ -444,6 +513,37 @@ where
                 content:    content.clone(),
             })
         };
+
+        let update_from = match from_where {
+            FromWhere::PrevoteQC(round) => {
+                let qc = self
+                    .votes
+                    .get_qc_by_id(self.height, round, VoteType::Prevote)?;
+                UpdateFrom::PrevoteQC(qc)
+            }
+
+            FromWhere::PrecommitQC(round) => {
+                let qc = if round == u64::max_value() {
+                    self.last_commit_qc.clone().unwrap_or_else(mock_init_qc)
+                } else {
+                    self.votes
+                        .get_qc_by_id(self.height, round, VoteType::Precommit)?
+                };
+                UpdateFrom::PrecommitQC(qc)
+            }
+
+            FromWhere::ChokeQC(round) => {
+                let qc = self.chokes.get_qc(round).ok_or_else(|| {
+                    ConsensusError::BrakeErr(format!(
+                        "no choke qc height {} round {}",
+                        self.height, round
+                    ))
+                })?;
+                UpdateFrom::ChokeQC(qc)
+            }
+        };
+        self.set_update_from(update_from);
+
         self.save_wal(Step::Propose, lock).await?;
 
         // If self is not proposer, check whether it has received current signed proposal before. If
@@ -511,7 +611,10 @@ where
             proposer:   self.address.clone(),
         };
 
-        // **TODO: parallelism**
+        info!(
+            "Overlord: state broadcast a signed proposal height {}, round {}",
+            self.height, self.round
+        );
         self.broadcast(
             Context::new(),
             OverlordMsg::SignedProposal(self.sign_proposal(proposal)?),
@@ -712,11 +815,51 @@ where
             self.votes
                 .insert_vote(signed_vote.get_hash(), signed_vote, self.address.clone());
         } else {
+            info!(
+                "Overlord: state transmit a signed vote, height {}, round {}",
+                self.height, self.round
+            );
             self.transmit(Context::new(), OverlordMsg::SignedVote(signed_vote))
                 .await;
         }
 
         self.vote_process(vote_type, lock_round).await?;
+        Ok(())
+    }
+
+    async fn handle_brake(&mut self, round: u64) -> ConsensusResult<()> {
+        if round != self.round {
+            return Err(ConsensusError::CorrectnessErr(format!(
+                "SMR round {}, state round {}",
+                round, self.round
+            )));
+        }
+
+        let choke = Choke {
+            height: self.height,
+            round:  self.round,
+            from:   self.update_from_where.clone(),
+        };
+
+        let signature = self
+            .util
+            .sign(self.util.hash(Bytes::from(encode(&choke.to_hash()))))
+            .map_err(|err| ConsensusError::CryptoErr(format!("sign choke error {:?}", err)))?;
+        let signed_choke = SignedChoke {
+            signature,
+            choke,
+            address: self.address.clone(),
+        };
+
+        info!(
+            "Overlord: state broadcast a signed brake in height {}, round {}",
+            self.height, self.round
+        );
+
+        self.chokes.insert(self.round, signed_choke.clone());
+        self.broadcast(Context::new(), OverlordMsg::SignedChoke(signed_choke))
+            .await;
+        self.check_choke_above_threshold()?;
         Ok(())
     }
 
@@ -796,6 +939,8 @@ where
         self.authority.update(&mut auth_list, true);
 
         let cost = Instant::now() - self.height_start;
+        info!("Overlord: height {} cost {:?}", self.height, cost);
+
         if self.next_proposer(status.height, INIT_ROUND)?
             && cost < Duration::from_millis(self.block_interval)
         {
@@ -903,6 +1048,11 @@ where
         );
 
         self.votes.set_qc(qc.clone());
+
+        info!(
+            "Overlord: state broadcast a {:?} QC, height {}, round {}",
+            vote_type, qc.height, qc.round
+        );
         self.broadcast(ctx, OverlordMsg::AggregatedVote(qc)).await;
 
         if vote_type == VoteType::Prevote {
@@ -997,6 +1147,11 @@ where
         // State do not handle outdated prevote QC.
         if qc_type == VoteType::Prevote && round < self.round {
             debug!("Overlord: state receive a outdated prevote qc.");
+            return Ok(());
+        } else if qc_type == VoteType::Precommit
+            && aggregated_vote.block_hash.is_empty()
+            && round < self.round
+        {
             return Ok(());
         }
 
@@ -1103,6 +1258,10 @@ where
         } else if let Some(mut block_hash) = self.counting_vote(vote_type.clone())? {
             let qc = self.generate_qc(block_hash.clone(), vote_type.clone())?;
             self.votes.set_qc(qc.clone());
+            info!(
+                "Overlord: state broadcast a {:?} QC, height {}, round {}",
+                vote_type, qc.height, qc.round
+            );
             self.broadcast(Context::new(), OverlordMsg::AggregatedVote(qc))
                 .await;
 
@@ -1173,6 +1332,90 @@ where
             }
         }
         Ok(None)
+    }
+
+    async fn handle_signed_choke(
+        &mut self,
+        ctx: Context,
+        signed_choke: SignedChoke,
+    ) -> ConsensusResult<()> {
+        // verify signature
+        let signature = signed_choke.signature.clone();
+        let hash = self
+            .util
+            .hash(Bytes::from(encode(&signed_choke.choke.to_hash())));
+        self.util
+            .verify_signature(signature, hash, signed_choke.address.clone())
+            .map_err(|err| ConsensusError::CryptoErr(format!("{:?}", err)))?;
+
+        let choke = signed_choke.choke.clone();
+        let choke_height = choke.height;
+        let choke_round = choke.round;
+
+        // filter choke height ne self.height
+        if choke_height < self.height - 1 || choke_height > self.height {
+            return Ok(());
+        } else if choke_height == self.height - 1 {
+            return self.retransmit_qc(ctx, signed_choke.address).await;
+        }
+
+        if choke_round < self.round {
+            return Ok(());
+        }
+
+        info!(
+            "Overlord: state receive a choke of height {}, round {}",
+            choke_height, choke_round
+        );
+
+        if choke_round > self.round {
+            match choke.from {
+                UpdateFrom::PrevoteQC(qc) => {
+                    return self.handle_aggregated_vote(ctx.clone(), qc).await
+                }
+                UpdateFrom::PrecommitQC(qc) => {
+                    return self.handle_aggregated_vote(ctx.clone(), qc).await
+                }
+                UpdateFrom::ChokeQC(qc) => return self.handle_aggregated_choke(qc),
+            }
+        }
+
+        self.chokes.insert(choke_round, signed_choke);
+        self.check_choke_above_threshold()?;
+        Ok(())
+    }
+
+    fn handle_aggregated_choke(
+        &mut self,
+        aggregated_choke: AggregatedChoke,
+    ) -> ConsensusResult<()> {
+        // verify is above threshold.
+        if aggregated_choke.len() * 3 <= self.authority.current_len() * 2 {
+            return Err(ConsensusError::BrakeErr(
+                "choke qc is not above threshold".to_string(),
+            ));
+        }
+
+        // verify aggregated signature.
+        let choke = aggregated_choke.to_hash();
+        let choke_hash = self.util.hash(Bytes::from(encode(&choke)));
+        let voters = aggregated_choke.voters.clone();
+        self.util
+            .verify_aggregated_signature(aggregated_choke.signature.clone(), choke_hash, voters)
+            .map_err(|err| {
+                ConsensusError::CryptoErr(format!("choke qc signature error {:?}", err))
+            })?;
+        self.chokes.set_qc(choke.round, aggregated_choke);
+
+        self.state_machine.trigger(SMRTrigger {
+            trigger_type: TriggerType::ContinueRound,
+            source:       TriggerSource::State,
+            hash:         Hash::new(),
+            round:        Some(choke.round + 1),
+            height:       self.height,
+            wal_info:     None,
+        })?;
+        Ok(())
     }
 
     fn generate_qc(
@@ -1424,7 +1667,7 @@ where
     }
 
     async fn transmit(&self, ctx: Context, msg: OverlordMsg<T>) {
-        info!(
+        debug!(
             "Overlord: state transmit a message to leader height {}, round {}",
             self.height, self.round
         );
@@ -1476,7 +1719,7 @@ where
     }
 
     async fn broadcast(&self, ctx: Context, msg: OverlordMsg<T>) {
-        info!(
+        debug!(
             "Overlord: state broadcast a message to others height {}, round {}",
             self.height, self.round
         );
@@ -1497,6 +1740,52 @@ where
 
                 error!("Overlord: state broadcast message failed {:?}", err);
             });
+    }
+
+    fn check_choke_above_threshold(&mut self) -> ConsensusResult<()> {
+        self.chokes.print_round_choke_log(self.round);
+        if let Some(round) = self
+            .chokes
+            .max_round_above_threshold(self.authority.current_len())
+        {
+            if round < self.round {
+                return Ok(());
+            }
+
+            info!("Overlord: round {} chokes above threshold", round);
+
+            // aggregate chokes.
+            let signed_chokes = self.chokes.get_chokes(round).unwrap();
+            let mut sigs = Vec::with_capacity(signed_chokes.len());
+            let mut voters = Vec::with_capacity(signed_chokes.len());
+            for sc in signed_chokes.iter() {
+                sigs.push(sc.signature.clone());
+                voters.push(sc.address.clone());
+            }
+            let sig = self.aggregate_signatures(sigs, voters.clone())?;
+            self.chokes.set_qc(round, AggregatedChoke {
+                height: self.height,
+                signature: sig,
+                round,
+                voters,
+            });
+
+            info!(
+                "Overlord: state trigger SMR go on {} round of height {}",
+                round + 1,
+                self.height
+            );
+
+            self.state_machine.trigger(SMRTrigger {
+                trigger_type: TriggerType::ContinueRound,
+                source:       TriggerSource::State,
+                hash:         Hash::new(),
+                round:        Some(round + 1),
+                height:       self.height,
+                wal_info:     None,
+            })?;
+        }
+        Ok(())
     }
 
     async fn check_block(&mut self, ctx: Context, hash: Hash, block: T) {
@@ -1538,7 +1827,7 @@ where
             lock,
         };
         self.wal
-            .save(Bytes::from(rlp::encode(&wal_info)))
+            .save(Bytes::from(encode(&wal_info)))
             .await
             .map_err(|e| {
                 trace::error(
@@ -1648,6 +1937,10 @@ where
                         proposer:   self.address.clone(),
                     };
                     let signed_proposal = self.sign_proposal(proposal)?;
+                    info!(
+                        "Overlord: state broadcast a signed proposal height {}, round {}",
+                        self.height, self.round
+                    );
                     self.broadcast(Context::new(), OverlordMsg::SignedProposal(signed_proposal))
                         .await;
 
@@ -1676,6 +1969,10 @@ where
                 })?;
 
                 if !self.is_leader {
+                    info!(
+                        "Overlord: state transmit a signed vote, height {}, round {}",
+                        self.height, self.round
+                    );
                     self.transmit(Context::new(), OverlordMsg::SignedVote(signed_vote))
                         .await;
                 } else {
@@ -1686,6 +1983,7 @@ where
             Step::Commit => {
                 self.handle_commit(qc.block_hash.clone()).await?;
             }
+            _ => unreachable!(),
         }
         Ok(())
     }
@@ -1721,6 +2019,10 @@ where
             return *res;
         }
         false
+    }
+
+    fn set_update_from(&mut self, from_where: UpdateFrom) {
+        self.update_from_where = from_where;
     }
 
     /// Filter the proposals that do not need to be handed.
@@ -1797,6 +2099,22 @@ async fn check_current_block<U: Consensus<T>, T: Codec>(
         is_pass: true,
     })
     .map_err(|e| ConsensusError::ChannelErr(e.to_string()))
+}
+
+fn mock_init_qc() -> AggregatedVote {
+    let aggregated_signature = AggregatedSignature {
+        signature:      Signature::default(),
+        address_bitmap: Bytes::default(),
+    };
+
+    AggregatedVote {
+        signature:  aggregated_signature,
+        vote_type:  VoteType::Precommit,
+        height:     0u64,
+        round:      0u64,
+        block_hash: Hash::default(),
+        leader:     Address::default(),
+    }
 }
 
 #[cfg(test)]

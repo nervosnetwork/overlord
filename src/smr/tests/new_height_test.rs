@@ -1,4 +1,4 @@
-use crate::smr::smr_types::{Lock, SMREvent, SMRStatus, SMRTrigger, Step, TriggerType};
+use crate::smr::smr_types::{FromWhere, Lock, SMREvent, SMRStatus, SMRTrigger, Step, TriggerType};
 use crate::smr::tests::{gen_hash, trigger_test, InnerState, StateMachineTestCase};
 use crate::{error::ConsensusError, types::Hash};
 
@@ -25,6 +25,7 @@ async fn test_new_height() {
             lock_proposal: None,
             new_interval:  None,
             new_config:    None,
+            from_where:    FromWhere::PrecommitQC(u64::max_value()),
         },
         None,
         None,
@@ -53,6 +54,7 @@ async fn test_new_height() {
             lock_proposal: None,
             new_interval:  None,
             new_config:    None,
+            from_where:    FromWhere::PrecommitQC(u64::max_value()),
         },
         Some(ConsensusError::SelfCheckErr("".to_string())),
         None,
@@ -78,6 +80,7 @@ async fn test_new_height() {
             lock_proposal: None,
             new_interval:  None,
             new_config:    None,
+            from_where:    FromWhere::PrecommitQC(u64::max_value()),
         },
         Some(ConsensusError::SelfCheckErr("".to_string())),
         None,
@@ -102,6 +105,7 @@ async fn test_new_height() {
             lock_proposal: None,
             new_interval:  None,
             new_config:    None,
+            from_where:    FromWhere::PrecommitQC(u64::max_value()),
         },
         Some(ConsensusError::SelfCheckErr("".to_string())),
         None,
@@ -126,6 +130,7 @@ async fn test_new_height() {
             lock_proposal: None,
             new_interval:  None,
             new_config:    None,
+            from_where:    FromWhere::PrecommitQC(u64::max_value()),
         },
         None,
         None,
@@ -150,6 +155,7 @@ async fn test_new_height() {
             lock_proposal: None,
             new_interval:  None,
             new_config:    None,
+            from_where:    FromWhere::PrecommitQC(u64::max_value()),
         },
         None,
         None,
@@ -175,6 +181,7 @@ async fn test_new_height() {
             lock_proposal: None,
             new_interval:  None,
             new_config:    None,
+            from_where:    FromWhere::PrecommitQC(u64::max_value()),
         },
         None,
         None,

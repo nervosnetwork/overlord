@@ -98,7 +98,7 @@ where
         timer.run();
 
         // Run state.
-        state.run(rx, evt_1, resp).await?;
+        state.run(rx, evt_1, resp).await;
 
         Ok(())
     }
@@ -115,8 +115,12 @@ impl<T: Codec> OverlordHandler<T> {
 
     /// Send overlord message to the instance. Return `Err()` when the message channel is closed.
     pub fn send_msg(&self, ctx: Context, msg: OverlordMsg<T>) -> ConsensusResult<()> {
-        self.0
-            .unbounded_send((ctx, msg))
-            .map_err(|e| ConsensusError::Other(format!("Send message error {:?}", e)))
+        if self.0.is_closed() {
+            panic!("[OverlordHandler]: channel closed");
+        } else {
+            self.0
+                .unbounded_send((ctx, msg))
+                .map_err(|e| ConsensusError::Other(format!("Send message error {:?}", e)))
+        }
     }
 }

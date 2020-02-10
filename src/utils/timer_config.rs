@@ -12,6 +12,7 @@ pub struct TimerConfig {
     propose:   (u64, u64),
     prevote:   (u64, u64),
     precommit: (u64, u64),
+    brake:     (u64, u64),
 }
 
 impl TimerConfig {
@@ -21,6 +22,7 @@ impl TimerConfig {
             propose:   (24, 10),
             prevote:   (10, 10),
             precommit: (5, 10),
+            brake:     (3, 10),
         }
     }
 
@@ -32,6 +34,7 @@ impl TimerConfig {
         self.propose = config.get_propose_config();
         self.prevote = config.get_prevote_config();
         self.precommit = config.get_precommit_config();
+        self.brake = config.get_brake_config();
     }
 
     pub fn get_timeout(&self, event: SMREvent) -> ConsensusResult<Duration> {
@@ -39,6 +42,7 @@ impl TimerConfig {
             SMREvent::NewRoundInfo { .. } => Ok(self.get_propose_timeout()),
             SMREvent::PrevoteVote { .. } => Ok(self.get_prevote_timeout()),
             SMREvent::PrecommitVote { .. } => Ok(self.get_precommit_timeout()),
+            SMREvent::Brake { .. } => Ok(self.get_brake_timeout()),
             _ => Err(ConsensusError::TimerErr("No commit timer".to_string())),
         }
     }
@@ -53,5 +57,9 @@ impl TimerConfig {
 
     fn get_precommit_timeout(&self) -> Duration {
         Duration::from_millis(self.interval.get() * self.precommit.0 / self.precommit.1)
+    }
+
+    fn get_brake_timeout(&self) -> Duration {
+        Duration::from_millis(self.interval.get() * self.brake.0 / self.brake.1)
     }
 }

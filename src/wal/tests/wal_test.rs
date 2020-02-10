@@ -8,10 +8,7 @@ use rand::random;
 use crate::smr::smr_types::{SMREvent, Step};
 use crate::smr::{Event, SMR};
 use crate::state::process::State;
-use crate::types::{
-    AggregatedVote, Commit, Node, OverlordMsg, PoLC, Proof, Proposal, SignedProposal, SignedVote,
-    Vote, VoteType,
-};
+use crate::types::{AggregatedVote, Commit, Node, OverlordMsg, Proof, SignedVote, Vote, VoteType};
 use crate::wal::{WalInfo, WalLock};
 
 use super::util::*;
@@ -45,7 +42,7 @@ async fn test_process(case: WalTestCase) {
     );
 
     tokio::spawn(async move {
-        let _ = overlord.run(raw_rx, Event::new(mock_rx), tmp_rx).await;
+        overlord.run(raw_rx, Event::new(mock_rx), tmp_rx).await;
     });
 
     if let Some(output) = case.state_output {
@@ -67,158 +64,158 @@ async fn test_process(case: WalTestCase) {
 async fn test_wal() {
     let mut test_cases = Vec::new();
     let mut index = 1;
-    // case 01:
-    // propose step
-    // is leader
-    // is not lock
-    let auth_list = gen_auth_list(1);
-    let wal = WalInfo {
-        height: 0,
-        round:  0,
-        step:   Step::Propose,
-        lock:   None,
-    };
-    let event = SMREvent::NewRoundInfo {
-        height:        0,
-        round:         0,
-        lock_round:    None,
-        lock_proposal: None,
-        new_interval:  None,
-        new_config:    None,
-    };
-    let case_01 = WalTestCase {
-        address: auth_list[0].address.clone(),
-        auth_list,
-        input: wal,
-        state_output: None,
-        smr_output: Some(event),
-    };
-    test_cases.push(case_01);
+    // // case 01:
+    // // propose step
+    // // is leader
+    // // is not lock
+    // let auth_list = gen_auth_list(1);
+    // let wal = WalInfo {
+    //     height: 0,
+    //     round:  0,
+    //     step:   Step::Propose,
+    //     lock:   None,
+    // };
+    // let event = SMREvent::NewRoundInfo {
+    //     height:        0,
+    //     round:         0,
+    //     lock_round:    None,
+    //     lock_proposal: None,
+    //     new_interval:  None,
+    //     new_config:    None,
+    // };
+    // let case_01 = WalTestCase {
+    //     address: auth_list[0].address.clone(),
+    //     auth_list,
+    //     input: wal,
+    //     state_output: None,
+    //     smr_output: Some(event),
+    // };
+    // test_cases.push(case_01);
 
-    // case 02:
-    // propose step
-    // is not leader
-    // is not lock
-    let auth_list = gen_auth_list(2);
-    let wal = WalInfo {
-        height: 0,
-        round:  0,
-        step:   Step::Propose,
-        lock:   None,
-    };
-    let event = SMREvent::NewRoundInfo {
-        height:        0,
-        round:         0,
-        lock_round:    None,
-        lock_proposal: None,
-        new_interval:  None,
-        new_config:    None,
-    };
-    let case_02 = WalTestCase {
-        address: auth_list[0].address.clone(),
-        auth_list,
-        input: wal,
-        state_output: None,
-        smr_output: Some(event),
-    };
-    test_cases.push(case_02);
+    // // case 02:
+    // // propose step
+    // // is not leader
+    // // is not lock
+    // let auth_list = gen_auth_list(2);
+    // let wal = WalInfo {
+    //     height: 0,
+    //     round:  0,
+    //     step:   Step::Propose,
+    //     lock:   None,
+    // };
+    // let event = SMREvent::NewRoundInfo {
+    //     height:        0,
+    //     round:         0,
+    //     lock_round:    None,
+    //     lock_proposal: None,
+    //     new_interval:  None,
+    //     new_config:    None,
+    // };
+    // let case_02 = WalTestCase {
+    //     address: auth_list[0].address.clone(),
+    //     auth_list,
+    //     input: wal,
+    //     state_output: None,
+    //     smr_output: Some(event),
+    // };
+    // test_cases.push(case_02);
 
-    // case 03:
-    // propose step
-    // is leader
-    // is lock
-    let auth_list = gen_auth_list(1);
-    let qc = AggregatedVote {
-        signature:  mock_aggregate_signature(),
-        vote_type:  VoteType::Prevote,
-        height:     0,
-        round:      0,
-        block_hash: Bytes::from((0..32).map(|_| random::<u8>()).collect::<Vec<_>>()),
-        leader:     auth_list[0].address.clone(),
-    };
-    let lock = WalLock {
-        lock_round: 0,
-        lock_votes: qc.clone(),
-        content:    Pill::new(0),
-    };
-    let wal = WalInfo {
-        height: 0,
-        round:  1,
-        step:   Step::Propose,
-        lock:   Some(lock),
-    };
-    let proposal = Proposal {
-        height:     0,
-        round:      1,
-        content:    Pill::new(0),
-        block_hash: qc.block_hash.clone(),
-        lock:       Some(PoLC {
-            lock_round: 0,
-            lock_votes: qc.clone(),
-        }),
-        proposer:   auth_list[0].address.clone(),
-    };
-    let msg = OverlordMsg::SignedProposal(SignedProposal {
-        signature: Bytes::from(rlp::encode(&proposal)),
-        proposal,
-    });
-    let event = SMREvent::NewRoundInfo {
-        height:        0,
-        round:         1,
-        lock_round:    Some(0),
-        lock_proposal: Some(qc.block_hash.clone()),
-        new_interval:  None,
-        new_config:    None,
-    };
-    let case_03 = WalTestCase {
-        address: auth_list[0].address.clone(),
-        auth_list,
-        input: wal,
-        state_output: Some(msg),
-        smr_output: Some(event),
-    };
-    test_cases.push(case_03);
+    // // case 03:
+    // // propose step
+    // // is leader
+    // // is lock
+    // let auth_list = gen_auth_list(1);
+    // let qc = AggregatedVote {
+    //     signature:  mock_aggregate_signature(),
+    //     vote_type:  VoteType::Prevote,
+    //     height:     0,
+    //     round:      0,
+    //     block_hash: Bytes::from((0..32).map(|_| random::<u8>()).collect::<Vec<_>>()),
+    //     leader:     auth_list[0].address.clone(),
+    // };
+    // let lock = WalLock {
+    //     lock_round: 0,
+    //     lock_votes: qc.clone(),
+    //     content:    Pill::new(0),
+    // };
+    // let wal = WalInfo {
+    //     height: 0,
+    //     round:  1,
+    //     step:   Step::Propose,
+    //     lock:   Some(lock),
+    // };
+    // let proposal = Proposal {
+    //     height:     0,
+    //     round:      1,
+    //     content:    Pill::new(0),
+    //     block_hash: qc.block_hash.clone(),
+    //     lock:       Some(PoLC {
+    //         lock_round: 0,
+    //         lock_votes: qc.clone(),
+    //     }),
+    //     proposer:   auth_list[0].address.clone(),
+    // };
+    // let msg = OverlordMsg::SignedProposal(SignedProposal {
+    //     signature: Bytes::from(rlp::encode(&proposal)),
+    //     proposal,
+    // });
+    // let event = SMREvent::NewRoundInfo {
+    //     height:        0,
+    //     round:         1,
+    //     lock_round:    Some(0),
+    //     lock_proposal: Some(qc.block_hash.clone()),
+    //     new_interval:  None,
+    //     new_config:    None,
+    // };
+    // let case_03 = WalTestCase {
+    //     address: auth_list[0].address.clone(),
+    //     auth_list,
+    //     input: wal,
+    //     state_output: Some(msg),
+    //     smr_output: Some(event),
+    // };
+    // test_cases.push(case_03);
 
-    // case 04:
-    // propose step
-    // is not leader
-    // is lock
-    let auth_list = gen_auth_list(2);
-    let qc = AggregatedVote {
-        signature:  mock_aggregate_signature(),
-        vote_type:  VoteType::Prevote,
-        height:     0,
-        round:      0,
-        block_hash: Bytes::from((0..32).map(|_| random::<u8>()).collect::<Vec<_>>()),
-        leader:     auth_list[0].address.clone(),
-    };
-    let lock = WalLock {
-        lock_round: 0,
-        lock_votes: qc.clone(),
-        content:    Pill::new(0),
-    };
-    let wal = WalInfo {
-        height: 0,
-        round:  1,
-        step:   Step::Propose,
-        lock:   Some(lock),
-    };
-    let event = SMREvent::NewRoundInfo {
-        height:        0,
-        round:         1,
-        lock_round:    Some(0),
-        lock_proposal: Some(qc.block_hash.clone()),
-        new_interval:  None,
-        new_config:    None,
-    };
-    let case_04 = WalTestCase {
-        address: auth_list[0].address.clone(),
-        auth_list,
-        input: wal,
-        state_output: None,
-        smr_output: Some(event),
-    };
-    test_cases.push(case_04);
+    // // case 04:
+    // // propose step
+    // // is not leader
+    // // is lock
+    // let auth_list = gen_auth_list(2);
+    // let qc = AggregatedVote {
+    //     signature:  mock_aggregate_signature(),
+    //     vote_type:  VoteType::Prevote,
+    //     height:     0,
+    //     round:      0,
+    //     block_hash: Bytes::from((0..32).map(|_| random::<u8>()).collect::<Vec<_>>()),
+    //     leader:     auth_list[0].address.clone(),
+    // };
+    // let lock = WalLock {
+    //     lock_round: 0,
+    //     lock_votes: qc.clone(),
+    //     content:    Pill::new(0),
+    // };
+    // let wal = WalInfo {
+    //     height: 0,
+    //     round:  1,
+    //     step:   Step::Propose,
+    //     lock:   Some(lock),
+    // };
+    // let event = SMREvent::NewRoundInfo {
+    //     height:        0,
+    //     round:         1,
+    //     lock_round:    Some(0),
+    //     lock_proposal: Some(qc.block_hash.clone()),
+    //     new_interval:  None,
+    //     new_config:    None,
+    // };
+    // let case_04 = WalTestCase {
+    //     address: auth_list[0].address.clone(),
+    //     auth_list,
+    //     input: wal,
+    //     state_output: None,
+    //     smr_output: Some(event),
+    // };
+    // test_cases.push(case_04);
 
     // case 05:
     // prevote step

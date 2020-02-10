@@ -8,6 +8,11 @@ use crate::DurationConfig;
 /// SMR steps. The default step is commit step because SMR needs rich status to start a new block.
 #[derive(Serialize, Deserialize, Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Step {
+    /// Brake step, in this step:
+    /// wait for other nodes.
+    #[display(fmt = "Brake step")]
+    Brake,
+
     /// Prepose step, in this step:
     /// Firstly, each node calculate the new proposer, then:
     /// Leader:
@@ -17,6 +22,7 @@ pub enum Step {
     /// Then goto prevote step.
     #[display(fmt = "Prepose step")]
     Propose,
+
     /// Prevote step, in this step:
     /// Leader:
     ///     1. wait for others signed prevote votes,
@@ -29,6 +35,7 @@ pub enum Step {
     /// Then goto precommit step.
     #[display(fmt = "Prevote step")]
     Prevote,
+
     /// Precommit step, in this step:
     /// Leader:
     ///     1. wait for others signed precommit votes,
@@ -42,6 +49,7 @@ pub enum Step {
     /// cycle. Otherwise, goto commit step.
     #[display(fmt = "Precommit step")]
     Precommit,
+
     /// Commit step, in this step each node commit the block and wait for the rich status. After
     /// receiving the it, all nodes will goto propose step and start a new block consensus.
     #[display(fmt = "Commit step")]
@@ -57,10 +65,11 @@ impl Default for Step {
 impl Into<u8> for Step {
     fn into(self) -> u8 {
         match self {
-            Step::Propose => 0,
-            Step::Prevote => 1,
-            Step::Precommit => 2,
-            Step::Commit => 3,
+            Step::Brake => 0,
+            Step::Propose => 1,
+            Step::Prevote => 2,
+            Step::Precommit => 3,
+            Step::Commit => 4,
         }
     }
 }
@@ -68,13 +77,25 @@ impl Into<u8> for Step {
 impl From<u8> for Step {
     fn from(s: u8) -> Self {
         match s {
-            0 => Step::Propose,
-            1 => Step::Prevote,
-            2 => Step::Precommit,
-            3 => Step::Commit,
+            0 => Step::Brake,
+            1 => Step::Propose,
+            2 => Step::Prevote,
+            3 => Step::Precommit,
+            4 => Step::Commit,
             _ => panic!("Invalid vote type!"),
         }
     }
+}
+
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum FromWhere {
+    ///
+    PrevoteQC(u64),
+    ///
+    PrecommitQC(u64),
+    ///
+    ChokeQC(u64),
 }
 
 /// SMR event that state and timer monitor this.
@@ -91,9 +112,11 @@ pub enum SMREvent {
         round:         u64,
         lock_round:    Option<u64>,
         lock_proposal: Option<Hash>,
+        from_where:    FromWhere,
         new_interval:  Option<u64>,
         new_config:    Option<DurationConfig>,
     },
+
     /// Prevote event,
     /// for state: transmit a prevote vote,
     /// for timer: set a prevote step timer.
@@ -120,6 +143,13 @@ pub enum SMREvent {
     /// for timer: do nothing.
     #[display(fmt = "Commit event")]
     Commit(Hash),
+
+    /// Brake event,
+    /// for state: broadcast Choke message,
+    /// for timer: set a retry timeout timer.
+    #[display(fmt = "Brake event")]
+    Brake { height: u64, round: u64 },
+
     /// Stop event,
     /// for state: stop process,
     /// for timer: stop process.
@@ -142,9 +172,15 @@ pub enum TriggerType {
     /// New Height trigger.
     #[display(fmt = "New height")]
     NewHeight(SMRStatus),
-    /// Wal info
-    #[display(fmt = "WalInfo")]
+    /// Wal infomation.
+    #[display(fmt = "Wal Infomation")]
     WalInfo,
+    /// Brake timeout.
+    #[display(fmt = "Brake Timeout")]
+    BrakeTimeout,
+    /// Continue new round trigger.
+    #[display(fmt = "Continue Round")]
+    ContinueRound,
 }
 
 /// SMR trigger sources.
