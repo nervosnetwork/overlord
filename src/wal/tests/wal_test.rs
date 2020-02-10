@@ -42,7 +42,7 @@ async fn test_process(case: WalTestCase) {
     );
 
     tokio::spawn(async move {
-        let _ = overlord.run(raw_rx, Event::new(mock_rx), tmp_rx).await;
+        overlord.run(raw_rx, Event::new(mock_rx), tmp_rx).await;
     });
 
     if let Some(output) = case.state_output {

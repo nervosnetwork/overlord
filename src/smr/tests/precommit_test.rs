@@ -109,7 +109,7 @@ async fn test_precommit_trigger() {
         InnerState::new(0, Step::Precommit, Hash::new(), Some(lock)),
         SMRTrigger::new(hash_new.clone(), TriggerType::PrecommitQC, Some(0), 0),
         SMREvent::Commit(hash_new.clone()),
-        Some(ConsensusError::SelfCheckErr("".to_string())),
+        Some(ConsensusError::CorrectnessErr("Fork".to_string())),
         Some((0, hash_new)),
     ));
 
@@ -120,13 +120,8 @@ async fn test_precommit_trigger() {
     test_cases.push(StateMachineTestCase::new(
         InnerState::new(0, Step::Precommit, hash.clone(), None),
         SMRTrigger::new(hash.clone(), TriggerType::PrecommitQC, Some(0), 0),
-        SMREvent::PrecommitVote {
-            height:     0u64,
-            round:      0u64,
-            block_hash: hash.clone(),
-            lock_round: Some(0),
-        },
-        Some(ConsensusError::SelfCheckErr("".to_string())),
+        SMREvent::Commit(hash.clone()),
+        None,
         Some((0, hash)),
     ));
 
