@@ -1,4 +1,3 @@
-use std::ops::Drop;
 use std::sync::Arc;
 
 use creep::Context;
@@ -108,12 +107,6 @@ where
 /// An overlord handler to send messages to an overlord instance.
 #[derive(Clone, Debug)]
 pub struct OverlordHandler<T: Codec>(UnboundedSender<(Context, OverlordMsg<T>)>);
-
-impl<T: Codec> Drop for OverlordHandler<T> {
-    fn drop(&mut self) {
-        log::error!("Overlord: OverlordHandler dropping!");
-    }
-}
 
 impl<T: Codec> OverlordHandler<T> {
     fn new(tx: UnboundedSender<(Context, OverlordMsg<T>)>) -> Self {

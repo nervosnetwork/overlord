@@ -1,6 +1,5 @@
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
-use std::ops::Drop;
 use std::string::ToString;
 use std::time::{Duration, Instant};
 use std::{ops::BitXor, sync::Arc};
@@ -70,18 +69,6 @@ pub struct State<T: Codec, F: Consensus<T>, C: Crypto, W: Wal> {
     function: Arc<F>,
     wal:      Arc<W>,
     util:     C,
-}
-
-impl<T, F, C, W> Drop for State<T, F, C, W>
-where
-    T: Codec,
-    F: Consensus<T>,
-    C: Crypto,
-    W: Wal,
-{
-    fn drop(&mut self) {
-        error!("Overlord: State dropping!");
-    }
 }
 
 impl<T, F, C, W> State<T, F, C, W>

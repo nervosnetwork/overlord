@@ -1,11 +1,10 @@
-use std::ops::Drop;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use derive_more::Display;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::Stream;
-use log::{debug, error, info};
+use log::{debug, info};
 use moodyblues_sdk::trace;
 
 use crate::smr::smr_types::{
@@ -75,12 +74,6 @@ impl Stream for StateMachine {
                 }
             }
         }
-    }
-}
-
-impl Drop for StateMachine {
-    fn drop(&mut self) {
-        error!("Overlord: SMR dropping!");
     }
 }
 

@@ -80,12 +80,6 @@ impl Stream for Timer {
     }
 }
 
-impl Drop for Timer {
-    fn drop(&mut self) {
-        error!("Overlord: Timer dropping!");
-    }
-}
-
 impl Timer {
     pub fn new(
         event: Event,
