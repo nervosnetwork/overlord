@@ -250,7 +250,12 @@ impl Speaker {
             hearing,
             consensus_speech,
         ));
-        let overlord = Overlord::new(name, Arc::clone(&brain), crypto, Arc::new(MockWal));
+        let overlord = Overlord::new(
+            name,
+            Arc::clone(&brain),
+            Arc::new(crypto),
+            Arc::new(MockWal),
+        );
         let overlord_handler = overlord.get_handler();
 
         overlord_handler

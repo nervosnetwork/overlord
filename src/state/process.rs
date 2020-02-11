@@ -68,7 +68,7 @@ pub struct State<T: Codec, F: Consensus<T>, C: Crypto, W: Wal> {
     resp_tx:  UnboundedSender<VerifyResp>,
     function: Arc<F>,
     wal:      Arc<W>,
-    util:     C,
+    util:     Arc<C>,
 }
 
 impl<T, F, C, W> State<T, F, C, W>
@@ -85,7 +85,7 @@ where
         interval: u64,
         mut authority_list: Vec<Node>,
         consensus: Arc<F>,
-        crypto: C,
+        crypto: Arc<C>,
         wal_engine: Arc<W>,
     ) -> (Self, UnboundedReceiver<VerifyResp>) {
         let (tx, rx) = unbounded();

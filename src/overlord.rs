@@ -19,7 +19,7 @@ pub struct Overlord<T: Codec, F: Consensus<T>, C: Crypto, W: Wal> {
     state_rx:  Pile<UnboundedReceiver<(Context, OverlordMsg<T>)>>,
     address:   Pile<Address>,
     consensus: Pile<Arc<F>>,
-    crypto:    Pile<C>,
+    crypto:    Pile<Arc<C>>,
     wal:       Pile<Arc<W>>,
 }
 
@@ -31,7 +31,7 @@ where
     W: Wal + 'static,
 {
     /// Create a new overlord and return an overlord instance with an unbounded receiver.
-    pub fn new(address: Address, consensus: Arc<F>, crypto: C, wal: Arc<W>) -> Self {
+    pub fn new(address: Address, consensus: Arc<F>, crypto: Arc<C>, wal: Arc<W>) -> Self {
         let (tx, rx) = unbounded();
         Overlord {
             sender:    RwLock::new(Some(tx)),
