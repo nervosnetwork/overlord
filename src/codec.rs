@@ -3,9 +3,9 @@ use rlp::{Decodable, DecoderError, Encodable, Prototype, Rlp, RlpStream};
 
 use crate::smr::smr_types::Step;
 use crate::types::{
-    Address, AggregatedChoke, AggregatedSignature, AggregatedVote, Choke, Commit, Feed, Hash,
-    HashChoke, Node, PoLC, Proof, Proposal, Signature, SignedChoke, SignedProposal, SignedVote,
-    Status, UpdateFrom, Vote, VoteType,
+    Address, AggregatedChoke, AggregatedSignature, AggregatedVote, Choke, Commit, Hash, HashChoke,
+    Node, PoLC, Proof, Proposal, Signature, SignedChoke, SignedProposal, SignedVote, Status,
+    UpdateFrom, Vote, VoteType,
 };
 use crate::wal::{WalInfo, WalLock};
 use crate::{Codec, DurationConfig};
@@ -406,38 +406,6 @@ impl Decodable for Node {
     }
 }
 
-// impl Encodable and Decodable trait for Feed
-impl<T: Codec> Encodable for Feed<T> {
-    fn rlp_append(&self, s: &mut RlpStream) {
-        let content = self.content.encode().unwrap().to_vec();
-        s.begin_list(3)
-            .append(&self.height)
-            .append(&self.block_hash.to_vec())
-            .append(&content);
-    }
-}
-
-impl<T: Codec> Decodable for Feed<T> {
-    fn decode(r: &Rlp) -> Result<Self, DecoderError> {
-        match r.prototype()? {
-            Prototype::List(3) => {
-                let height: u64 = r.val_at(0)?;
-                let tmp: Vec<u8> = r.val_at(1)?;
-                let block_hash = Hash::from(tmp);
-                let tmp: Vec<u8> = r.val_at(2)?;
-                let content = Codec::decode(Bytes::from(tmp))
-                    .map_err(|_| DecoderError::Custom("Codec decode error."))?;
-                Ok(Feed {
-                    height,
-                    block_hash,
-                    content,
-                })
-            }
-            _ => Err(DecoderError::RlpInconsistentLengthAndData),
-        }
-    }
-}
-
 impl<T: Codec> Encodable for WalLock<T> {
     fn rlp_append(&self, s: &mut RlpStream) {
         let content = self.content.encode().unwrap().to_vec();
@@ -803,18 +771,6 @@ mod test {
         }
     }
 
-    impl<T: Codec> Feed<T> {
-        fn new(content: T) -> Self {
-            let height = random::<u64>();
-            let block_hash = gen_hash();
-            Feed {
-                height,
-                content,
-                block_hash,
-            }
-        }
-    }
-
     impl<T: Codec> WalInfo<T> {
         fn new(content: Option<T>) -> Self {
             let lock = if let Some(tmp) = content {
@@ -911,11 +867,6 @@ mod test {
         let status = Status::new(Some(3000), false);
         let res: Status = rlp::decode(&status.rlp_bytes()).unwrap();
         assert_eq!(status, res);
-
-        // Test Feed
-        let feed = Feed::new(Pill::new());
-        let res: Feed<Pill> = rlp::decode(&feed.rlp_bytes()).unwrap();
-        assert_eq!(feed, res);
 
         // Test Aggregated Choke
         let aggregated_choke = AggregatedChoke::new();

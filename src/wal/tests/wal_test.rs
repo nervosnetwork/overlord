@@ -37,7 +37,7 @@ async fn test_process(case: WalTestCase) {
         3000,
         case.auth_list.clone(),
         Arc::new(engine),
-        MockCrypto,
+        Arc::new(MockCrypto),
         Arc::new(MockWal::new(case.input.clone())),
     );
 
