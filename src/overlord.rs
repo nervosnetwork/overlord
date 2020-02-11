@@ -91,6 +91,8 @@ where
             (tmp_rx, tmp_state, tmp_resp)
         };
 
+        log::info!("Overlord start running");
+
         // Run SMR.
         smr_provider.run();
 

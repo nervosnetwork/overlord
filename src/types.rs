@@ -122,14 +122,14 @@ pub enum OverlordMsg<T: Codec> {
     Commit(Commit<T>),
 }
 
-///
+/// How does state goto the current round.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum UpdateFrom {
-    ///
+    /// From a prevote quorum certificate.
     PrevoteQC(AggregatedVote),
-    ///
+    /// From a precommit quorum certificate.
     PrecommitQC(AggregatedVote),
-    ///
+    /// From a choke quorum certificate.
     ChokeQC(AggregatedChoke),
 }
 
@@ -380,45 +380,35 @@ impl Node {
     }
 }
 
-/// A feed.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Feed<T: Codec> {
-    /// Height of the proposal.
-    pub(crate) height: u64,
-    /// Feed content.
-    pub(crate) content: T,
-    /// The block hash.
-    pub(crate) block_hash: Hash,
-}
-
 /// A verify response.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct VerifyResp {
+pub(crate) struct VerifyResp {
     /// The height of the verified block.
-    pub height: u64,
+    pub(crate) height: u64,
+    /// The round of the verified block.
+    pub(crate) round: u64,
     /// Verified proposal hash.
-    pub block_hash: Hash,
+    pub(crate) block_hash: Hash,
     /// The block is pass or not.
-    pub is_pass: bool,
+    pub(crate) is_pass: bool,
 }
 
-///
+/// An aggregated choke.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct AggregatedChoke {
-    ///
+    /// The height of the aggregated choke.
     pub height: u64,
-    ///
+    /// The round of the aggregated choke.
     pub round: u64,
-    ///
+    /// The aggregated signature of the aggregated choke.
     pub signature: Signature,
-    ///
+    /// The voters of the aggregated choke.
     pub voters: Vec<Address>,
 }
 
 #[allow(clippy::len_without_is_empty)]
 impl AggregatedChoke {
-    ///
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.voters.len()
     }
 
@@ -430,25 +420,25 @@ impl AggregatedChoke {
     }
 }
 
-///
+/// A signed choke.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct SignedChoke {
-    ///
+    /// The signature of the choke.
     pub signature: Signature,
-    ///
+    /// The choke message.
     pub choke: Choke,
-    ///
+    /// The choke address.
     pub address: Address,
 }
 
-/// A choke message.
+/// A choke.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Choke {
-    ///
+    /// The height of the choke.
     pub height: u64,
-    ///
+    /// The round of the choke.
     pub round: u64,
-    ///
+    /// How does state goto the current round.
     pub from: UpdateFrom,
 }
 
