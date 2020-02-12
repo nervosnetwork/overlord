@@ -1354,7 +1354,9 @@ where
         let choke_round = choke.round;
 
         // filter choke height ne self.height
-        if choke_height < self.height - 1 || choke_height > self.height {
+        if choke_height < self.height - 1 {
+            return Ok(());
+        } else if choke_height > self.height && choke_round > 0 {
             return Ok(());
         } else if choke_height == self.height - 1 {
             return self.retransmit_qc(ctx, signed_choke.address).await;
@@ -1371,7 +1373,7 @@ where
             hex::encode(signed_choke.address.clone())
         );
 
-        if choke_round > self.round {
+        if choke_height > self.height || choke_round > self.round {
             match choke.from {
                 UpdateFrom::PrevoteQC(qc) => {
                     return self.handle_aggregated_vote(ctx.clone(), qc).await
