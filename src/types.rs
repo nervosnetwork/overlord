@@ -122,6 +122,15 @@ pub enum OverlordMsg<T: Codec> {
     Commit(Commit<T>),
 }
 
+impl<T: Codec> OverlordMsg<T> {
+    pub(crate) fn is_rich_status(&self) -> bool {
+        match self {
+            OverlordMsg::RichStatus(_) => true,
+            _ => false,
+        }
+    }
+}
+
 /// How does state goto the current round.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum UpdateFrom {
@@ -334,6 +343,14 @@ impl Into<SMRStatus> for Status {
     }
 }
 
+impl Status {
+    pub(crate) fn is_consensus_node(&self, address: &Address) -> bool {
+        self.authority_list
+            .iter()
+            .any(|node| node.address == address)
+    }
+}
+
 /// A node info.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Node {
@@ -455,4 +472,37 @@ impl Choke {
 pub(crate) struct HashChoke {
     pub(crate) height: u64,
     pub(crate) round:  u64,
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use rand::random;
+
+    fn gen_address() -> Address {
+        Address::from((0..32).map(|_| random::<u8>()).collect::<Vec<_>>())
+    }
+
+    fn mock_node() -> Node {
+        Node::new(gen_address())
+    }
+
+    fn mock_status() -> Status {
+        Status {
+            height:         random::<u64>(),
+            interval:       None,
+            timer_config:   None,
+            authority_list: vec![mock_node(), mock_node()],
+        }
+    }
+
+    #[test]
+    fn test_consensus_power() {
+        let status = mock_status();
+        let consensus_node = status.authority_list[0].address.clone();
+        let sync_node = gen_address();
+
+        assert!(status.is_consensus_node(&consensus_node));
+        assert!(!status.is_consensus_node(&sync_node));
+    }
 }

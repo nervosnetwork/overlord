@@ -64,6 +64,7 @@ pub struct State<T: Codec, F: Consensus<T>, C: Crypto, W: Wal> {
     update_from_where:   UpdateFrom,
     height_start:        Instant,
     block_interval:      u64,
+    consensus_power:     bool,
 
     resp_tx:  UnboundedSender<VerifyResp>,
     function: Arc<F>,
@@ -109,6 +110,7 @@ where
             update_from_where:   UpdateFrom::PrecommitQC(mock_init_qc()),
             height_start:        Instant::now(),
             block_interval:      interval,
+            consensus_power:     false,
 
             resp_tx:  tx,
             function: consensus,
@@ -139,11 +141,19 @@ where
                     }
                 }
                 evt = event.next() => {
+                    if !self.consensus_power {
+                        continue;
+                    }
+
                     if let Err(e) = self.handle_event(evt).await{
                         error!("Overlord: state {:?} error", e);
                     }
                 }
                 res = verify_resp.next() => {
+                    if !self.consensus_power {
+                        continue;
+                    }
+
                     if let Err(e) = self.handle_resp(res) {
                         error!("Overlord: state {:?} error", e);
                     }
@@ -159,6 +169,10 @@ where
     ) -> ConsensusResult<()> {
         let msg = msg.ok_or_else(|| ConsensusError::Other("Message sender dropped".to_string()))?;
         let (ctx, raw) = (msg.0, msg.1);
+
+        if !self.consensus_power && !raw.is_rich_status() {
+            return Ok(());
+        }
 
         match raw {
             OverlordMsg::SignedProposal(sp) => {
@@ -424,8 +438,18 @@ where
         let new_height = status.height;
         self.height = new_height;
         self.round = INIT_ROUND;
-        info!("Overlord: state goto new height {}", self.height);
 
+        // Check the consensus power.
+        self.consensus_power = status.is_consensus_node(&self.address);
+        if !self.consensus_power {
+            info!(
+                "Overlord: self does not have consensus power height {}",
+                new_height
+            );
+            return Ok(());
+        }
+
+        info!("Overlord: state goto new height {}", self.height);
         trace::start_block(new_height);
 
         // Update height and authority list.
