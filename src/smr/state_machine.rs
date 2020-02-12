@@ -435,7 +435,6 @@ impl StateMachine {
         }
 
         self.check()?;
-        self.check_polc(precommit_hash.clone(), precommit_round)?;
         self.throw_event(SMREvent::Commit(precommit_hash))?;
         self.goto_step(Step::Commit);
         Ok(())
@@ -452,22 +451,22 @@ impl StateMachine {
         Ok(())
     }
 
-    // Check PoLC when triggered precommit QC by state. If the block hash of the QC is equal to self
-    // lock, change self round and do commit, otherwise, it may be fork.
-    fn check_polc(&mut self, hash: Hash, round: u64) -> ConsensusResult<()> {
-        if let Some(lock) = self.lock.as_mut() {
-            if lock.hash != hash {
-                return Err(ConsensusError::CorrectnessErr("Fork".to_string()));
-            } else {
-                lock.round = round;
-            }
-        } else {
-            self.lock = Some(Lock { hash, round });
-        }
+    // // Check PoLC when triggered precommit QC by state. If the block hash of the QC is equal to
+    // self // lock, change self round and do commit, otherwise, it may be fork.
+    // fn check_polc(&mut self, hash: Hash, round: u64) -> ConsensusResult<()> {
+    //     if let Some(lock) = self.lock.as_mut() {
+    //         if lock.hash != hash {
+    //             return Err(ConsensusError::CorrectnessErr("Fork".to_string()));
+    //         } else {
+    //             lock.round = round;
+    //         }
+    //     } else {
+    //         self.lock = Some(Lock { hash, round });
+    //     }
 
-        self.round = round;
-        Ok(())
-    }
+    //     self.round = round;
+    //     Ok(())
+    // }
 
     /// Goto new height and clear everything.
     fn goto_new_height(&mut self, height: u64) {

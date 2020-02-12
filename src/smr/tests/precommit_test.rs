@@ -9,18 +9,6 @@ async fn test_precommit_trigger() {
     let mut index = 1;
     let mut test_cases: Vec<StateMachineTestCase> = Vec::new();
 
-    // Test case 01:
-    //      self proposal is not empty and not lock, precommit is not nil.
-    // The output should be commit to the precommit hash.
-    let hash = gen_hash();
-    test_cases.push(StateMachineTestCase::new(
-        InnerState::new(0, Step::Precommit, Hash::new(), None),
-        SMRTrigger::new(hash.clone(), TriggerType::PrecommitQC, Some(0), 0),
-        SMREvent::Commit(hash.clone()),
-        None,
-        Some((0, hash)),
-    ));
-
     // Test case 02:
     //      self proposal is not empty and not lock, precommit is nil.
     // The output should be new round info without lock.
@@ -109,18 +97,6 @@ async fn test_precommit_trigger() {
         InnerState::new(0, Step::Precommit, Hash::new(), Some(lock)),
         SMRTrigger::new(hash_new.clone(), TriggerType::PrecommitQC, Some(0), 0),
         SMREvent::Commit(hash_new.clone()),
-        Some(ConsensusError::CorrectnessErr("Fork".to_string())),
-        Some((0, hash_new)),
-    ));
-
-    // Test case 07:
-    //      self proposal is not empty and without lock, precommit is not nil.
-    // This is an incorrect situation, the process can not pass self check.
-    let hash = gen_hash();
-    test_cases.push(StateMachineTestCase::new(
-        InnerState::new(0, Step::Precommit, hash.clone(), None),
-        SMRTrigger::new(hash.clone(), TriggerType::PrecommitQC, Some(0), 0),
-        SMREvent::Commit(hash.clone()),
         None,
         Some((0, hash)),
     ));
@@ -157,21 +133,6 @@ async fn test_precommit_trigger() {
     //     Some(ConsensusError::RoundDiff { local: 1, vote: 0 }),
     //     Some((0, hash)),
     // ));
-
-    // Test case 11:
-    //      self proposal is not empty and with a lock, precommit is not nil. However, precommit
-    //      hash is not equal to self lock hash.
-    // This is extremely dangerous because it can lead to fork. The process will return
-    // correctness err.
-    let hash = gen_hash();
-    let lock = Lock::new(0, hash.clone());
-    test_cases.push(StateMachineTestCase::new(
-        InnerState::new(0, Step::Precommit, hash.clone(), Some(lock)),
-        SMRTrigger::new(gen_hash(), TriggerType::PrecommitQC, Some(0), 0),
-        SMREvent::Commit(hash.clone()),
-        Some(ConsensusError::CorrectnessErr("Fork".to_string())),
-        Some((0, hash)),
-    ));
 
     for case in test_cases.into_iter() {
         println!("Precommit test {}/9", index);
