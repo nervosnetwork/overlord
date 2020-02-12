@@ -1613,7 +1613,16 @@ where
         signatures: Vec<Signature>,
         voters: Vec<Address>,
     ) -> ConsensusResult<Signature> {
-        debug!("Overlord: state aggregate signatures");
+        let pretty_voter = voters
+            .iter()
+            .map(|addr| hex::encode(addr.clone()))
+            .collect::<Vec<_>>();
+
+        info!(
+            "Overlord: state aggregate signatures height {}, round {}, voters {:?}",
+            self.height, self.round, pretty_voter
+        );
+
         let signature = self
             .util
             .aggregate_signatures(signatures, voters)
@@ -1659,6 +1668,16 @@ where
             .authority
             .get_voters(&signature.address_bitmap, height == self.height)?;
         voters.sort();
+        
+        let pretty_voter = voters
+            .iter()
+            .map(|addr| hex::encode(addr.clone()))
+            .collect::<Vec<_>>();
+
+        info!(
+            "Overlord: state verify aggregated signature, height {}, round {}, voters {:?}",
+            self.height, self.round, pretty_voter
+        );
 
         self.util
             .verify_aggregated_signature(
