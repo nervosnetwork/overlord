@@ -1668,7 +1668,7 @@ where
             .authority
             .get_voters(&signature.address_bitmap, height == self.height)?;
         voters.sort();
-        
+
         let pretty_voter = voters
             .iter()
             .map(|addr| hex::encode(addr.clone()))
