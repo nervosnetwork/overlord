@@ -751,35 +751,6 @@ where
         vote_type: VoteType,
         lock_round: Option<u64>,
     ) -> ConsensusResult<()> {
-        // If the vote block hash is empty, do nothing.
-        if hash.is_empty() {
-            // If SMR is trigger by timer, the wal step should be the next step.
-            let step = match vote_type {
-                VoteType::Prevote => Step::Precommit,
-                VoteType::Precommit => Step::Propose,
-            };
-
-            let lock = if let Some(round) = lock_round {
-                let qc = self
-                    .votes
-                    .get_qc_by_id(self.height, round, VoteType::Prevote)?;
-                let content = self
-                    .hash_with_block
-                    .get(&qc.block_hash)
-                    .ok_or_else(|| ConsensusError::Other("lose whole block".to_string()))?;
-
-                Some(WalLock {
-                    lock_round: round,
-                    lock_votes: qc,
-                    content:    content.clone(),
-                })
-            } else {
-                None
-            };
-            self.save_wal(step, lock).await?;
-            return Ok(());
-        }
-
         info!(
             "Overlord: state receive {:?} vote event height {}, round {}, hash {:?}",
             vote_type.clone(),
