@@ -1325,9 +1325,7 @@ where
         let choke_round = choke.round;
 
         // filter choke height ne self.height
-        if choke_height < self.height - 1 {
-            return Ok(());
-        } else if choke_height > self.height && choke_round > 0 {
+        if choke_height < self.height - 1 || (choke_height > self.height && choke_round > 0) {
             return Ok(());
         } else if choke_height == self.height - 1 {
             return self.retransmit_qc(ctx, signed_choke.address).await;
