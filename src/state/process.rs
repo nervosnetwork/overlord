@@ -665,6 +665,7 @@ where
         })?;
 
         self.check_block(ctx, hash, block).await;
+        self.vote_process(VoteType::Prevote, lock_round).await?;
         Ok(())
     }
 
