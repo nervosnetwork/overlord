@@ -435,6 +435,14 @@ where
         status: Status,
         get_last_flag: bool,
     ) -> ConsensusResult<()> {
+        if status.height <= self.height {
+            warn!(
+                "Overlord: state receive a outdated status, height {}, self height {}",
+                status.height, self.height
+            );
+            return Ok(());
+        }
+
         let new_height = status.height;
         self.height = new_height;
         self.round = INIT_ROUND;
@@ -658,6 +666,7 @@ where
         })?;
 
         self.check_block(ctx, hash, block).await;
+        self.vote_process(VoteType::Prevote, lock_round).await?;
         Ok(())
     }
 
@@ -1238,9 +1247,9 @@ where
                     hex::encode(block_hash.clone())
                 );
 
-                // Save wal with the lastest lock.
-                self.save_wal_before_vote(vote_type.clone().into(), Some(self.round))
-                    .await?;
+                // // Save wal with the lastest lock.
+                // self.save_wal_before_vote(vote_type.clone().into(), Some(self.round))
+                //     .await?;
                 self.state_machine.trigger(SMRTrigger {
                     trigger_type: qc.vote_type.clone().into(),
                     source:       TriggerSource::State,
@@ -1289,9 +1298,9 @@ where
                 hex::encode(block_hash.clone())
             );
 
-            // Save wal with the lastest lock.
-            self.save_wal_before_vote(vote_type.clone().into(), Some(self.round))
-                .await?;
+            // // Save wal with the lastest lock.
+            // self.save_wal_before_vote(vote_type.clone().in  to(), Some(self.round))
+            //     .await?;
             self.state_machine.trigger(SMRTrigger {
                 trigger_type: vote_type.clone().into(),
                 source:       TriggerSource::State,
