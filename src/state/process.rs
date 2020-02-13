@@ -435,6 +435,13 @@ where
         status: Status,
         get_last_flag: bool,
     ) -> ConsensusResult<()> {
+        if status.height <= self.height {
+            warn!(
+                "Overlord: state receive a outdated status, height {}, self height {}",
+                status.height, self.height
+            );
+        }
+
         let new_height = status.height;
         self.height = new_height;
         self.round = INIT_ROUND;
