@@ -15,6 +15,8 @@ use crate::DurationConfig;
 use crate::{error::ConsensusError, ConsensusResult, INIT_HEIGHT, INIT_ROUND};
 use crate::{types::Hash, utils::timer_config::TimerConfig};
 
+const MAX_TIMEOUT_COEF: u32 = 5;
+
 /// Overlord timer used futures timer which is powered by a timer heap. When monitor a SMR event,
 /// timer will get timeout interval from timer config, then set a delay. When the timeout expires,
 #[derive(Debug)]
@@ -144,8 +146,8 @@ impl Timer {
         let mut interval = self.config.get_timeout(event.clone())?;
         if !is_brake_timer {
             let mut coef = self.round as u32;
-            if coef > 10 {
-                coef = 10;
+            if coef > MAX_TIMEOUT_COEF {
+                coef = MAX_TIMEOUT_COEF;
             }
             interval *= 2u32.pow(coef);
         }
