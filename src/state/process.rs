@@ -1920,6 +1920,7 @@ where
 
         info!("overlord: start from wal {:?}", wal_info);
         let wal_info = wal_info.unwrap();
+        self.consensus_power = true;
         self.height = wal_info.height;
         self.round = wal_info.round;
         self.is_leader = self.is_proposer()?;
