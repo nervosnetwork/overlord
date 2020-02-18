@@ -1039,7 +1039,7 @@ where
 
         // Build the quorum certificate needs to aggregate signatures into an aggregate
         // signature besides the address bitmap.
-        let mut block_hash = block_hash.unwrap();
+        let block_hash = block_hash.unwrap();
         let qc = self.generate_qc(block_hash.clone(), vote_type.clone())?;
 
         debug!(
@@ -1059,12 +1059,7 @@ where
 
         self.broadcast(ctx, OverlordMsg::AggregatedVote(qc)).await;
 
-        if vote_type == VoteType::Prevote {
-            match self.check_full_txs(block_hash) {
-                Some(tmp) => block_hash = tmp,
-                None => return Ok(()),
-            }
-        } else if !self.try_get_full_txs(&block_hash) {
+        if !self.try_get_full_txs(&block_hash) {
             return Ok(());
         }
 
@@ -1221,22 +1216,11 @@ where
                 .votes
                 .get_qc_by_id(self.height, self.round, vote_type.clone())
             {
-                let mut block_hash = qc.block_hash.clone();
-                if !block_hash.is_empty() {
-                    if vote_type == VoteType::Prevote {
-                        match self.check_full_txs(block_hash) {
-                            Some(tmp) => block_hash = tmp,
-                            None => {
-                                self.save_wal_before_vote(vote_type.into(), lock_round)
-                                    .await?;
-                                return Ok(());
-                            }
-                        }
-                    } else if !self.try_get_full_txs(&block_hash) {
-                        self.save_wal_before_vote(vote_type.into(), lock_round)
-                            .await?;
-                        return Ok(());
-                    }
+                let block_hash = qc.block_hash.clone();
+                if !self.try_get_full_txs(&block_hash) {
+                    self.save_wal_before_vote(vote_type.into(), lock_round)
+                        .await?;
+                    return Ok(());
                 }
 
                 info!(
@@ -1260,9 +1244,10 @@ where
                 })?;
                 return Ok(());
             }
-        } else if let Some(mut block_hash) = self.counting_vote(vote_type.clone())? {
+        } else if let Some(block_hash) = self.counting_vote(vote_type.clone())? {
             let qc = self.generate_qc(block_hash.clone(), vote_type.clone())?;
             self.votes.set_qc(qc.clone());
+
             info!(
                 "Overlord: state broadcast a {:?} QC, height {}, round {}, hash {:?}",
                 vote_type,
@@ -1270,24 +1255,13 @@ where
                 qc.round,
                 hex::encode(block_hash.clone())
             );
+
             self.broadcast(Context::new(), OverlordMsg::AggregatedVote(qc))
                 .await;
-
-            if !block_hash.is_empty() {
-                if vote_type == VoteType::Prevote {
-                    match self.check_full_txs(block_hash) {
-                        Some(tmp) => block_hash = tmp,
-                        None => {
-                            self.save_wal_before_vote(vote_type.into(), lock_round)
-                                .await?;
-                            return Ok(());
-                        }
-                    }
-                } else if !self.try_get_full_txs(&block_hash) {
-                    self.save_wal_before_vote(vote_type.into(), lock_round)
-                        .await?;
-                    return Ok(());
-                }
+            if !self.try_get_full_txs(&block_hash) {
+                self.save_wal_before_vote(vote_type.into(), lock_round)
+                    .await?;
+                return Ok(());
             }
 
             info!(
@@ -2038,18 +2012,12 @@ where
         Ok(Some(info))
     }
 
-    fn check_full_txs(&mut self, hash: Hash) -> Option<Hash> {
-        if let Some(res) = self.is_full_transcation.get(&hash) {
-            if *res {
-                return Some(hash);
-            }
-        }
-        None
-    }
-
+    /// When block hash is empty, return true directly.
     fn try_get_full_txs(&self, hash: &Hash) -> bool {
         debug!("Overlord: state check if get full transcations");
-        if let Some(res) = self.is_full_transcation.get(hash) {
+        if hash.is_empty() {
+            return true;
+        } else if let Some(res) = self.is_full_transcation.get(hash) {
             return *res;
         }
         false
