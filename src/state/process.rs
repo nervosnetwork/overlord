@@ -1222,21 +1222,20 @@ where
                 .get_qc_by_id(self.height, self.round, vote_type.clone())
             {
                 let mut block_hash = qc.block_hash.clone();
-                if !block_hash.is_empty() {
-                    if vote_type == VoteType::Prevote {
-                        match self.check_full_txs(block_hash) {
-                            Some(tmp) => block_hash = tmp,
-                            None => {
-                                self.save_wal_before_vote(vote_type.into(), lock_round)
-                                    .await?;
-                                return Ok(());
-                            }
+
+                if vote_type == VoteType::Prevote {
+                    match self.check_full_txs(block_hash) {
+                        Some(tmp) => block_hash = tmp,
+                        None => {
+                            self.save_wal_before_vote(vote_type.into(), lock_round)
+                                .await?;
+                            return Ok(());
                         }
-                    } else if !self.try_get_full_txs(&block_hash) {
-                        self.save_wal_before_vote(vote_type.into(), lock_round)
-                            .await?;
-                        return Ok(());
                     }
+                } else if !self.try_get_full_txs(&block_hash) {
+                    self.save_wal_before_vote(vote_type.into(), lock_round)
+                        .await?;
+                    return Ok(());
                 }
 
                 info!(
@@ -1273,21 +1272,19 @@ where
             self.broadcast(Context::new(), OverlordMsg::AggregatedVote(qc))
                 .await;
 
-            if !block_hash.is_empty() {
-                if vote_type == VoteType::Prevote {
-                    match self.check_full_txs(block_hash) {
-                        Some(tmp) => block_hash = tmp,
-                        None => {
-                            self.save_wal_before_vote(vote_type.into(), lock_round)
-                                .await?;
-                            return Ok(());
-                        }
+            if vote_type == VoteType::Prevote {
+                match self.check_full_txs(block_hash) {
+                    Some(tmp) => block_hash = tmp,
+                    None => {
+                        self.save_wal_before_vote(vote_type.into(), lock_round)
+                            .await?;
+                        return Ok(());
                     }
-                } else if !self.try_get_full_txs(&block_hash) {
-                    self.save_wal_before_vote(vote_type.into(), lock_round)
-                        .await?;
-                    return Ok(());
                 }
+            } else if !self.try_get_full_txs(&block_hash) {
+                self.save_wal_before_vote(vote_type.into(), lock_round)
+                    .await?;
+                return Ok(());
             }
 
             info!(
@@ -2039,7 +2036,9 @@ where
     }
 
     fn check_full_txs(&mut self, hash: Hash) -> Option<Hash> {
-        if let Some(res) = self.is_full_transcation.get(&hash) {
+        if hash.is_empty() {
+            return Some(hash);
+        } else if let Some(res) = self.is_full_transcation.get(&hash) {
             if *res {
                 return Some(hash);
             }
@@ -2049,7 +2048,9 @@ where
 
     fn try_get_full_txs(&self, hash: &Hash) -> bool {
         debug!("Overlord: state check if get full transcations");
-        if let Some(res) = self.is_full_transcation.get(hash) {
+        if hash.is_empty() {
+            return true;
+        } else if let Some(res) = self.is_full_transcation.get(hash) {
             return *res;
         }
         false
