@@ -1,7 +1,7 @@
 use derive_more::Display;
 
 use crate::smr::smr_types::{Lock, Step};
-use crate::types::{AggregatedVote, PoLC};
+use crate::types::{AggregatedVote, PoLC, UpdateFrom};
 use crate::Codec;
 
 #[derive(Clone, Debug, Display, Eq, PartialEq)]
@@ -15,6 +15,7 @@ pub struct WalInfo<T: Codec> {
     pub round:  u64,
     pub step:   Step,
     pub lock:   Option<WalLock<T>>,
+    pub from:   UpdateFrom,
 }
 
 impl<T: Codec> WalInfo<T> {

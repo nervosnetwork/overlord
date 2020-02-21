@@ -8,7 +8,10 @@ use futures::channel::mpsc::UnboundedSender;
 use rand::random;
 use serde::{Deserialize, Serialize};
 
-use crate::types::{Address, AggregatedSignature, Commit, Hash, Node, OverlordMsg, Status};
+use crate::types::{
+    Address, AggregatedSignature, AggregatedVote, Commit, Hash, Node, OverlordMsg, Signature,
+    Status, VoteType,
+};
 use crate::wal::WalInfo;
 use crate::{Codec, Consensus, Crypto, Wal};
 
@@ -188,5 +191,21 @@ pub fn mock_aggregate_signature() -> AggregatedSignature {
     AggregatedSignature {
         signature:      Bytes::from((0..16).map(|_| random::<u8>()).collect::<Vec<_>>()),
         address_bitmap: Bytes::from((0..2).map(|_| random::<u8>()).collect::<Vec<_>>()),
+    }
+}
+
+pub fn mock_init_qc() -> AggregatedVote {
+    let aggregated_signature = AggregatedSignature {
+        signature:      Signature::default(),
+        address_bitmap: Bytes::default(),
+    };
+
+    AggregatedVote {
+        signature:  aggregated_signature,
+        vote_type:  VoteType::Precommit,
+        height:     0u64,
+        round:      0u64,
+        block_hash: Hash::default(),
+        leader:     Address::default(),
     }
 }

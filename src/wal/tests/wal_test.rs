@@ -8,7 +8,9 @@ use rand::random;
 use crate::smr::smr_types::{SMREvent, Step};
 use crate::smr::{Event, SMR};
 use crate::state::process::State;
-use crate::types::{AggregatedVote, Commit, Node, OverlordMsg, Proof, SignedVote, Vote, VoteType};
+use crate::types::{
+    AggregatedVote, Commit, Node, OverlordMsg, Proof, SignedVote, UpdateFrom, Vote, VoteType,
+};
 use crate::wal::{WalInfo, WalLock};
 
 use super::util::*;
@@ -227,6 +229,7 @@ async fn test_wal() {
         round:  1,
         step:   Step::Prevote,
         lock:   None,
+        from:   UpdateFrom::PrecommitQC(mock_init_qc()),
     };
     let event = SMREvent::PrevoteVote {
         height:     0,
@@ -253,6 +256,7 @@ async fn test_wal() {
         round:  1,
         step:   Step::Prevote,
         lock:   None,
+        from:   UpdateFrom::PrecommitQC(mock_init_qc()),
     };
     let event = SMREvent::PrevoteVote {
         height:     0,
@@ -292,6 +296,7 @@ async fn test_wal() {
         round:  1,
         step:   Step::Prevote,
         lock:   Some(lock),
+        from:   UpdateFrom::PrecommitQC(mock_init_qc()),
     };
     let vote = Vote {
         height:     0,
@@ -342,6 +347,7 @@ async fn test_wal() {
         round:  1,
         step:   Step::Prevote,
         lock:   Some(lock),
+        from:   UpdateFrom::PrecommitQC(mock_init_qc()),
     };
     let event = SMREvent::PrevoteVote {
         height:     0,
@@ -368,6 +374,7 @@ async fn test_wal() {
         round:  1,
         step:   Step::Precommit,
         lock:   None,
+        from:   UpdateFrom::PrecommitQC(mock_init_qc()),
     };
     let event = SMREvent::PrecommitVote {
         height:     0,
@@ -394,6 +401,7 @@ async fn test_wal() {
         round:  1,
         step:   Step::Precommit,
         lock:   None,
+        from:   UpdateFrom::PrecommitQC(mock_init_qc()),
     };
     let event = SMREvent::PrecommitVote {
         height:     0,
@@ -433,6 +441,7 @@ async fn test_wal() {
         round:  1,
         step:   Step::Precommit,
         lock:   Some(lock),
+        from:   UpdateFrom::PrecommitQC(mock_init_qc()),
     };
     let vote = Vote {
         height:     0,
@@ -483,6 +492,7 @@ async fn test_wal() {
         round:  1,
         step:   Step::Precommit,
         lock:   Some(lock),
+        from:   UpdateFrom::PrecommitQC(mock_init_qc()),
     };
     let event = SMREvent::PrecommitVote {
         height:     0,
@@ -523,6 +533,7 @@ async fn test_wal() {
         round:  1,
         step:   Step::Commit,
         lock:   Some(lock),
+        from:   UpdateFrom::PrecommitQC(mock_init_qc()),
     };
     let proof = Proof {
         height:     0,

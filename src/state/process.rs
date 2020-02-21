@@ -1231,9 +1231,6 @@ where
                     hex::encode(block_hash.clone())
                 );
 
-                // // Save wal with the lastest lock.
-                // self.save_wal_before_vote(vote_type.clone().into(), Some(self.round))
-                //     .await?;
                 self.state_machine.trigger(SMRTrigger {
                     trigger_type: qc.vote_type.clone().into(),
                     source:       TriggerSource::State,
@@ -1272,9 +1269,6 @@ where
                 hex::encode(block_hash.clone())
             );
 
-            // // Save wal with the lastest lock.
-            // self.save_wal_before_vote(vote_type.clone().in  to(), Some(self.round))
-            //     .await?;
             self.state_machine.trigger(SMRTrigger {
                 trigger_type: vote_type.clone().into(),
                 source:       TriggerSource::State,
@@ -1831,8 +1825,10 @@ where
             height: self.height,
             round: self.round,
             step: step.clone(),
+            from: self.update_from_where.clone(),
             lock,
         };
+
         self.wal
             .save(Bytes::from(encode(&wal_info)))
             .await
