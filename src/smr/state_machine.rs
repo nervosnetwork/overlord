@@ -80,8 +80,8 @@ impl Stream for StateMachine {
 impl StateMachine {
     /// Create a new state machine.
     pub fn new(trigger_receiver: UnboundedReceiver<SMRTrigger>) -> (Self, Event, Event) {
-        let (tx_1, rx_1) = unbounded();
-        let (tx_2, rx_2) = unbounded();
+        let (tx_state, rx_state) = unbounded();
+        let (tx_timer, rx_timer) = unbounded();
 
         let state_machine = StateMachine {
             height:     INIT_HEIGHT,
@@ -90,10 +90,10 @@ impl StateMachine {
             block_hash: Hash::new(),
             lock:       None,
             trigger:    trigger_receiver,
-            event:      (tx_1, tx_2),
+            event:      (tx_state, tx_timer),
         };
 
-        (state_machine, Event::new(rx_1), Event::new(rx_2))
+        (state_machine, Event::new(rx_state), Event::new(rx_timer))
     }
 
     fn handle_brake_timeout(&mut self, height: u64, round: Option<u64>) -> ConsensusResult<()> {
@@ -106,7 +106,12 @@ impl StateMachine {
                 "Overlord: SMR brake timeout height {}, round {}",
                 self.height, round
             );
-            self.throw_event(SMREvent::Brake { height, round })
+
+            self.throw_event(SMREvent::Brake {
+                height:     self.height,
+                round:      self.round,
+                lock_round: self.lock.clone().map(|lock| lock.round),
+            })
         }
     }
 
@@ -416,7 +421,8 @@ impl StateMachine {
 
             return self.throw_event(SMREvent::Brake {
                 height: self.height,
-                round:  self.round,
+                round: self.round,
+                lock_round,
             });
         } else if precommit_hash.is_empty() {
             self.round = precommit_round;
@@ -445,6 +451,13 @@ impl StateMachine {
         self.event.0.unbounded_send(event.clone()).map_err(|err| {
             ConsensusError::ThrowEventErr(format!("event: {}, error: {:?}", event.clone(), err))
         })?;
+        self.event.1.unbounded_send(event.clone()).map_err(|err| {
+            ConsensusError::ThrowEventErr(format!("event: {}, error: {:?}", event.clone(), err))
+        })?;
+        Ok(())
+    }
+
+    fn throw_timer_event(&mut self, event: SMREvent) -> ConsensusResult<()> {
         self.event.1.unbounded_send(event.clone()).map_err(|err| {
             ConsensusError::ThrowEventErr(format!("event: {}, error: {:?}", event.clone(), err))
         })?;
@@ -501,7 +514,6 @@ impl StateMachine {
                 lock_proposal,
                 new_interval: None,
                 new_config: None,
-                // TODO@Eason Gao: This is wrong.
                 from_where: FromWhere::PrecommitQC(u64::max_value()),
             },
             Step::Prevote => SMREvent::PrevoteVote {
@@ -516,9 +528,14 @@ impl StateMachine {
                 block_hash: Hash::new(),
                 lock_round,
             },
+            Step::Brake => SMREvent::Brake {
+                height: self.height,
+                round: self.round,
+                lock_round,
+            },
             _ => unreachable!(),
         };
-        self.throw_event(event)
+        self.throw_timer_event(event)
     }
 
     /// Goto the given step.

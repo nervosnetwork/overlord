@@ -58,9 +58,9 @@ where
         authority_list: Vec<Node>,
         timer_config: Option<DurationConfig>,
     ) -> ConsensusResult<()> {
-        let (mut smr_provider, evt_1, evt_2) = SMR::new();
+        let (mut smr_provider, evt_state, evt_timer) = SMR::new();
         let smr_handler = smr_provider.take_smr();
-        let timer = Timer::new(evt_2, smr_handler.clone(), interval, timer_config);
+        let timer = Timer::new(evt_timer, smr_handler.clone(), interval, timer_config);
 
         let (rx, mut state, resp) = {
             let mut state_rx = self.state_rx.write();
@@ -100,7 +100,7 @@ where
         timer.run();
 
         // Run state.
-        state.run(rx, evt_1, resp).await;
+        state.run(rx, evt_state, resp).await;
 
         Ok(())
     }

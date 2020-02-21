@@ -343,12 +343,16 @@ where
                 Ok(())
             }
 
-            SMREvent::Brake { height, round } => {
+            SMREvent::Brake {
+                height,
+                round,
+                lock_round,
+            } => {
                 if height != self.height {
                     return Ok(());
                 }
 
-                if let Err(e) = self.handle_brake(round).await {
+                if let Err(e) = self.handle_brake(round, lock_round).await {
                     trace::error(
                         "handle_brake_event".to_string(),
                         Some(json!({
@@ -459,6 +463,7 @@ where
 
         info!("Overlord: state goto new height {}", self.height);
         trace::start_block(new_height);
+        self.save_wal(Step::Propose, None).await?;
 
         // Update height and authority list.
         self.height_start = Instant::now();
@@ -574,8 +579,8 @@ where
                 UpdateFrom::ChokeQC(qc)
             }
         };
-        self.set_update_from(update_from);
 
+        self.set_update_from(update_from);
         self.save_wal(Step::Propose, lock).await?;
 
         // If self is not proposer, check whether it has received current signed proposal before. If
@@ -666,7 +671,7 @@ where
         })?;
 
         self.check_block(ctx, hash, block).await;
-        self.vote_process(VoteType::Prevote, lock_round).await?;
+        self.vote_process(VoteType::Prevote).await?;
         Ok(())
     }
 
@@ -809,6 +814,9 @@ where
             block_hash: hash.clone(),
         })?;
 
+        self.save_wal_before_vote(vote_type.clone().into(), lock_round)
+            .await?;
+
         if self.is_leader {
             self.votes
                 .insert_vote(signed_vote.get_hash(), signed_vote, self.address.clone());
@@ -824,11 +832,11 @@ where
                 .await;
         }
 
-        self.vote_process(vote_type, lock_round).await?;
+        self.vote_process(vote_type).await?;
         Ok(())
     }
 
-    async fn handle_brake(&mut self, round: u64) -> ConsensusResult<()> {
+    async fn handle_brake(&mut self, round: u64, lock_round: Option<u64>) -> ConsensusResult<()> {
         if round != self.round {
             return Err(ConsensusError::CorrectnessErr(format!(
                 "SMR round {}, state round {}",
@@ -858,6 +866,7 @@ where
         );
 
         self.chokes.insert(self.round, signed_choke.clone());
+        self.save_wal_before_vote(Step::Brake, lock_round).await?;
         self.broadcast(Context::new(), OverlordMsg::SignedChoke(signed_choke))
             .await;
         self.check_choke_above_threshold()?;
@@ -1206,11 +1215,7 @@ where
     /// exits. If self node is the leader, check if there is signed prevote vote exists. It
     /// should be noted that when self is the leader, and the vote type is prevote, the process
     /// should be the same as the handle signed vote.
-    async fn vote_process(
-        &mut self,
-        vote_type: VoteType,
-        lock_round: Option<u64>,
-    ) -> ConsensusResult<()> {
+    async fn vote_process(&mut self, vote_type: VoteType) -> ConsensusResult<()> {
         if !self.is_leader {
             if let Ok(qc) = self
                 .votes
@@ -1218,8 +1223,6 @@ where
             {
                 let block_hash = qc.block_hash.clone();
                 if !self.try_get_full_txs(&block_hash) {
-                    self.save_wal_before_vote(vote_type.into(), lock_round)
-                        .await?;
                     return Ok(());
                 }
 
@@ -1232,7 +1235,7 @@ where
                 );
 
                 self.state_machine.trigger(SMRTrigger {
-                    trigger_type: qc.vote_type.clone().into(),
+                    trigger_type: qc.vote_type.into(),
                     source:       TriggerSource::State,
                     hash:         block_hash,
                     round:        Some(self.round),
@@ -1255,9 +1258,8 @@ where
 
             self.broadcast(Context::new(), OverlordMsg::AggregatedVote(qc))
                 .await;
+
             if !self.try_get_full_txs(&block_hash) {
-                self.save_wal_before_vote(vote_type.into(), lock_round)
-                    .await?;
                 return Ok(());
             }
 
@@ -1879,7 +1881,9 @@ where
         } else {
             None
         };
-        self.save_wal(step, polc).await
+
+        self.save_wal(step, polc).await?;
+        Ok(())
     }
 
     async fn start_with_wal(&mut self) -> ConsensusResult<()> {
@@ -1895,101 +1899,37 @@ where
         self.height = wal_info.height;
         self.round = wal_info.round;
         self.is_leader = self.is_proposer()?;
+        self.update_from_where = wal_info.from.clone();
 
-        // Condition no lock.
-        if wal_info.lock.is_none() {
-            if wal_info.step == Step::Commit {
-                return Err(ConsensusError::LoadWalErr(
-                    "no lock in commit step".to_string(),
-                ));
-            }
-
-            self.state_machine.trigger(SMRTrigger {
-                trigger_type: TriggerType::WalInfo,
-                source:       TriggerSource::State,
-                hash:         Hash::new(),
-                round:        None,
-                height:       self.height,
-                wal_info:     Some(wal_info.to_smr_base()),
-            })?;
-            return Ok(());
+        // recover lock state
+        if wal_info.lock.is_some() {
+            let lock = wal_info.lock.clone().unwrap();
+            let qc = lock.lock_votes.clone();
+            self.votes.set_qc(qc.clone());
+            self.hash_with_block.insert(qc.block_hash, lock.content);
         }
 
-        let lock = wal_info.lock.clone().unwrap();
-        let qc = lock.lock_votes.clone();
-        self.votes.set_qc(qc.clone());
-        self.hash_with_block
-            .insert(qc.block_hash.clone(), lock.content.clone());
-
-        match wal_info.step {
-            Step::Propose => {
-                self.state_machine.trigger(SMRTrigger {
-                    trigger_type: TriggerType::WalInfo,
-                    source:       TriggerSource::State,
-                    hash:         Hash::new(),
-                    round:        None,
-                    height:       self.height,
-                    wal_info:     Some(wal_info.to_smr_base()),
-                })?;
-
-                if self.is_leader {
-                    let proposal = Proposal {
-                        height:     self.height,
-                        round:      self.round,
-                        content:    lock.content.clone(),
-                        block_hash: qc.block_hash.clone(),
-                        lock:       Some(lock.to_polc()),
-                        proposer:   self.address.clone(),
-                    };
-                    let signed_proposal = self.sign_proposal(proposal)?;
-                    info!(
-                        "Overlord: state broadcast a signed proposal height {}, round {}",
-                        self.height, self.round
-                    );
-                    self.broadcast(Context::new(), OverlordMsg::SignedProposal(signed_proposal))
-                        .await;
-
-                    self.state_machine.trigger(SMRTrigger {
-                        trigger_type: TriggerType::Proposal,
-                        source:       TriggerSource::State,
-                        hash:         qc.block_hash.clone(),
-                        round:        Some(lock.lock_round),
-                        height:       self.height,
-                        wal_info:     None,
-                    })?;
-                }
-            }
-
-            Step::Prevote | Step::Precommit => {
-                let mut vote = qc.to_vote();
-                vote.round = self.round;
-                let signed_vote = self.sign_vote(vote)?;
-                self.state_machine.trigger(SMRTrigger {
-                    trigger_type: TriggerType::WalInfo,
-                    source:       TriggerSource::State,
-                    hash:         Hash::new(),
-                    round:        None,
-                    height:       self.height,
-                    wal_info:     Some(wal_info.to_smr_base()),
-                })?;
-
-                if !self.is_leader {
-                    info!(
-                        "Overlord: state transmit a signed vote, height {}, round {}",
-                        self.height, self.round
-                    );
-                    self.transmit(Context::new(), OverlordMsg::SignedVote(signed_vote))
-                        .await;
-                } else {
-                    self.handle_signed_vote(Context::new(), signed_vote).await?;
-                }
-            }
-
-            Step::Commit => {
-                self.handle_commit(qc.block_hash.clone()).await?;
-            }
-            _ => unreachable!(),
+        if wal_info.step == Step::Commit {
+            let qc = wal_info
+                .lock
+                .clone()
+                .ok_or_else(|| ConsensusError::LoadWalErr("no lock in commit step".to_string()))?;
+            return self.handle_commit(qc.lock_votes.block_hash.clone()).await;
         }
+
+        if wal_info.step == Step::Brake {
+            let lock_round = wal_info.lock.clone().map(|lock| lock.lock_round);
+            self.handle_brake(self.round, lock_round).await?;
+        }
+
+        self.state_machine.trigger(SMRTrigger {
+            trigger_type: TriggerType::WalInfo,
+            source:       TriggerSource::State,
+            hash:         Hash::new(),
+            round:        None,
+            height:       self.height,
+            wal_info:     Some(wal_info.into_smr_base()),
+        })?;
         Ok(())
     }
 

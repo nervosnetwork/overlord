@@ -189,7 +189,7 @@ impl Timer {
                 (TriggerType::PrecommitQC, Some(round), height)
             }
 
-            SMREvent::Brake {height, round} => {
+            SMREvent::Brake {height, round, ..} => {
                 if height < self.height {
                     return Ok(());
                 }
