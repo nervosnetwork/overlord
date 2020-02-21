@@ -119,9 +119,4 @@ impl Event {
     pub fn new(receiver: UnboundedReceiver<SMREvent>) -> Self {
         Event { rx: receiver }
     }
-
-    #[cfg(test)]
-    pub fn close(&mut self) {
-        self.rx.close();
-    }
 }
