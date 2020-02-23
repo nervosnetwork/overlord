@@ -124,6 +124,7 @@ mod test {
             lock_votes: mock_qc(),
             content:    Pill::new(),
         };
+        println!("{}", wal_lock);
 
         let wal_info = WalInfo {
             height: 0,
@@ -132,6 +133,9 @@ mod test {
             lock:   Some(wal_lock),
         };
 
-        println!("{}", wal_info);
+        assert_eq!(
+            wal_info.to_string(),
+            "wal info height 0, round 0, step Propose"
+        );
     }
 }
