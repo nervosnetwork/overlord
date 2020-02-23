@@ -1892,8 +1892,9 @@ where
             return Ok(());
         }
 
-        info!("overlord: start from wal {:?}", wal_info);
         let wal_info = wal_info.unwrap();
+        info!("overlord: start from wal {}", wal_info);
+
         self.consensus_power = true;
         self.height = wal_info.height;
         self.round = wal_info.round;
