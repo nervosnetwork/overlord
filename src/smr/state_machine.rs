@@ -106,10 +106,9 @@ impl StateMachine {
                 "Overlord: SMR brake timeout height {}, round {}",
                 self.height, round
             );
-
             self.throw_event(SMREvent::Brake {
-                height:     self.height,
-                round:      self.round,
+                height,
+                round,
                 lock_round: self.lock.clone().map(|lock| lock.round),
             })
         }
