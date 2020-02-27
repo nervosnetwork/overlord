@@ -530,58 +530,9 @@ where
             ));
         }
 
-        // Save wal info in propose step.
-        let lock = if lock_round.is_none() {
-            None
-        } else {
-            let round = lock_round.clone().unwrap();
-            let qc = self
-                .votes
-                .get_qc_by_id(self.height, round, VoteType::Prevote)
-                .map_err(|err| ConsensusError::ProposalErr(format!("{:?} when propose", err)))?;
-            let content = self
-                .hash_with_block
-                .get(&qc.block_hash)
-                .ok_or_else(|| ConsensusError::Other("lose whole block".to_string()))?;
-
-            Some(WalLock {
-                lock_round: round,
-                lock_votes: qc,
-                content:    content.clone(),
-            })
-        };
-
-        let update_from = match from_where {
-            FromWhere::PrevoteQC(round) => {
-                let qc = self
-                    .votes
-                    .get_qc_by_id(self.height, round, VoteType::Prevote)?;
-                UpdateFrom::PrevoteQC(qc)
-            }
-
-            FromWhere::PrecommitQC(round) => {
-                let qc = if round == u64::max_value() {
-                    self.last_commit_qc.clone().unwrap_or_else(mock_init_qc)
-                } else {
-                    self.votes
-                        .get_qc_by_id(self.height, round, VoteType::Precommit)?
-                };
-                UpdateFrom::PrecommitQC(qc)
-            }
-
-            FromWhere::ChokeQC(round) => {
-                let qc = self.chokes.get_qc(round).ok_or_else(|| {
-                    ConsensusError::BrakeErr(format!(
-                        "no choke qc height {} round {}",
-                        self.height, round
-                    ))
-                })?;
-                UpdateFrom::ChokeQC(qc)
-            }
-        };
-
-        self.set_update_from(update_from);
-        self.save_wal(Step::Propose, lock).await?;
+        self.set_update_from(from_where)?;
+        self.save_wal_with_lock_round(Step::Propose, lock_round)
+            .await?;
 
         // If self is not proposer, check whether it has received current signed proposal before. If
         // has, then handle it.
@@ -814,7 +765,7 @@ where
             block_hash: hash.clone(),
         })?;
 
-        self.save_wal_before_vote(vote_type.clone().into(), lock_round)
+        self.save_wal_with_lock_round(vote_type.clone().into(), lock_round)
             .await?;
 
         if self.is_leader {
@@ -866,7 +817,8 @@ where
         );
 
         self.chokes.insert(self.round, signed_choke.clone());
-        self.save_wal_before_vote(Step::Brake, lock_round).await?;
+        self.save_wal_with_lock_round(Step::Brake, lock_round)
+            .await?;
         self.broadcast(Context::new(), OverlordMsg::SignedChoke(signed_choke))
             .await;
         self.check_choke_above_threshold()?;
@@ -901,15 +853,24 @@ where
             )));
         };
 
-        debug!("Overlord: state generate proof");
-        let qc = self
-            .votes
-            .get_qc_by_hash(height, hash.clone(), VoteType::Precommit);
-        if qc.is_none() {
+        let qc = if let Some(tmp) =
+            self.votes
+                .get_qc_by_hash(height, hash.clone(), VoteType::Precommit)
+        {
+            tmp.to_owned()
+        } else {
             return Err(ConsensusError::StorageErr("Lose precommit QC".to_string()));
-        }
+        };
 
-        let qc = qc.unwrap();
+        let polc = Some(WalLock {
+            lock_round: self.round,
+            lock_votes: qc.clone(),
+            content:    content.clone(),
+        });
+        self.save_wal(Step::Commit, polc).await?;
+
+        debug!("Overlord: state generate proof");
+
         let proof = Proof {
             height,
             round: self.round,
@@ -923,16 +884,6 @@ where
         };
 
         self.last_commit_qc = Some(qc.clone());
-        let content = self
-            .hash_with_block
-            .get(&hash)
-            .ok_or_else(|| ConsensusError::Other("lose whole block".to_string()))?;
-        let polc = Some(WalLock {
-            lock_round: self.round,
-            lock_votes: qc,
-            content:    content.clone(),
-        });
-        self.save_wal(Step::Commit, polc).await?;
 
         let ctx = Context::new();
         let status = self
@@ -1855,7 +1806,7 @@ where
         Ok(())
     }
 
-    async fn save_wal_before_vote(
+    async fn save_wal_with_lock_round(
         &mut self,
         step: Step,
         lock_round: Option<u64>,
@@ -1961,8 +1912,37 @@ where
         false
     }
 
-    fn set_update_from(&mut self, from_where: UpdateFrom) {
-        self.update_from_where = from_where;
+    fn set_update_from(&mut self, from_where: FromWhere) -> ConsensusResult<()> {
+        let update_from = match from_where {
+            FromWhere::PrevoteQC(round) => {
+                let qc = self
+                    .votes
+                    .get_qc_by_id(self.height, round, VoteType::Prevote)?;
+                UpdateFrom::PrevoteQC(qc)
+            }
+
+            FromWhere::PrecommitQC(round) => {
+                let qc = if round == u64::max_value() {
+                    self.last_commit_qc.clone().unwrap_or_else(mock_init_qc)
+                } else {
+                    self.votes
+                        .get_qc_by_id(self.height, round, VoteType::Precommit)?
+                };
+                UpdateFrom::PrecommitQC(qc)
+            }
+
+            FromWhere::ChokeQC(round) => {
+                let qc = self.chokes.get_qc(round).ok_or_else(|| {
+                    ConsensusError::BrakeErr(format!(
+                        "no choke qc height {} round {}",
+                        self.height, round
+                    ))
+                })?;
+                UpdateFrom::ChokeQC(qc)
+            }
+        };
+        self.update_from_where = update_from;
+        Ok(())
     }
 
     /// Filter the proposals that do not need to be handed.
