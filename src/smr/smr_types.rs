@@ -185,6 +185,9 @@ pub enum TriggerType {
     /// Continue new round trigger.
     #[display(fmt = "Continue Round")]
     ContinueRound,
+    /// Stop process.
+    #[display(fmt = "Stop Process")]
+    Stop,
 }
 
 /// SMR trigger sources.

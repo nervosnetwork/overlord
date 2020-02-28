@@ -98,8 +98,8 @@ async fn trigger_test(
     trigger_tx.unbounded_send(input).unwrap();
 
     let res = state_machine.next().await;
-    if res.is_some() {
-        assert_eq!(err, res);
+    if let Some(Err(res)) = res {
+        assert_eq!(err.unwrap(), res);
         return;
     }
 

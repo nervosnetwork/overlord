@@ -116,6 +116,9 @@ pub enum OverlordMsg<T: Codec> {
     /// Signed choke message
     #[display(fmt = "Choke Message")]
     SignedChoke(SignedChoke),
+    /// Stop consensus process.
+    #[display(fmt = "Stop Overlord")]
+    Stop,
 
     /// This is only for easier testing.
     #[cfg(test)]

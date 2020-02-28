@@ -65,6 +65,7 @@ pub struct State<T: Codec, F: Consensus<T>, C: Crypto, W: Wal> {
     height_start:        Instant,
     block_interval:      u64,
     consensus_power:     bool,
+    stopped:             bool,
 
     resp_tx:  UnboundedSender<VerifyResp>,
     function: Arc<F>,
@@ -111,6 +112,7 @@ where
             height_start:        Instant::now(),
             block_interval:      interval,
             consensus_power:     false,
+            stopped:             false,
 
             resp_tx:  tx,
             function: consensus,
@@ -141,6 +143,11 @@ where
                     }
                 }
                 evt = event.next() => {
+                    if self.stopped {
+                        println!("################ state stop!");
+                        break;
+                    }
+
                     if !self.consensus_power {
                         continue;
                     }
@@ -247,6 +254,20 @@ where
 
                     error!("Overlord: state handle signed choke error {:?}", e);
                 }
+                Ok(())
+            }
+
+            OverlordMsg::Stop => {
+                println!("################# OverlordMsg::Stop");
+                self.state_machine.trigger(SMRTrigger {
+                    trigger_type: TriggerType::Stop,
+                    source:       TriggerSource::State,
+                    hash:         Hash::new(),
+                    round:        Some(self.round),
+                    height:       self.height,
+                    wal_info:     None,
+                })?;
+                self.stopped = true;
                 Ok(())
             }
 
@@ -441,7 +462,7 @@ where
     ) -> ConsensusResult<()> {
         if status.height <= self.height {
             warn!(
-                "Overlord: state receive a outdated status, height {}, self height {}",
+                "Overlord: state receive an outdated status, height {}, self height {}",
                 status.height, self.height
             );
             return Ok(());
@@ -471,10 +492,10 @@ where
         self.authority.update(&mut auth_list, true);
 
         // If the status' height is much higher than the current,
-        if get_last_flag {
+        if get_last_flag && new_height > 1 {
             let mut tmp = self
                 .function
-                .get_authority_list(ctx, new_height - 1)
+                .get_authority_list(ctx, new_height - 2)
                 .await
                 .map_err(|err| {
                     ConsensusError::Other(format!("get authority list error {:?}", err))

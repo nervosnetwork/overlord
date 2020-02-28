@@ -51,6 +51,7 @@ impl Stream for Timer {
 
                     let event = event.unwrap();
                     if event == SMREvent::Stop {
+                        println!("####################  SMREvent::Stop in timer");
                         return Poll::Ready(None);
                     }
                     if let Err(e) = self.set_timer(event) {
@@ -111,6 +112,9 @@ impl Timer {
             loop {
                 if let Some(err) = self.next().await {
                     error!("Overlord: timer error {:?}", err);
+                } else {
+                    println!("################ timer stop!");
+                    break;
                 }
             }
         });

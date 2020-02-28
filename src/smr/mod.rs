@@ -50,8 +50,11 @@ impl SMR {
         tokio::spawn(async move {
             loop {
                 let res = self.state_machine.next().await;
-                if let Some(err) = res {
+                if let Some(Err(err)) = res {
                     error!("Overlord: SMR error {:?}", err);
+                } else if res.is_none() {
+                    println!("################ state_machine stop!");
+                    break;
                 }
             }
         });

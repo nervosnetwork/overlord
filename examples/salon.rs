@@ -20,7 +20,7 @@ lazy_static! {
     static ref HASHER_INST: HasherKeccak = HasherKeccak::new();
 }
 
-const SPEAKER_NUM: u8 = 20;
+const SPEAKER_NUM: u8 = 10;
 
 const SPEECH_INTERVAL: u64 = 1000; // ms
 
@@ -42,15 +42,6 @@ struct Detail {
     inner: Bytes,
 }
 
-// impl Detail {
-//     fn from(speech: Speech) -> Self {
-//         Detail {
-//             // explain your speech
-//             inner: speech.inner,
-//         }
-//     }
-// }
-
 macro_rules! impl_codec_for {
     ($($struc: ident),+) => {
         $(
@@ -70,16 +61,27 @@ macro_rules! impl_codec_for {
 
 impl_codec_for!(Speech, Detail);
 
-struct MockWal;
+struct MockWal {
+    inner: Mutex<Option<Bytes>>,
+}
+
+impl MockWal {
+    fn new() -> MockWal {
+        MockWal {
+            inner: Mutex::new(None),
+        }
+    }
+}
 
 #[async_trait]
 impl Wal for MockWal {
-    async fn save(&self, _info: Bytes) -> Result<(), Box<dyn Error + Send>> {
+    async fn save(&self, info: Bytes) -> Result<(), Box<dyn Error + Send>> {
+        *self.inner.lock().unwrap() = Some(info);
         Ok(())
     }
 
     async fn load(&self) -> Result<Option<Bytes>, Box<dyn Error + Send>> {
-        Ok(None)
+        Ok(self.inner.lock().unwrap().as_ref().cloned())
     }
 }
 
@@ -254,7 +256,7 @@ impl Speaker {
             name,
             Arc::clone(&brain),
             Arc::new(crypto),
-            Arc::new(MockWal),
+            Arc::new(MockWal::new()),
         );
         let overlord_handler = overlord.get_handler();
 
@@ -309,6 +311,17 @@ impl Speaker {
             }
         });
 
+        // let overlord_handler = self.overlord.get_handler();
+        //
+        // println!("######### send stop");
+
+        // overlord_handler
+        //     .send_msg(
+        //         Context::new(),
+        //         OverlordMsg::Stop,
+        //     )
+        //     .unwrap();
+        //
         self.overlord
             .run(interval, speaker_list, timer_config)
             .await
