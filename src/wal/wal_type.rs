@@ -119,6 +119,7 @@ mod test {
             round:  0,
             step:   Step::Propose,
             lock:   Some(wal_lock),
+            from:   UpdateFrom::PrecommitQC(mock_qc()),
         };
 
         assert_eq!(
