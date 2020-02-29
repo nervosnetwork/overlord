@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use overlord::types::{Commit, Hash, Node, OverlordMsg, Status};
 use overlord::{Codec, Consensus, Crypto, DurationConfig, Overlord, OverlordHandler, Wal};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 lazy_static! {
     static ref HASHER_INST: HasherKeccak = HasherKeccak::new();
@@ -256,6 +257,7 @@ struct Speaker {
     overlord: Arc<Overlord<Speech, Brain, MockCrypto, MockWal>>,
     handler:  OverlordHandler<Speech>,
     brain:    Arc<Brain>,
+    stopped:  Arc<AtomicBool>,
 }
 
 impl Speaker {
@@ -298,6 +300,7 @@ impl Speaker {
             overlord: Arc::new(overlord),
             handler: overlord_handler,
             brain,
+            stopped: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -309,6 +312,7 @@ impl Speaker {
     ) -> Result<(), Box<dyn Error + Send>> {
         let brain = Arc::<Brain>::clone(&self.brain);
         let handler = self.handler.clone();
+        let stopped = Arc::<AtomicBool>::clone(&self.stopped);
 
         thread::spawn(move || loop {
             if let Ok(msg) = brain.hearing.recv() {
@@ -329,11 +333,11 @@ impl Speaker {
                         // &brain.name), brain.name,choke);
                         let _ = handler.send_msg(Context::new(), OverlordMsg::SignedChoke(choke));
                     }
-                    OverlordMsg::Stop => {
-                        break;
-                    }
                     _ => {}
                 }
+            }
+            if stopped.load(Ordering::Relaxed) {
+                break;
             }
         });
 
@@ -468,6 +472,7 @@ async fn run_wal_test(num: usize, interval: u64, change_nodes_cycles: u64, test_
         // close consensus process
         println!("Cycle {:?} end, kill alive-speakers", test_count);
         handlers.iter().for_each(|speaker| {
+            speaker.stopped.store(true, Ordering::Relaxed);
             speaker
                 .handler
                 .send_msg(Context::new(), OverlordMsg::Stop)
@@ -484,23 +489,23 @@ async fn run_wal_test(num: usize, interval: u64, change_nodes_cycles: u64, test_
 
 #[tokio::test(threaded_scheduler)]
 async fn test_1_wal() {
-    run_wal_test(1, 100, 5, 10).await
+    run_wal_test(1, 100, 1, 1).await
 }
 
 #[tokio::test(threaded_scheduler)]
 async fn test_3_wal() {
-    run_wal_test(3, 100, 5, 10).await
+    run_wal_test(3, 100, 1, 1).await
 }
 
 #[tokio::test(threaded_scheduler)]
 async fn test_4_wal() {
     // let _ = env_logger::builder().is_test(true).try_init();
-    run_wal_test(4, 100, 5, 10).await
+    run_wal_test(4, 100, 1, 1).await
 }
 
 #[tokio::test(threaded_scheduler)]
 async fn test_21_wal() {
-    run_wal_test(21, 100, 5, 10).await
+    run_wal_test(21, 100, 1, 1).await
 }
 
 fn gen_random_bytes() -> Bytes {
