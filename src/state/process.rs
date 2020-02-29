@@ -144,7 +144,6 @@ where
                 }
                 evt = event.next() => {
                     if self.stopped {
-                        println!("################ state stop!");
                         break;
                     }
 
@@ -258,7 +257,6 @@ where
             }
 
             OverlordMsg::Stop => {
-                println!("################# OverlordMsg::Stop");
                 self.state_machine.trigger(SMRTrigger {
                     trigger_type: TriggerType::Stop,
                     source:       TriggerSource::State,

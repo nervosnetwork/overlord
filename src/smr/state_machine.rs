@@ -68,7 +68,6 @@ impl Stream for StateMachine {
                     }
                     TriggerType::WalInfo => Some(self.handle_wal(msg.wal_info.unwrap())),
                     TriggerType::Stop => {
-                        println!("################## TriggerType::Stop");
                         self.throw_event(SMREvent::Stop).unwrap();
                         None
                     }

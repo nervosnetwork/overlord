@@ -53,7 +53,6 @@ impl SMR {
                 if let Some(Err(err)) = res {
                     error!("Overlord: SMR error {:?}", err);
                 } else if res.is_none() {
-                    println!("################ state_machine stop!");
                     break;
                 }
             }

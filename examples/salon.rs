@@ -306,22 +306,16 @@ impl Speaker {
                             .send_msg(Context::new(), OverlordMsg::AggregatedVote(agg_vote))
                             .unwrap();
                     }
+                    OverlordMsg::SignedChoke(choke) => {
+                        handler
+                            .send_msg(Context::new(), OverlordMsg::SignedChoke(choke))
+                            .unwrap();
+                    }
                     _ => {}
                 }
             }
         });
 
-        // let overlord_handler = self.overlord.get_handler();
-        //
-        // println!("######### send stop");
-
-        // overlord_handler
-        //     .send_msg(
-        //         Context::new(),
-        //         OverlordMsg::Stop,
-        //     )
-        //     .unwrap();
-        //
         self.overlord
             .run(interval, speaker_list, timer_config)
             .await
@@ -373,7 +367,7 @@ async fn main() {
         });
     }
 
-    thread::sleep(Duration::from_secs(100));
+    thread::sleep(Duration::from_secs(10));
 }
 
 fn gen_random_bytes() -> Bytes {
