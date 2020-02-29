@@ -201,12 +201,11 @@ impl Consensus<Speech> for Brain {
             // Consistency check
             assert_eq!(speech, &commit.content.inner);
         } else {
-            // println!(
-            //     "{:?} first commit in height: {:?}, with: {:?}",
-            //     self.name,
-            //     commit.height,
-            //     hex::encode(commit.content.inner.clone())
-            // );
+            println!(
+                "node {:?} first commit in height: {:?}",
+                get_index(&self.speaker_list , &self.name),
+                commit.height,
+            );
             commit_record.insert(commit.height, commit.content.inner);
         }
 
@@ -327,6 +326,7 @@ impl Speaker {
                             .send_msg(Context::new(), OverlordMsg::AggregatedVote(agg_vote));
                     }
                     OverlordMsg::SignedChoke(choke) => {
+                        // println!("node {:?}, {:?}, receive {:?}", get_index(&brain.speaker_list, &brain.name), brain.name,choke);
                         let _ = handler
                             .send_msg(Context::new(), OverlordMsg::SignedChoke(choke));
                     }
@@ -347,7 +347,7 @@ impl Speaker {
     }
 }
 
-async fn run_wal_test(num: usize, interval: u64, change_nodes_cycles: u64, test_cycles: u64) {
+async fn run_wal_test(num: usize, interval: u64, change_nodes_cycles: u64, test_height: u64) {
     let speakers: Vec<Node> = (0..num).map(|_| Node::new(gen_random_bytes())).collect();
     println!("Wal test start, generate {:?} speakers", num);
     let wal_record: HashMap<Bytes, Arc<MockWal>> = (0..num)
@@ -362,7 +362,7 @@ async fn run_wal_test(num: usize, interval: u64, change_nodes_cycles: u64, test_
     let height_record: Arc<Mutex<HashMap<Bytes, u64>>> = Arc::new(Mutex::new(HashMap::new()));
 
     let mut test_count = 0;
-    while test_count < test_cycles {
+    loop {
         let height_start = get_max_height(height_record.clone());
 
         let alive_speakers = if test_count == 0 {speakers.clone()} else {gen_alive_nodes(speakers.clone())};
@@ -414,45 +414,46 @@ async fn run_wal_test(num: usize, interval: u64, change_nodes_cycles: u64, test_
         let handles_clone = handlers.clone();
         let speakers_clone = speakers.clone();
         tokio::spawn(async move {
-            let mut count = 0;
-            while count < change_nodes_cycles {
-                let max_height = get_max_height(height_record_clone.clone());
-                {
-                    let height_record = height_record_clone.lock().unwrap();
-                    height_record.iter().for_each(|(name, height)| {
-                        // println!("node {:?} in height {:?}", get_index(&speakers_clone, name), height);
-                        if *height < max_height - 1 {
-                            handles_clone
-                                .iter()
-                                .filter(|speaker| speaker.brain.name == name)
-                                .for_each(|speaker| {
-                                    println!(
-                                        "synchronize {:?} to node {:?} of height {:?}",
-                                        max_height + 1,
-                                        get_index(&speakers_clone, name),
-                                        height
+            thread::sleep(Duration::from_millis(interval));
+            let max_height = get_max_height(height_record_clone.clone());
+            {
+                let height_record = height_record_clone.lock().unwrap();
+                height_record.iter().for_each(|(name, height)| {
+                    // println!("node {:?} in height {:?}", get_index(&speakers_clone, name), height);
+                    if *height < max_height - 1 {
+                        handles_clone
+                            .iter()
+                            .filter(|speaker| speaker.brain.name == name)
+                            .for_each(|speaker| {
+                                println!(
+                                    "synchronize {:?} to node {:?} of height {:?}",
+                                    max_height + 1,
+                                    get_index(&speakers_clone, name),
+                                    height
+                                );
+                                let _ = speaker
+                                    .handler
+                                    .send_msg(
+                                        Context::new(),
+                                        OverlordMsg::RichStatus(Status {
+                                            height: max_height + 1,
+                                            interval: Some(interval),
+                                            timer_config: timer_config(),
+                                            authority_list: speakers_clone.clone(),
+                                        }),
                                     );
-                                    let _ = speaker
-                                        .handler
-                                        .send_msg(
-                                            Context::new(),
-                                            OverlordMsg::RichStatus(Status {
-                                                height:         max_height + 1,
-                                                interval:       Some(interval),
-                                                timer_config:   timer_config(),
-                                                authority_list: speakers_clone.clone(),
-                                            }),
-                                        );
-                                });
-                        }
-                    });
-                }
-                thread::sleep(Duration::from_millis(interval));
-                count += 1;
+                            });
+                    }
+                });
             }
         });
 
-        thread::sleep(Duration::from_millis(interval * change_nodes_cycles));
+        let mut height_end = get_max_height(height_record.clone());
+        while height_end - height_start < change_nodes_cycles {
+            thread::sleep(Duration::from_millis(interval));
+            height_end = get_max_height(height_record.clone());
+        }
+        println!("Cycle {:?} start from {:?}, end with {:?}", test_count, height_start, height_end);
 
         // close consensus process
         println!("Cycle {:?} end, kill alive-speakers", test_count);
@@ -463,35 +464,33 @@ async fn run_wal_test(num: usize, interval: u64, change_nodes_cycles: u64, test_
                 .unwrap()
         });
 
-        // check liveness
-        let height_end = get_max_height(height_record.clone());
-        println!("Cycle {:?} start from {:?}, end with {:?}", test_count, height_start, height_end);
-        // assert_ne!(height_start, height_end);
-
         test_count += 1;
+
+        if height_end > test_height {
+            break;
+        }
     }
 }
 
 #[tokio::test(threaded_scheduler)]
 async fn test_1_wal() {
-    run_wal_test(1, 100, 20, 10).await
+    run_wal_test(1, 100, 5, 100).await
 }
 
 #[tokio::test(threaded_scheduler)]
 async fn test_3_wal() {
-    run_wal_test(3, 100, 20, 10).await
+    run_wal_test(3, 100, 5, 100).await
 }
 
 #[tokio::test(threaded_scheduler)]
 async fn test_4_wal() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    run_wal_test(4, 100, 20, 100).await
+    // let _ = env_logger::builder().is_test(true).try_init();
+    run_wal_test(4, 100, 5, 100).await
 }
 
 #[tokio::test(threaded_scheduler)]
 async fn test_21_wal() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    run_wal_test(21, 100, 20, 10).await
+    run_wal_test(21, 100, 5, 1000).await
 }
 
 fn gen_random_bytes() -> Bytes {
