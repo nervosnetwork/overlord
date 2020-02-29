@@ -251,7 +251,7 @@ where
                         })),
                     );
 
-                    error!("Overlord: state handle signed choke error {:?}", e);
+                    error!("Overlord: state handle rich status error {:?}", e);
                 }
                 Ok(())
             }
@@ -297,7 +297,6 @@ where
                             "is lock": lock_round.is_some(),
                         })),
                     );
-
                     error!("Overlord: state handle new round error {:?}", e);
                 }
                 Ok(())
