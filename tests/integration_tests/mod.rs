@@ -203,7 +203,7 @@ impl Consensus<Speech> for Brain {
         } else {
             println!(
                 "node {:?} first commit in height: {:?}",
-                get_index(&self.speaker_list , &self.name),
+                get_index(&self.speaker_list, &self.name),
                 commit.height,
             );
             commit_record.insert(commit.height, commit.content.inner);
@@ -314,21 +314,20 @@ impl Speaker {
             if let Ok(msg) = brain.hearing.recv() {
                 match msg {
                     OverlordMsg::SignedVote(vote) => {
-                        let _ = handler
-                            .send_msg(Context::new(), OverlordMsg::SignedVote(vote));
+                        let _ = handler.send_msg(Context::new(), OverlordMsg::SignedVote(vote));
                     }
                     OverlordMsg::SignedProposal(proposal) => {
-                        let _ = handler
-                            .send_msg(Context::new(), OverlordMsg::SignedProposal(proposal));
+                        let _ =
+                            handler.send_msg(Context::new(), OverlordMsg::SignedProposal(proposal));
                     }
                     OverlordMsg::AggregatedVote(agg_vote) => {
-                        let _ = handler
-                            .send_msg(Context::new(), OverlordMsg::AggregatedVote(agg_vote));
+                        let _ =
+                            handler.send_msg(Context::new(), OverlordMsg::AggregatedVote(agg_vote));
                     }
                     OverlordMsg::SignedChoke(choke) => {
-                        // println!("node {:?}, {:?}, receive {:?}", get_index(&brain.speaker_list, &brain.name), brain.name,choke);
-                        let _ = handler
-                            .send_msg(Context::new(), OverlordMsg::SignedChoke(choke));
+                        // println!("node {:?}, {:?}, receive {:?}", get_index(&brain.speaker_list,
+                        // &brain.name), brain.name,choke);
+                        let _ = handler.send_msg(Context::new(), OverlordMsg::SignedChoke(choke));
                     }
                     OverlordMsg::Stop => {
                         break;
@@ -363,13 +362,19 @@ async fn run_wal_test(num: usize, interval: u64, change_nodes_cycles: u64, test_
 
     let mut test_count = 0;
     loop {
-        let height_start = get_max_height(height_record.clone());
+        let height_start = get_max_height(Arc::<Mutex<HashMap<Bytes, u64>>>::clone(&height_record));
 
-        let alive_speakers = if test_count == 0 {speakers.clone()} else {gen_alive_nodes(speakers.clone())};
+        let alive_speakers = if test_count == 0 {
+            speakers.clone()
+        } else {
+            gen_alive_nodes(speakers.clone())
+        };
         let alive_num = alive_speakers.len();
         println!(
             "Cycle {:?} start, generate {:?} alive_speakers of {:?}",
-            test_count, alive_num, get_index_array(&speakers, &alive_speakers)
+            test_count,
+            alive_num,
+            get_index_array(&speakers, &alive_speakers)
         );
 
         let channels: Vec<Channel> = (0..alive_num).map(|_| unbounded()).collect();
@@ -415,11 +420,14 @@ async fn run_wal_test(num: usize, interval: u64, change_nodes_cycles: u64, test_
         let speakers_clone = speakers.clone();
         tokio::spawn(async move {
             thread::sleep(Duration::from_millis(interval));
-            let max_height = get_max_height(height_record_clone.clone());
+            let max_height = get_max_height(Arc::<Mutex<HashMap<Bytes, u64>>>::clone(
+                &height_record_clone,
+            ));
             {
                 let height_record = height_record_clone.lock().unwrap();
                 height_record.iter().for_each(|(name, height)| {
-                    // println!("node {:?} in height {:?}", get_index(&speakers_clone, name), height);
+                    // println!("node {:?} in height {:?}", get_index(&speakers_clone, name),
+                    // height);
                     if *height < max_height - 1 {
                         handles_clone
                             .iter()
@@ -431,29 +439,31 @@ async fn run_wal_test(num: usize, interval: u64, change_nodes_cycles: u64, test_
                                     get_index(&speakers_clone, name),
                                     height
                                 );
-                                let _ = speaker
-                                    .handler
-                                    .send_msg(
-                                        Context::new(),
-                                        OverlordMsg::RichStatus(Status {
-                                            height: max_height + 1,
-                                            interval: Some(interval),
-                                            timer_config: timer_config(),
-                                            authority_list: speakers_clone.clone(),
-                                        }),
-                                    );
+                                let _ = speaker.handler.send_msg(
+                                    Context::new(),
+                                    OverlordMsg::RichStatus(Status {
+                                        height:         max_height + 1,
+                                        interval:       Some(interval),
+                                        timer_config:   timer_config(),
+                                        authority_list: speakers_clone.clone(),
+                                    }),
+                                );
                             });
                     }
                 });
             }
         });
 
-        let mut height_end = get_max_height(height_record.clone());
+        let mut height_end =
+            get_max_height(Arc::<Mutex<HashMap<Bytes, u64>>>::clone(&height_record));
         while height_end - height_start < change_nodes_cycles {
             thread::sleep(Duration::from_millis(interval));
-            height_end = get_max_height(height_record.clone());
+            height_end = get_max_height(Arc::<Mutex<HashMap<Bytes, u64>>>::clone(&height_record));
         }
-        println!("Cycle {:?} start from {:?}, end with {:?}", test_count, height_start, height_end);
+        println!(
+            "Cycle {:?} start from {:?}, end with {:?}",
+            test_count, height_start, height_end
+        );
 
         // close consensus process
         println!("Cycle {:?} end, kill alive-speakers", test_count);
@@ -474,23 +484,23 @@ async fn run_wal_test(num: usize, interval: u64, change_nodes_cycles: u64, test_
 
 #[tokio::test(threaded_scheduler)]
 async fn test_1_wal() {
-    run_wal_test(1, 100, 5, 100).await
+    run_wal_test(1, 100, 5, 10).await
 }
 
 #[tokio::test(threaded_scheduler)]
 async fn test_3_wal() {
-    run_wal_test(3, 100, 5, 100).await
+    run_wal_test(3, 100, 5, 10).await
 }
 
 #[tokio::test(threaded_scheduler)]
 async fn test_4_wal() {
     // let _ = env_logger::builder().is_test(true).try_init();
-    run_wal_test(4, 100, 5, 100).await
+    run_wal_test(4, 100, 5, 10).await
 }
 
 #[tokio::test(threaded_scheduler)]
 async fn test_21_wal() {
-    run_wal_test(21, 100, 5, 1000).await
+    run_wal_test(21, 100, 5, 10).await
 }
 
 fn gen_random_bytes() -> Bytes {
@@ -512,7 +522,7 @@ fn gen_alive_nodes(nodes: Vec<Node>) -> Vec<Node> {
     let node_num = nodes.len();
     let thresh_num = node_num * 2 / 3 + 1;
     let rand_num = 0;
-//    let rand_num = random::<usize>() % (node_num - thresh_num + 1);
+    //    let rand_num = random::<usize>() % (node_num - thresh_num + 1);
     let mut alive_nodes = nodes;
     alive_nodes.shuffle(&mut thread_rng());
     while alive_nodes.len() > thresh_num + rand_num {
@@ -525,19 +535,26 @@ fn get_max_height(height_record: Arc<Mutex<HashMap<Bytes, u64>>>) -> u64 {
     let height_record = height_record.lock().unwrap();
     if let Some(max_height) = height_record.values().max() {
         *max_height
-    }else{
+    } else {
         0
     }
 }
 
 fn get_index_array(nodes: &[Node], alives: &[Node]) -> Vec<usize> {
-   nodes.iter().enumerate().filter(|(_, node)| alives.contains(node)).map(|(i, _)| i).collect()
+    nodes
+        .iter()
+        .enumerate()
+        .filter(|(_, node)| alives.contains(node))
+        .map(|(i, _)| i)
+        .collect()
 }
 
 fn get_index(nodes: &[Node], name: &Bytes) -> usize {
     let mut index = std::usize::MAX;
-    nodes.iter().enumerate().for_each(|(i, node)| if &node.address == name {
-        index = i;
+    nodes.iter().enumerate().for_each(|(i, node)| {
+        if node.address == name {
+            index = i;
+        }
     });
     index
 }
