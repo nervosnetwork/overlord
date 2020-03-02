@@ -60,7 +60,6 @@ pub struct State<T: Codec, F: Consensus<T>, C: Crypto, W: Wal> {
     is_full_transcation: HashMap<Hash, bool>,
     is_leader:           bool,
     leader_address:      Address,
-    last_commit_qc:      Option<AggregatedVote>,
     update_from_where:   UpdateFrom,
     height_start:        Instant,
     block_interval:      u64,
@@ -107,7 +106,6 @@ where
             is_full_transcation: HashMap::new(),
             is_leader:           false,
             leader_address:      Address::default(),
-            last_commit_qc:      None,
             update_from_where:   UpdateFrom::PrecommitQC(mock_init_qc()),
             height_start:        Instant::now(),
             block_interval:      interval,
@@ -686,13 +684,6 @@ where
             MsgType::SignedProposal,
         )?;
 
-        // Deal with proposal's height is equal to the current height - 1 and round is higher
-        // than the last commit round. Retransmit prevote vote to the last commit proposal.
-        if height == self.height - 1 {
-            self.retransmit_qc(ctx.clone(), proposal.proposer).await?;
-            return Ok(());
-        }
-
         // If the signed proposal is with a lock, check the lock round and the QC then trigger it to
         // SMR. Otherwise, touch off SMR directly.
         let lock_round = if let Some(polc) = proposal.lock.clone() {
@@ -901,8 +892,6 @@ where
             proof,
         };
 
-        self.last_commit_qc = Some(qc.clone());
-
         let ctx = Context::new();
         let status = self
             .function
@@ -986,11 +975,6 @@ where
             MsgType::SignedVote,
         )?;
         self.verify_address(&voter, true)?;
-
-        if height == self.height - 1 {
-            self.retransmit_qc(ctx, voter).await?;
-            return Ok(());
-        }
 
         // Check if the quorum certificate has generated before check whether there is a hash that
         // vote weight is above the threshold. If no hash achieved this, return directly.
@@ -1297,10 +1281,8 @@ where
         let choke_round = choke.round;
 
         // filter choke height ne self.height
-        if choke_height < self.height - 1 || choke_height > self.height {
+        if choke_height != self.height {
             return Ok(());
-        } else if choke_height == self.height - 1 {
-            return self.retransmit_qc(ctx, signed_choke.address).await;
         }
 
         if choke_round < self.round {
@@ -1663,31 +1645,6 @@ where
             });
     }
 
-    async fn retransmit_qc(&self, ctx: Context, address: Address) -> ConsensusResult<()> {
-        debug!("Overlord: state re-transmit last height vote");
-        if let Some(qc) = self.last_commit_qc.clone() {
-            let _ = self
-                .function
-                .transmit_to_relayer(ctx, address, OverlordMsg::AggregatedVote(qc))
-                .await
-                .map_err(|err| {
-                    trace::error(
-                        "retransmit_qc_to_leader".to_string(),
-                        Some(json!({
-                            "height": self.height,
-                            "round": self.round,
-                        })),
-                    );
-
-                    error!(
-                        "Overlord: state transmit message to leader failed {:?}",
-                        err
-                    );
-                });
-        }
-        Ok(())
-    }
-
     async fn broadcast(&self, ctx: Context, msg: OverlordMsg<T>) {
         debug!(
             "Overlord: state broadcast a message to others height {}, round {}",
@@ -1941,7 +1898,7 @@ where
 
             FromWhere::PrecommitQC(round) => {
                 let qc = if round == u64::max_value() {
-                    self.last_commit_qc.clone().unwrap_or_else(mock_init_qc)
+                    mock_init_qc()
                 } else {
                     self.votes
                         .get_qc_by_id(self.height, round, VoteType::Precommit)?
@@ -1993,7 +1950,7 @@ where
     }
 
     fn filter_message(&self, height: u64, round: u64) -> bool {
-        if height < self.height - 1 || (height == self.height && round < self.round) {
+        if height < self.height || (height == self.height && round < self.round) {
             debug!(
                 "Overlord: state receive an outdated message height {}, self height {}",
                 height, self.height

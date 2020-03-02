@@ -440,7 +440,7 @@ async fn run_wal_test(num: usize, interval: u64, change_nodes_cycles: u64, test_
         let speakers_clone = speakers.clone();
         let alive_speakers_clone = alive_speakers.clone();
         tokio::spawn(async move {
-            thread::sleep(Duration::from_millis(interval * 5));
+            thread::sleep(Duration::from_millis(interval));
             let max_height = get_max_alive_height(
                 Arc::<Mutex<HashMap<Bytes, u64>>>::clone(&height_record_clone),
                 &alive_speakers_clone,
@@ -510,10 +510,10 @@ async fn run_wal_test(num: usize, interval: u64, change_nodes_cycles: u64, test_
     }
 }
 
-#[tokio::test(threaded_scheduler)]
-async fn test_1_wal() {
-    run_wal_test(1, 100, 1, 20).await
-}
+// #[tokio::test(threaded_scheduler)]
+// async fn test_1_wal() {
+//     run_wal_test(1, 100, 1, 200).await
+// }
 
 // #[tokio::test(threaded_scheduler)]
 // async fn test_3_wal() {
@@ -528,7 +528,7 @@ async fn test_1_wal() {
 
 // #[tokio::test(threaded_scheduler)]
 // async fn test_21_wal() {
-//     run_wal_test(21, 100, 5, 200).await
+//     run_wal_test(21, 100, 1, 200).await
 // }
 
 fn gen_random_bytes() -> Bytes {
