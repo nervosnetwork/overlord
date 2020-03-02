@@ -14,7 +14,7 @@ use rand::{random, seq::SliceRandom, thread_rng};
 use serde::{Deserialize, Serialize};
 
 use overlord::types::{Commit, Hash, Node, OverlordMsg, Status};
-use overlord::{Codec, Consensus, Crypto, DurationConfig, Overlord, OverlordHandler, Wal};
+use overlord::{Codec, Consensus, Crypto, DurationConfig, Overlord, OverlordHandler, Wal, WalInfo};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 lazy_static! {
@@ -69,12 +69,16 @@ fn test_speech_codec() {
 }
 
 struct MockWal {
-    inner: Mutex<Option<Bytes>>,
+    name:     Bytes,
+    speakers: Vec<Node>,
+    inner:    Mutex<Option<Bytes>>,
 }
 
 impl MockWal {
-    fn new() -> MockWal {
+    fn new(name: Bytes, speakers: Vec<Node>) -> MockWal {
         MockWal {
+            name,
+            speakers,
             inner: Mutex::new(None),
         }
     }
@@ -83,6 +87,12 @@ impl MockWal {
 #[async_trait]
 impl Wal for MockWal {
     async fn save(&self, info: Bytes) -> Result<(), Box<dyn Error + Send>> {
+        let _wal: WalInfo<Speech> = rlp::decode(info.as_ref()).unwrap();
+        // println!(
+        //     "node {:?} save {:?}",
+        //     get_index(&self.speakers, &self.name),
+        //     wal
+        // );
         *self.inner.lock().unwrap() = Some(info);
         Ok(())
     }
@@ -357,7 +367,10 @@ async fn run_wal_test(num: usize, interval: u64, change_nodes_cycles: u64, test_
         .map(|i| {
             (
                 speakers.get(i).unwrap().address.clone(),
-                Arc::new(MockWal::new()),
+                Arc::new(MockWal::new(
+                    speakers.get(i).unwrap().address.clone(),
+                    speakers.clone(),
+                )),
             )
         })
         .collect();
@@ -366,8 +379,6 @@ async fn run_wal_test(num: usize, interval: u64, change_nodes_cycles: u64, test_
 
     let mut test_count = 0;
     loop {
-        let height_start = get_max_height(Arc::<Mutex<HashMap<Bytes, u64>>>::clone(&height_record));
-
         let alive_speakers = if test_count == 0 {
             speakers.clone()
         } else {
@@ -379,6 +390,11 @@ async fn run_wal_test(num: usize, interval: u64, change_nodes_cycles: u64, test_
             test_count,
             alive_num,
             get_index_array(&speakers, &alive_speakers)
+        );
+
+        let height_start = get_max_alive_height(
+            Arc::<Mutex<HashMap<Bytes, u64>>>::clone(&height_record),
+            &alive_speakers,
         );
 
         let channels: Vec<Channel> = (0..alive_num).map(|_| unbounded()).collect();
@@ -422,17 +438,19 @@ async fn run_wal_test(num: usize, interval: u64, change_nodes_cycles: u64, test_
         let height_record_clone = Arc::<Mutex<HashMap<Bytes, u64>>>::clone(&height_record);
         let handles_clone = handlers.clone();
         let speakers_clone = speakers.clone();
+        let alive_speakers_clone = alive_speakers.clone();
         tokio::spawn(async move {
-            thread::sleep(Duration::from_millis(interval));
-            let max_height = get_max_height(Arc::<Mutex<HashMap<Bytes, u64>>>::clone(
-                &height_record_clone,
-            ));
+            thread::sleep(Duration::from_millis(interval * 5));
+            let max_height = get_max_alive_height(
+                Arc::<Mutex<HashMap<Bytes, u64>>>::clone(&height_record_clone),
+                &alive_speakers_clone,
+            );
             {
                 let height_record = height_record_clone.lock().unwrap();
                 height_record.iter().for_each(|(name, height)| {
                     // println!("node {:?} in height {:?}", get_index(&speakers_clone, name),
                     // height);
-                    if *height < max_height - 1 {
+                    if *height < max_height {
                         handles_clone
                             .iter()
                             .filter(|speaker| speaker.brain.name == name)
@@ -458,11 +476,16 @@ async fn run_wal_test(num: usize, interval: u64, change_nodes_cycles: u64, test_
             }
         });
 
-        let mut height_end =
-            get_max_height(Arc::<Mutex<HashMap<Bytes, u64>>>::clone(&height_record));
+        let mut height_end = get_max_alive_height(
+            Arc::<Mutex<HashMap<Bytes, u64>>>::clone(&height_record),
+            &alive_speakers,
+        );
         while height_end - height_start < change_nodes_cycles {
             thread::sleep(Duration::from_millis(interval));
-            height_end = get_max_height(Arc::<Mutex<HashMap<Bytes, u64>>>::clone(&height_record));
+            height_end = get_max_alive_height(
+                Arc::<Mutex<HashMap<Bytes, u64>>>::clone(&height_record),
+                &alive_speakers,
+            );
         }
         println!(
             "Cycle {:?} start from {:?}, end with {:?}",
@@ -489,24 +512,24 @@ async fn run_wal_test(num: usize, interval: u64, change_nodes_cycles: u64, test_
 
 #[tokio::test(threaded_scheduler)]
 async fn test_1_wal() {
-    run_wal_test(1, 100, 1, 1).await
+    run_wal_test(1, 100, 1, 20).await
 }
 
-#[tokio::test(threaded_scheduler)]
-async fn test_3_wal() {
-    run_wal_test(3, 100, 1, 1).await
-}
+// #[tokio::test(threaded_scheduler)]
+// async fn test_3_wal() {
+//     run_wal_test(3, 100, 1, 20).await
+// }
 
-#[tokio::test(threaded_scheduler)]
-async fn test_4_wal() {
-    // let _ = env_logger::builder().is_test(true).try_init();
-    run_wal_test(4, 100, 1, 1).await
-}
+// #[tokio::test(threaded_scheduler)]
+// async fn test_4_wal() {
+//     // let _ = env_logger::builder().is_test(true).try_init();
+//     run_wal_test(4, 100, 1, 20).await
+// }
 
-#[tokio::test(threaded_scheduler)]
-async fn test_21_wal() {
-    run_wal_test(21, 100, 1, 1).await
-}
+// #[tokio::test(threaded_scheduler)]
+// async fn test_21_wal() {
+//     run_wal_test(21, 100, 5, 200).await
+// }
 
 fn gen_random_bytes() -> Bytes {
     let vec: Vec<u8> = (0..10).map(|_| random::<u8>()).collect();
@@ -536,9 +559,16 @@ fn gen_alive_nodes(nodes: Vec<Node>) -> Vec<Node> {
     alive_nodes
 }
 
-fn get_max_height(height_record: Arc<Mutex<HashMap<Bytes, u64>>>) -> u64 {
+fn get_max_alive_height(height_record: Arc<Mutex<HashMap<Bytes, u64>>>, alives: &[Node]) -> u64 {
     let height_record = height_record.lock().unwrap();
-    if let Some(max_height) = height_record.values().max() {
+    if let Some(max_height) = height_record
+        .clone()
+        .into_iter()
+        .filter(|(name, _)| alives.iter().any(|node| node.address == name))
+        .collect::<HashMap<Bytes, u64>>()
+        .values()
+        .max()
+    {
         *max_height
     } else {
         0
