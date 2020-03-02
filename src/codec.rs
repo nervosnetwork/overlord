@@ -810,12 +810,13 @@ mod test {
             let height = random::<u64>();
             let round = random::<u64>();
             let step = Step::Precommit;
+            let from = UpdateFrom::ChokeQC(AggregatedChoke::new());
             WalInfo {
                 height,
                 round,
                 step,
                 lock,
-                from: UpdateFrom::ChokeQC(AggregatedChoke::new()),
+                from,
             }
         }
     }

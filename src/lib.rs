@@ -28,6 +28,7 @@ mod wal;
 pub use self::overlord::Overlord;
 pub use self::overlord::OverlordHandler;
 pub use creep::Context;
+pub use wal::WalInfo;
 
 use std::error::Error;
 use std::fmt::Debug;

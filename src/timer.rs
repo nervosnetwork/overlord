@@ -108,10 +108,8 @@ impl Timer {
 
     pub fn run(mut self) {
         tokio::spawn(async move {
-            loop {
-                if let Some(err) = self.next().await {
-                    error!("Overlord: timer error {:?}", err);
-                }
+            while let Some(err) = self.next().await {
+                error!("Overlord: timer error {:?}", err);
             }
         });
     }

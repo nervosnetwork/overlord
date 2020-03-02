@@ -60,11 +60,11 @@ pub struct State<T: Codec, F: Consensus<T>, C: Crypto, W: Wal> {
     is_full_transcation: HashMap<Hash, bool>,
     is_leader:           bool,
     leader_address:      Address,
-    last_commit_qc:      Option<AggregatedVote>,
     update_from_where:   UpdateFrom,
     height_start:        Instant,
     block_interval:      u64,
     consensus_power:     bool,
+    stopped:             bool,
 
     resp_tx:  UnboundedSender<VerifyResp>,
     function: Arc<F>,
@@ -106,11 +106,11 @@ where
             is_full_transcation: HashMap::new(),
             is_leader:           false,
             leader_address:      Address::default(),
-            last_commit_qc:      None,
             update_from_where:   UpdateFrom::PrecommitQC(mock_init_qc()),
             height_start:        Instant::now(),
             block_interval:      interval,
             consensus_power:     false,
+            stopped:             false,
 
             resp_tx:  tx,
             function: consensus,
@@ -141,6 +141,10 @@ where
                     }
                 }
                 evt = event.next() => {
+                    if self.stopped {
+                        break;
+                    }
+
                     if !self.consensus_power {
                         continue;
                     }
@@ -245,8 +249,21 @@ where
                         })),
                     );
 
-                    error!("Overlord: state handle signed choke error {:?}", e);
+                    error!("Overlord: state handle rich status error {:?}", e);
                 }
+                Ok(())
+            }
+
+            OverlordMsg::Stop => {
+                self.state_machine.trigger(SMRTrigger {
+                    trigger_type: TriggerType::Stop,
+                    source:       TriggerSource::State,
+                    hash:         Hash::new(),
+                    round:        Some(self.round),
+                    height:       self.height,
+                    wal_info:     None,
+                })?;
+                self.stopped = true;
                 Ok(())
             }
 
@@ -278,7 +295,6 @@ where
                             "is lock": lock_round.is_some(),
                         })),
                     );
-
                     error!("Overlord: state handle new round error {:?}", e);
                 }
                 Ok(())
@@ -441,7 +457,7 @@ where
     ) -> ConsensusResult<()> {
         if status.height <= self.height {
             warn!(
-                "Overlord: state receive a outdated status, height {}, self height {}",
+                "Overlord: state receive an outdated status, height {}, self height {}",
                 status.height, self.height
             );
             return Ok(());
@@ -471,10 +487,10 @@ where
         self.authority.update(&mut auth_list, true);
 
         // If the status' height is much higher than the current,
-        if get_last_flag {
+        if get_last_flag && new_height > 1 {
             let mut tmp = self
                 .function
-                .get_authority_list(ctx, new_height - 1)
+                .get_authority_list(ctx, new_height - 2)
                 .await
                 .map_err(|err| {
                     ConsensusError::Other(format!("get authority list error {:?}", err))
@@ -530,58 +546,9 @@ where
             ));
         }
 
-        // Save wal info in propose step.
-        let lock = if lock_round.is_none() {
-            None
-        } else {
-            let round = lock_round.clone().unwrap();
-            let qc = self
-                .votes
-                .get_qc_by_id(self.height, round, VoteType::Prevote)
-                .map_err(|err| ConsensusError::ProposalErr(format!("{:?} when propose", err)))?;
-            let content = self
-                .hash_with_block
-                .get(&qc.block_hash)
-                .ok_or_else(|| ConsensusError::Other("lose whole block".to_string()))?;
-
-            Some(WalLock {
-                lock_round: round,
-                lock_votes: qc,
-                content:    content.clone(),
-            })
-        };
-
-        let update_from = match from_where {
-            FromWhere::PrevoteQC(round) => {
-                let qc = self
-                    .votes
-                    .get_qc_by_id(self.height, round, VoteType::Prevote)?;
-                UpdateFrom::PrevoteQC(qc)
-            }
-
-            FromWhere::PrecommitQC(round) => {
-                let qc = if round == u64::max_value() {
-                    self.last_commit_qc.clone().unwrap_or_else(mock_init_qc)
-                } else {
-                    self.votes
-                        .get_qc_by_id(self.height, round, VoteType::Precommit)?
-                };
-                UpdateFrom::PrecommitQC(qc)
-            }
-
-            FromWhere::ChokeQC(round) => {
-                let qc = self.chokes.get_qc(round).ok_or_else(|| {
-                    ConsensusError::BrakeErr(format!(
-                        "no choke qc height {} round {}",
-                        self.height, round
-                    ))
-                })?;
-                UpdateFrom::ChokeQC(qc)
-            }
-        };
-
-        self.set_update_from(update_from);
-        self.save_wal(Step::Propose, lock).await?;
+        self.set_update_from(from_where)?;
+        self.save_wal_with_lock_round(Step::Propose, lock_round)
+            .await?;
 
         // If self is not proposer, check whether it has received current signed proposal before. If
         // has, then handle it.
@@ -717,13 +684,6 @@ where
             MsgType::SignedProposal,
         )?;
 
-        // Deal with proposal's height is equal to the current height - 1 and round is higher
-        // than the last commit round. Retransmit prevote vote to the last commit proposal.
-        if height == self.height - 1 {
-            self.retransmit_qc(ctx.clone(), proposal.proposer).await?;
-            return Ok(());
-        }
-
         // If the signed proposal is with a lock, check the lock round and the QC then trigger it to
         // SMR. Otherwise, touch off SMR directly.
         let lock_round = if let Some(polc) = proposal.lock.clone() {
@@ -814,7 +774,7 @@ where
             block_hash: hash.clone(),
         })?;
 
-        self.save_wal_before_vote(vote_type.clone().into(), lock_round)
+        self.save_wal_with_lock_round(vote_type.clone().into(), lock_round)
             .await?;
 
         if self.is_leader {
@@ -866,7 +826,8 @@ where
         );
 
         self.chokes.insert(self.round, signed_choke.clone());
-        self.save_wal_before_vote(Step::Brake, lock_round).await?;
+        self.save_wal_with_lock_round(Step::Brake, lock_round)
+            .await?;
         self.broadcast(Context::new(), OverlordMsg::SignedChoke(signed_choke))
             .await;
         self.check_choke_above_threshold()?;
@@ -901,15 +862,24 @@ where
             )));
         };
 
-        debug!("Overlord: state generate proof");
-        let qc = self
-            .votes
-            .get_qc_by_hash(height, hash.clone(), VoteType::Precommit);
-        if qc.is_none() {
+        let qc = if let Some(tmp) =
+            self.votes
+                .get_qc_by_hash(height, hash.clone(), VoteType::Precommit)
+        {
+            tmp.to_owned()
+        } else {
             return Err(ConsensusError::StorageErr("Lose precommit QC".to_string()));
-        }
+        };
 
-        let qc = qc.unwrap();
+        let polc = Some(WalLock {
+            lock_round: self.round,
+            lock_votes: qc.clone(),
+            content:    content.clone(),
+        });
+        self.save_wal(Step::Commit, polc).await?;
+
+        debug!("Overlord: state generate proof");
+
         let proof = Proof {
             height,
             round: self.round,
@@ -921,18 +891,6 @@ where
             content,
             proof,
         };
-
-        self.last_commit_qc = Some(qc.clone());
-        let content = self
-            .hash_with_block
-            .get(&hash)
-            .ok_or_else(|| ConsensusError::Other("lose whole block".to_string()))?;
-        let polc = Some(WalLock {
-            lock_round: self.round,
-            lock_votes: qc,
-            content:    content.clone(),
-        });
-        self.save_wal(Step::Commit, polc).await?;
 
         let ctx = Context::new();
         let status = self
@@ -1017,11 +975,6 @@ where
             MsgType::SignedVote,
         )?;
         self.verify_address(&voter, true)?;
-
-        if height == self.height - 1 {
-            self.retransmit_qc(ctx, voter).await?;
-            return Ok(());
-        }
 
         // Check if the quorum certificate has generated before check whether there is a hash that
         // vote weight is above the threshold. If no hash achieved this, return directly.
@@ -1328,10 +1281,8 @@ where
         let choke_round = choke.round;
 
         // filter choke height ne self.height
-        if choke_height < self.height - 1 || choke_height > self.height {
+        if choke_height != self.height {
             return Ok(());
-        } else if choke_height == self.height - 1 {
-            return self.retransmit_qc(ctx, signed_choke.address).await;
         }
 
         if choke_round < self.round {
@@ -1694,31 +1645,6 @@ where
             });
     }
 
-    async fn retransmit_qc(&self, ctx: Context, address: Address) -> ConsensusResult<()> {
-        debug!("Overlord: state re-transmit last height vote");
-        if let Some(qc) = self.last_commit_qc.clone() {
-            let _ = self
-                .function
-                .transmit_to_relayer(ctx, address, OverlordMsg::AggregatedVote(qc))
-                .await
-                .map_err(|err| {
-                    trace::error(
-                        "retransmit_qc_to_leader".to_string(),
-                        Some(json!({
-                            "height": self.height,
-                            "round": self.round,
-                        })),
-                    );
-
-                    error!(
-                        "Overlord: state transmit message to leader failed {:?}",
-                        err
-                    );
-                });
-        }
-        Ok(())
-    }
-
     async fn broadcast(&self, ctx: Context, msg: OverlordMsg<T>) {
         debug!(
             "Overlord: state broadcast a message to others height {}, round {}",
@@ -1855,7 +1781,7 @@ where
         Ok(())
     }
 
-    async fn save_wal_before_vote(
+    async fn save_wal_with_lock_round(
         &mut self,
         step: Step,
         lock_round: Option<u64>,
@@ -1961,8 +1887,37 @@ where
         false
     }
 
-    fn set_update_from(&mut self, from_where: UpdateFrom) {
-        self.update_from_where = from_where;
+    fn set_update_from(&mut self, from_where: FromWhere) -> ConsensusResult<()> {
+        let update_from = match from_where {
+            FromWhere::PrevoteQC(round) => {
+                let qc = self
+                    .votes
+                    .get_qc_by_id(self.height, round, VoteType::Prevote)?;
+                UpdateFrom::PrevoteQC(qc)
+            }
+
+            FromWhere::PrecommitQC(round) => {
+                let qc = if round == u64::max_value() {
+                    mock_init_qc()
+                } else {
+                    self.votes
+                        .get_qc_by_id(self.height, round, VoteType::Precommit)?
+                };
+                UpdateFrom::PrecommitQC(qc)
+            }
+
+            FromWhere::ChokeQC(round) => {
+                let qc = self.chokes.get_qc(round).ok_or_else(|| {
+                    ConsensusError::BrakeErr(format!(
+                        "no choke qc height {} round {}",
+                        self.height, round
+                    ))
+                })?;
+                UpdateFrom::ChokeQC(qc)
+            }
+        };
+        self.update_from_where = update_from;
+        Ok(())
     }
 
     /// Filter the proposals that do not need to be handed.
@@ -1995,7 +1950,7 @@ where
     }
 
     fn filter_message(&self, height: u64, round: u64) -> bool {
-        if height < self.height - 1 || (height == self.height && round < self.round) {
+        if height < self.height || (height == self.height && round < self.round) {
             debug!(
                 "Overlord: state receive an outdated message height {}, self height {}",
                 height, self.height

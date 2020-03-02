@@ -10,15 +10,22 @@ use crate::Codec;
     fmt = "wal info height {}, round {}, step {:?}",
     height, round, step,
 )]
+/// Structure of Wal Info
 pub struct WalInfo<T: Codec> {
+    /// height
     pub height: u64,
+    /// round
     pub round:  u64,
+    /// step
     pub step:   Step,
+    /// lock
     pub lock:   Option<WalLock<T>>,
+    /// from
     pub from:   UpdateFrom,
 }
 
 impl<T: Codec> WalInfo<T> {
+    /// transfer WalInfo to SMRBase
     pub fn into_smr_base(self) -> SMRBase {
         SMRBase {
             height: self.height,

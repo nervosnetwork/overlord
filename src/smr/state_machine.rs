@@ -30,7 +30,7 @@ pub struct StateMachine {
 }
 
 impl Stream for StateMachine {
-    type Item = ConsensusError;
+    type Item = ConsensusResult<()>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
         match Stream::poll_next(Pin::new(&mut self.trigger), cx) {
@@ -38,40 +38,42 @@ impl Stream for StateMachine {
 
             Poll::Ready(msg) => {
                 if msg.is_none() {
-                    return Poll::Ready(Some(ConsensusError::TriggerSMRErr(
+                    return Poll::Ready(Some(Err(ConsensusError::TriggerSMRErr(
                         "Channel dropped".to_string(),
-                    )));
+                    ))));
                 }
 
                 let msg = msg.unwrap();
                 let trigger_type = msg.trigger_type.clone();
                 let res = match trigger_type {
-                    TriggerType::NewHeight(status) => self.handle_new_height(status, msg.source),
+                    TriggerType::NewHeight(status) => {
+                        Some(self.handle_new_height(status, msg.source))
+                    }
                     TriggerType::Proposal => {
-                        self.handle_proposal(msg.hash, msg.round, msg.source, msg.height)
+                        Some(self.handle_proposal(msg.hash, msg.round, msg.source, msg.height))
                     }
                     TriggerType::PrevoteQC => {
-                        self.handle_prevote(msg.hash, msg.round, msg.source, msg.height)
+                        Some(self.handle_prevote(msg.hash, msg.round, msg.source, msg.height))
                     }
                     TriggerType::PrecommitQC => {
-                        self.handle_precommit(msg.hash, msg.round, msg.source, msg.height)
+                        Some(self.handle_precommit(msg.hash, msg.round, msg.source, msg.height))
                     }
                     TriggerType::BrakeTimeout => {
                         assert!(msg.source == TriggerSource::Timer);
-                        self.handle_brake_timeout(msg.height, msg.round)
+                        Some(self.handle_brake_timeout(msg.height, msg.round))
                     }
                     TriggerType::ContinueRound => {
                         assert!(msg.source == TriggerSource::State);
-                        self.handle_continue_round(msg.height, msg.round)
+                        Some(self.handle_continue_round(msg.height, msg.round))
                     }
-                    TriggerType::WalInfo => self.handle_wal(msg.wal_info.unwrap()),
+                    TriggerType::WalInfo => Some(self.handle_wal(msg.wal_info.unwrap())),
+                    TriggerType::Stop => {
+                        self.throw_event(SMREvent::Stop).unwrap();
+                        None
+                    }
                 };
 
-                if res.is_err() {
-                    Poll::Ready(Some(res.err().unwrap()))
-                } else {
-                    Poll::Ready(None)
-                }
+                Poll::Ready(res)
             }
         }
     }
@@ -106,10 +108,9 @@ impl StateMachine {
                 "Overlord: SMR brake timeout height {}, round {}",
                 self.height, round
             );
-
             self.throw_event(SMREvent::Brake {
-                height:     self.height,
-                round:      self.round,
+                height,
+                round,
                 lock_round: self.lock.clone().map(|lock| lock.round),
             })
         }
