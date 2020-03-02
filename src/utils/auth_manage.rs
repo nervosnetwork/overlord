@@ -265,6 +265,19 @@ impl HeightAuthorityManage {
     }
 }
 
+//give the validators list and bitmap, returns the activated validators, the authority_list MUST be sorted
+pub fn extract_voters(authority_list: &mut Vec<Node>, address_bitmap: &bytes::Bytes) ->ConsensusResult<Vec<Address>>{
+    authority_list.sort();
+    let bitmap = BitVec::from_bytes(&address_bitmap);
+    let voters:Vec<Address> = bitmap
+        .iter()
+        .zip(authority_list.iter())
+        .filter(|pair| pair.0) //the bitmap must hit
+        .map(|pair| pair.1.address.clone()) //get the corresponding address
+        .collect::<Vec<_>>();
+    return Ok(voters);
+}
+
 #[cfg(test)]
 mod test {
     extern crate test;
