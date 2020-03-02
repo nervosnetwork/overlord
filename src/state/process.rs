@@ -90,32 +90,32 @@ where
         wal_engine: Arc<W>,
     ) -> (Self, UnboundedReceiver<VerifyResp>) {
         let (tx, rx) = unbounded();
-        let mut auth = AuthorityManage::new();
-        auth.update(&mut authority_list, false);
+        let mut authority = AuthorityManage::new();
+        authority.update(&mut authority_list);
 
         let state = State {
-            height:              INIT_HEIGHT,
-            round:               INIT_ROUND,
-            state_machine:       smr,
-            address:             addr,
-            proposals:           ProposalCollector::new(),
-            votes:               VoteCollector::new(),
-            chokes:              ChokeCollector::new(),
-            authority:           auth,
-            hash_with_block:     HashMap::new(),
+            height: INIT_HEIGHT,
+            round: INIT_ROUND,
+            state_machine: smr,
+            address: addr,
+            proposals: ProposalCollector::new(),
+            votes: VoteCollector::new(),
+            chokes: ChokeCollector::new(),
+            authority,
+            hash_with_block: HashMap::new(),
             is_full_transcation: HashMap::new(),
-            is_leader:           false,
-            leader_address:      Address::default(),
-            update_from_where:   UpdateFrom::PrecommitQC(mock_init_qc()),
-            height_start:        Instant::now(),
-            block_interval:      interval,
-            consensus_power:     false,
-            stopped:             false,
+            is_leader: false,
+            leader_address: Address::default(),
+            update_from_where: UpdateFrom::PrecommitQC(mock_init_qc()),
+            height_start: Instant::now(),
+            block_interval: interval,
+            consensus_power: false,
+            stopped: false,
 
-            resp_tx:  tx,
+            resp_tx: tx,
             function: consensus,
-            util:     crypto,
-            wal:      wal_engine,
+            util: crypto,
+            wal: wal_engine,
         };
 
         (state, rx)
@@ -240,7 +240,7 @@ where
             }
 
             OverlordMsg::RichStatus(rs) => {
-                if let Err(e) = self.goto_new_height(ctx.clone(), rs, true).await {
+                if let Err(e) = self.goto_new_height(ctx.clone(), rs).await {
                     trace::error(
                         "goto new height".to_string(),
                         Some(json!({
@@ -449,12 +449,7 @@ where
     /// interval. Since it is possible to have received and cached the current height's proposals,
     /// votes and quorum certificates before, these should be re-checked as goto new height.
     /// Finally, trigger SMR to goto new height.
-    async fn goto_new_height(
-        &mut self,
-        ctx: Context,
-        status: Status,
-        get_last_flag: bool,
-    ) -> ConsensusResult<()> {
+    async fn goto_new_height(&mut self, _ctx: Context, status: Status) -> ConsensusResult<()> {
         if status.height <= self.height {
             warn!(
                 "Overlord: state receive an outdated status, height {}, self height {}",
@@ -484,19 +479,7 @@ where
         // Update height and authority list.
         self.height_start = Instant::now();
         let mut auth_list = status.authority_list.clone();
-        self.authority.update(&mut auth_list, true);
-
-        // If the status' height is much higher than the current,
-        if get_last_flag && new_height > 1 {
-            let mut tmp = self
-                .function
-                .get_authority_list(ctx, new_height - 2)
-                .await
-                .map_err(|err| {
-                    ConsensusError::Other(format!("get authority list error {:?}", err))
-                })?;
-            self.authority.set_last_list(&mut tmp);
-        }
+        self.authority.update(&mut auth_list);
 
         if let Some(interval) = status.interval {
             self.block_interval = interval;
@@ -676,7 +659,7 @@ where
         //  Verify proposal signature.
         let proposal = signed_proposal.proposal.clone();
         let signature = signed_proposal.signature.clone();
-        self.verify_proposer(height, round, &proposal.proposer, height == self.height)?;
+        self.verify_proposer(height, round, &proposal.proposer)?;
         self.verify_signature(
             self.util.hash(Bytes::from(encode(&proposal))),
             signature,
@@ -689,10 +672,10 @@ where
         let lock_round = if let Some(polc) = proposal.lock.clone() {
             debug!("Overlord: state receive a signed proposal with a lock");
 
-            if !self.authority.is_above_threshold(
-                &polc.lock_votes.signature.address_bitmap,
-                proposal.height == self.height,
-            )? {
+            if !self
+                .authority
+                .is_above_threshold(&polc.lock_votes.signature.address_bitmap)?
+            {
                 return Err(ConsensusError::AggregatedSignatureErr(format!(
                     "aggregate signature below two thirds, proposal of height {:?}, round {:?}",
                     proposal.height, proposal.round
@@ -702,7 +685,6 @@ where
             self.verify_aggregated_signature(
                 polc.lock_votes.signature.clone(),
                 polc.lock_votes.to_vote(),
-                self.height,
                 VoteType::Prevote,
             )
             .map_err(|err| {
@@ -900,7 +882,7 @@ where
             .map_err(|err| ConsensusError::Other(format!("commit error {:?}", err)))?;
 
         let mut auth_list = status.authority_list.clone();
-        self.authority.update(&mut auth_list, true);
+        self.authority.update(&mut auth_list);
         let cost = Instant::now() - self.height_start;
 
         info!(
@@ -916,7 +898,7 @@ where
             Delay::new(Duration::from_millis(self.block_interval) - cost).await;
         }
 
-        self.goto_new_height(ctx, status, false).await?;
+        self.goto_new_height(ctx, status).await?;
         Ok(())
     }
 
@@ -974,7 +956,7 @@ where
             &voter,
             MsgType::SignedVote,
         )?;
-        self.verify_address(&voter, true)?;
+        self.verify_address(&voter)?;
 
         // Check if the quorum certificate has generated before check whether there is a hash that
         // vote weight is above the threshold. If no hash achieved this, return directly.
@@ -1132,7 +1114,6 @@ where
         self.verify_aggregated_signature(
             aggregated_vote.signature.clone(),
             aggregated_vote.to_vote(),
-            height,
             qc_type.clone(),
         )?;
 
@@ -1243,7 +1224,7 @@ where
         let vote_map = self
             .votes
             .get_vote_map(self.height, self.round, vote_type.clone())?;
-        let threshold = self.authority.get_vote_weight_sum(true)? * 2;
+        let threshold = self.authority.get_vote_weight_sum() * 2;
 
         info!(
             "Overlord: state round {}, {:?} vote pool length {}",
@@ -1318,7 +1299,7 @@ where
         aggregated_choke: AggregatedChoke,
     ) -> ConsensusResult<()> {
         // verify is above threshold.
-        if aggregated_choke.len() * 3 <= self.authority.current_len() * 2 {
+        if aggregated_choke.len() * 3 <= self.authority.len() * 2 {
             return Err(ConsensusError::BrakeErr(
                 "choke qc is not above threshold".to_string(),
             ));
@@ -1367,7 +1348,7 @@ where
         }
 
         let set = voters.iter().cloned().collect::<HashSet<_>>();
-        let mut bit_map = BitVec::from_elem(self.authority.current_len(), false);
+        let mut bit_map = BitVec::from_elem(self.authority.len(), false);
         for (index, addr) in self.authority.get_addres_ref().iter().enumerate() {
             if set.contains(addr) {
                 bit_map.set(index, true);
@@ -1396,7 +1377,7 @@ where
             let proposal = sp.proposal.clone();
 
             if self
-                .verify_proposer(proposal.height, proposal.round, &proposal.proposer, true)
+                .verify_proposer(proposal.height, proposal.round, &proposal.proposer)
                 .is_ok()
                 && self
                     .verify_signature(
@@ -1428,7 +1409,7 @@ where
                     MsgType::SignedVote,
                 )
                 .is_ok()
-                && self.verify_address(&voter, true).is_ok()
+                && self.verify_address(&voter).is_ok()
             {
                 self.votes.insert_vote(sv.get_hash(), sv, voter);
             }
@@ -1443,7 +1424,6 @@ where
                 .verify_aggregated_signature(
                     qc.signature.clone(),
                     qc.to_vote(),
-                    self.height,
                     qc.vote_type.clone(),
                 )
                 .is_ok()
@@ -1457,7 +1437,7 @@ where
     /// If self is not the proposer of the height and round, set leader address as the proposer
     /// address.
     fn is_proposer(&mut self) -> ConsensusResult<bool> {
-        let proposer = self.authority.get_proposer(self.height, self.round, true)?;
+        let proposer = self.authority.get_proposer(self.height, self.round)?;
 
         if proposer == self.address {
             info!(
@@ -1478,7 +1458,7 @@ where
     }
 
     fn next_proposer(&self, height: u64, round: u64) -> ConsensusResult<bool> {
-        let proposer = self.authority.get_proposer(height, round, true)?;
+        let proposer = self.authority.get_proposer(height, round)?;
         Ok(self.address == proposer)
     }
 
@@ -1551,13 +1531,12 @@ where
         &self,
         signature: AggregatedSignature,
         vote: Vote,
-        height: u64,
         vote_type: VoteType,
     ) -> ConsensusResult<()> {
         debug!("Overlord: state verify an aggregated signature");
         if !self
             .authority
-            .is_above_threshold(&signature.address_bitmap, height == self.height)?
+            .is_above_threshold(&signature.address_bitmap)?
         {
             return Err(ConsensusError::AggregatedSignatureErr(format!(
                 "{:?} QC of height {}, round {} is not above threshold",
@@ -1565,9 +1544,7 @@ where
             )));
         }
 
-        let mut voters = self
-            .authority
-            .get_voters(&signature.address_bitmap, height == self.height)?;
+        let mut voters = self.authority.get_voters(&signature.address_bitmap)?;
         voters.sort();
 
         let pretty_voter = voters
@@ -1595,24 +1572,18 @@ where
         Ok(())
     }
 
-    fn verify_proposer(
-        &self,
-        height: u64,
-        round: u64,
-        address: &Address,
-        is_current: bool,
-    ) -> ConsensusResult<()> {
+    fn verify_proposer(&self, height: u64, round: u64, address: &Address) -> ConsensusResult<()> {
         debug!("Overlord: state verify a proposer");
-        self.verify_address(address, is_current)?;
-        if address != &self.authority.get_proposer(height, round, is_current)? {
+        self.verify_address(address)?;
+        if address != &self.authority.get_proposer(height, round)? {
             return Err(ConsensusError::ProposalErr("Invalid proposer".to_string()));
         }
         Ok(())
     }
 
     /// Check whether the given address is included in the corresponding authority list.
-    fn verify_address(&self, address: &Address, is_current: bool) -> ConsensusResult<()> {
-        if !self.authority.contains(address, is_current)? {
+    fn verify_address(&self, address: &Address) -> ConsensusResult<()> {
+        if !self.authority.contains(address) {
             return Err(ConsensusError::InvalidAddress);
         }
         Ok(())
@@ -1671,10 +1642,7 @@ where
 
     fn check_choke_above_threshold(&mut self) -> ConsensusResult<()> {
         self.chokes.print_round_choke_log(self.round);
-        if let Some(round) = self
-            .chokes
-            .max_round_above_threshold(self.authority.current_len())
-        {
+        if let Some(round) = self.chokes.max_round_above_threshold(self.authority.len()) {
             if round < self.round {
                 return Ok(());
             }
