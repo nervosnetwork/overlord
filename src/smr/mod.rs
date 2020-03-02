@@ -29,14 +29,14 @@ impl SMR {
     pub fn new() -> (Self, Event, Event) {
         let (tx, rx) = unbounded();
         let smr = SMRHandler::new(tx);
-        let (state_machine, evt_1, evt_2) = StateMachine::new(rx);
+        let (state_machine, evt_state, evt_timer) = StateMachine::new(rx);
 
         let provider = SMR {
             smr_handler: Some(smr),
             state_machine,
         };
 
-        (provider, evt_1, evt_2)
+        (provider, evt_state, evt_timer)
     }
 
     /// Take the SMR handler and this function will be called only once.
@@ -118,10 +118,5 @@ impl FusedStream for Event {
 impl Event {
     pub fn new(receiver: UnboundedReceiver<SMREvent>) -> Self {
         Event { rx: receiver }
-    }
-
-    #[cfg(test)]
-    pub fn close(&mut self) {
-        self.rx.close();
     }
 }

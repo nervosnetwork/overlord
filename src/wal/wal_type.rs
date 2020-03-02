@@ -1,7 +1,7 @@
 use derive_more::Display;
 
 use crate::smr::smr_types::{Lock, Step};
-use crate::types::{AggregatedVote, PoLC};
+use crate::types::{AggregatedVote, UpdateFrom};
 use crate::Codec;
 
 #[derive(Clone, Debug, Display, Eq, PartialEq)]
@@ -15,21 +15,16 @@ pub struct WalInfo<T: Codec> {
     pub round:  u64,
     pub step:   Step,
     pub lock:   Option<WalLock<T>>,
+    pub from:   UpdateFrom,
 }
 
 impl<T: Codec> WalInfo<T> {
-    pub fn to_smr_base(&self) -> SMRBase {
-        let lock = if let Some(polc) = &self.lock {
-            Some(polc.to_lock())
-        } else {
-            None
-        };
-
+    pub fn into_smr_base(self) -> SMRBase {
         SMRBase {
             height: self.height,
             round:  self.round,
             step:   self.step.clone(),
-            polc:   lock,
+            polc:   self.lock.map(|polc| polc.to_lock()),
         }
     }
 }
@@ -43,13 +38,6 @@ pub struct WalLock<T: Codec> {
 }
 
 impl<T: Codec> WalLock<T> {
-    pub fn to_polc(&self) -> PoLC {
-        PoLC {
-            lock_round: self.lock_round,
-            lock_votes: self.lock_votes.clone(),
-        }
-    }
-
     pub fn to_lock(&self) -> Lock {
         Lock {
             round: self.lock_round,
@@ -131,6 +119,7 @@ mod test {
             round:  0,
             step:   Step::Propose,
             lock:   Some(wal_lock),
+            from:   UpdateFrom::PrecommitQC(mock_qc()),
         };
 
         assert_eq!(

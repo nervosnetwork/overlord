@@ -148,7 +148,11 @@ pub enum SMREvent {
     /// for state: broadcast Choke message,
     /// for timer: set a retry timeout timer.
     #[display(fmt = "Brake event")]
-    Brake { height: u64, round: u64 },
+    Brake {
+        height:     u64,
+        round:      u64,
+        lock_round: Option<u64>,
+    },
 
     /// Stop event,
     /// for state: stop process,

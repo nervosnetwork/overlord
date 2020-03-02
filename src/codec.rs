@@ -406,6 +406,50 @@ impl Decodable for Node {
     }
 }
 
+impl Encodable for UpdateFrom {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        s.begin_list(2);
+        match self {
+            UpdateFrom::PrevoteQC(qc) => {
+                s.append(&0u8).append(qc);
+            }
+            UpdateFrom::PrecommitQC(qc) => {
+                s.append(&1u8).append(qc);
+            }
+            UpdateFrom::ChokeQC(qc) => {
+                s.append(&2u8).append(qc);
+            }
+        }
+    }
+}
+
+impl Decodable for UpdateFrom {
+    fn decode(r: &Rlp) -> Result<Self, DecoderError> {
+        match r.prototype()? {
+            Prototype::List(2) => {
+                let tmp: u8 = r.val_at(0)?;
+                let res = match tmp {
+                    0u8 => {
+                        let qc: AggregatedVote = r.val_at(1)?;
+                        UpdateFrom::PrevoteQC(qc)
+                    }
+                    1u8 => {
+                        let qc: AggregatedVote = r.val_at(1)?;
+                        UpdateFrom::PrecommitQC(qc)
+                    }
+                    2u8 => {
+                        let qc: AggregatedChoke = r.val_at(1)?;
+                        UpdateFrom::ChokeQC(qc)
+                    }
+                    _ => unreachable!(),
+                };
+                Ok(res)
+            }
+            _ => Err(DecoderError::RlpInconsistentLengthAndData),
+        }
+    }
+}
+
 impl<T: Codec> Encodable for WalLock<T> {
     fn rlp_append(&self, s: &mut RlpStream) {
         let content = self.content.encode().unwrap().to_vec();
@@ -438,28 +482,31 @@ impl<T: Codec> Decodable for WalLock<T> {
 
 impl<T: Codec> Encodable for WalInfo<T> {
     fn rlp_append(&self, s: &mut RlpStream) {
-        s.begin_list(4)
+        s.begin_list(5)
             .append(&self.height)
             .append(&self.round)
             .append::<u8>(&self.step.clone().into())
-            .append(&self.lock);
+            .append(&self.lock)
+            .append(&self.from);
     }
 }
 
 impl<T: Codec> Decodable for WalInfo<T> {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         match r.prototype()? {
-            Prototype::List(4) => {
+            Prototype::List(5) => {
                 let height: u64 = r.val_at(0)?;
                 let round: u64 = r.val_at(1)?;
                 let tmp: u8 = r.val_at(2)?;
                 let step = Step::from(tmp);
                 let lock = r.val_at(3)?;
+                let from: UpdateFrom = r.val_at(4)?;
                 Ok(WalInfo {
                     height,
                     round,
                     step,
                     lock,
+                    from,
                 })
             }
             _ => Err(DecoderError::RlpInconsistentLengthAndData),
@@ -469,44 +516,20 @@ impl<T: Codec> Decodable for WalInfo<T> {
 
 impl Encodable for Choke {
     fn rlp_append(&self, s: &mut RlpStream) {
-        s.begin_list(4).append(&self.height).append(&self.round);
-
-        match &self.from {
-            UpdateFrom::PrevoteQC(qc) => {
-                s.append(&0u8).append(qc);
-            }
-            UpdateFrom::PrecommitQC(qc) => {
-                s.append(&1u8).append(qc);
-            }
-            UpdateFrom::ChokeQC(qc) => {
-                s.append(&2u8).append(qc);
-            }
-        }
+        s.begin_list(3)
+            .append(&self.height)
+            .append(&self.round)
+            .append(&self.from);
     }
 }
 
 impl Decodable for Choke {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         match r.prototype()? {
-            Prototype::List(4) => {
+            Prototype::List(3) => {
                 let height: u64 = r.val_at(0)?;
                 let round: u64 = r.val_at(1)?;
-                let from_where: u8 = r.val_at(2)?;
-                let from = match from_where {
-                    0u8 => {
-                        let tmp: AggregatedVote = r.val_at(3)?;
-                        UpdateFrom::PrevoteQC(tmp)
-                    }
-                    1u8 => {
-                        let tmp: AggregatedVote = r.val_at(3)?;
-                        UpdateFrom::PrecommitQC(tmp)
-                    }
-                    2u8 => {
-                        let tmp: AggregatedChoke = r.val_at(3)?;
-                        UpdateFrom::ChokeQC(tmp)
-                    }
-                    _ => unreachable!(),
-                };
+                let from: UpdateFrom = r.val_at(2)?;
                 Ok(Choke {
                     height,
                     round,
@@ -792,6 +815,7 @@ mod test {
                 round,
                 step,
                 lock,
+                from: UpdateFrom::ChokeQC(AggregatedChoke::new()),
             }
         }
     }
