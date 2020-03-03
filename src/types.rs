@@ -50,7 +50,7 @@ impl From<u8> for Role {
 
 /// Vote or QC types. Prevote and precommit QC will promise the rightness and the final consistency
 /// of overlord consensus protocol.
-#[derive(Clone, Debug, Display, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Clone, Debug, Display, PartialEq, Eq, Hash)]
 pub enum VoteType {
     /// Prevote vote or QC.
     #[display(fmt = "Prevote")]
@@ -135,7 +135,7 @@ impl<T: Codec> OverlordMsg<T> {
 }
 
 /// How does state goto the current round.
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum UpdateFrom {
     /// From a prevote quorum certificate.
     PrevoteQC(AggregatedVote),
@@ -238,7 +238,7 @@ pub struct AggregatedSignature {
 }
 
 /// An aggregated vote.
-#[derive(Clone, Debug, Display, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Clone, Debug, Display, PartialEq, Eq, Hash)]
 #[rustfmt::skip]
 #[display(fmt = "{:?} aggregated vote height {}, round {}", vote_type, height, round)]
 pub struct AggregatedVote {
@@ -355,7 +355,7 @@ impl Status {
 }
 
 /// A node info.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Node {
     /// Node address.
     pub address: Address,
@@ -414,7 +414,7 @@ pub(crate) struct VerifyResp {
 }
 
 /// An aggregated choke.
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct AggregatedChoke {
     /// The height of the aggregated choke.
     pub height: u64,

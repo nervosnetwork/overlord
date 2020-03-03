@@ -28,7 +28,7 @@ pub fn timer_config() -> Option<DurationConfig> {
     Some(DurationConfig::new(20, 10, 5, 10))
 }
 
-pub fn gen_alive_nodes(nodes: Vec<Node>) -> Vec<Node> {
+pub fn create_alive_nodes(nodes: Vec<Node>) -> Vec<Node> {
     let node_num = nodes.len();
     let thresh_num = node_num * 2 / 3 + 1;
     let rand_num = 0;
@@ -42,7 +42,7 @@ pub fn gen_alive_nodes(nodes: Vec<Node>) -> Vec<Node> {
 }
 
 pub fn get_max_alive_height(
-    height_record: Arc<Mutex<HashMap<Bytes, u64>>>,
+    height_record: &Arc<Mutex<HashMap<Bytes, u64>>>,
     alives: &[Node],
 ) -> u64 {
     let height_record = height_record.lock().unwrap();

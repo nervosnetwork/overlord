@@ -31,37 +31,13 @@ impl Block {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct Detail {
-    inner: Bytes,
-}
-
-macro_rules! impl_codec_for {
-    ($($struc: ident),+) => {
-        $(
-            impl Codec for $struc {
-                fn encode(&self) -> Result<Bytes, Box<dyn Error + Send>> {
-                    Ok(self.inner.clone())
-                }
-
-                fn decode(data: Bytes) -> Result<Self, Box<dyn Error + Send>> {
-                    Ok($struc { inner: data })
-                }
-            }
-        )+
+impl Codec for Block {
+    fn encode(&self) -> Result<Bytes, Box<dyn Error + Send>> {
+        Ok(self.inner.clone())
     }
-}
 
-impl_codec_for!(Block, Detail);
-
-#[test]
-fn test_block_codec() {
-    for _ in 0..100 {
-        let content = gen_random_bytes();
-        let block = Block::from(content);
-
-        let decode: Block = Codec::decode(Codec::encode(&block).unwrap()).unwrap();
-        assert_eq!(decode, block);
+    fn decode(data: Bytes) -> Result<Self, Box<dyn Error + Send>> {
+        Ok(Block { inner: data })
     }
 }
 
@@ -256,8 +232,6 @@ impl Participant {
                             handler.send_msg(Context::new(), OverlordMsg::AggregatedVote(agg_vote));
                     }
                     OverlordMsg::SignedChoke(choke) => {
-                        // println!("node {:?}, {:?}, receive {:?}", get_index(&adapter.node_list,
-                        // &adapter.name), adapter.name,choke);
                         let _ = handler.send_msg(Context::new(), OverlordMsg::SignedChoke(choke));
                     }
                     _ => {}
@@ -274,5 +248,16 @@ impl Participant {
             .unwrap();
 
         Ok(())
+    }
+}
+
+#[test]
+fn test_block_codec() {
+    for _ in 0..100 {
+        let content = gen_random_bytes();
+        let block = Block::from(content);
+
+        let decode: Block = Codec::decode(Codec::encode(&block).unwrap()).unwrap();
+        assert_eq!(decode, block);
     }
 }

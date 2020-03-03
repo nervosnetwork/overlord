@@ -4,25 +4,39 @@ mod run;
 mod utils;
 mod wal;
 
+use std::fs;
+
 use run::run_test;
+use wal::Record;
+
+const TEST_CASE_DIR: &str = "./tests/integration_tests/test_case/";
 
 #[tokio::test(threaded_scheduler)]
 async fn test_1_wal() {
-    run_test(1, 100, 1, 200).await
+    run_test(Record::new(1, 100), 1, 20).await
 }
 
-// #[tokio::test(threaded_scheduler)]
-// async fn test_3_wal() {
-//     run_wal_test(3, 100, 1, 20).await
-// }
+#[tokio::test(threaded_scheduler)]
+async fn test_3_wal() {
+    run_test(Record::new(3, 100), 1, 20).await
+}
 
 #[tokio::test(threaded_scheduler)]
 async fn test_4_wal() {
-    // let _ = env_logger::builder().is_test(true).try_init();
-    run_test(4, 100, 1, 20).await
+    run_test(Record::new(4, 100), 1, 20).await
 }
 
 #[tokio::test(threaded_scheduler)]
 async fn test_21_wal() {
-    run_test(21, 5, 5, 200).await
+    // let _ = env_logger::builder().is_test(true).try_init();
+    run_test(Record::new(21, 5), 5, 200).await
 }
+
+#[tokio::test(threaded_scheduler)]
+async fn test_cases() {
+    for entry in fs::read_dir(TEST_CASE_DIR).unwrap() {
+        let path = entry.unwrap().path();
+        run_test(Record::load(&path.display().to_string()), 1, 10).await
+    }
+}
+
