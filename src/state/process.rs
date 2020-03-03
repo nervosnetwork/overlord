@@ -90,32 +90,32 @@ where
         wal_engine: Arc<W>,
     ) -> (Self, UnboundedReceiver<VerifyResp>) {
         let (tx, rx) = unbounded();
-        let mut authority = AuthorityManage::new();
-        authority.update(&mut authority_list);
+        let mut auth = AuthorityManage::new();
+        auth.update(&mut authority_list);
 
         let state = State {
-            height: INIT_HEIGHT,
-            round: INIT_ROUND,
-            state_machine: smr,
-            address: addr,
-            proposals: ProposalCollector::new(),
-            votes: VoteCollector::new(),
-            chokes: ChokeCollector::new(),
-            authority,
-            hash_with_block: HashMap::new(),
+            height:              INIT_HEIGHT,
+            round:               INIT_ROUND,
+            state_machine:       smr,
+            address:             addr,
+            proposals:           ProposalCollector::new(),
+            votes:               VoteCollector::new(),
+            chokes:              ChokeCollector::new(),
+            authority:           auth,
+            hash_with_block:     HashMap::new(),
             is_full_transcation: HashMap::new(),
-            is_leader: false,
-            leader_address: Address::default(),
-            update_from_where: UpdateFrom::PrecommitQC(mock_init_qc()),
-            height_start: Instant::now(),
-            block_interval: interval,
-            consensus_power: false,
-            stopped: false,
+            is_leader:           false,
+            leader_address:      Address::default(),
+            update_from_where:   UpdateFrom::PrecommitQC(mock_init_qc()),
+            height_start:        Instant::now(),
+            block_interval:      interval,
+            consensus_power:     false,
+            stopped:             false,
 
-            resp_tx: tx,
+            resp_tx:  tx,
             function: consensus,
-            util: crypto,
-            wal: wal_engine,
+            util:     crypto,
+            wal:      wal_engine,
         };
 
         (state, rx)
