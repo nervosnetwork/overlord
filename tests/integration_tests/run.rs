@@ -7,6 +7,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use creep::Context;
 use crossbeam_channel::{unbounded, Receiver, Sender};
+use lru_cache::LruCache;
 
 use overlord::types::{Node, OverlordMsg, Status};
 
@@ -31,7 +32,7 @@ pub async fn run_test(num: usize, interval: u64, change_nodes_cycles: u64, test_
             )
         })
         .collect();
-    let commit_record: Arc<Mutex<HashMap<u64, Bytes>>> = Arc::new(Mutex::new(HashMap::new()));
+    let commit_record: Arc<Mutex<LruCache<u64, Bytes>>> = Arc::new(Mutex::new(LruCache::new(10)));
     let height_record: Arc<Mutex<HashMap<Bytes, u64>>> = Arc::new(Mutex::new(HashMap::new()));
 
     let mut test_count = 0;
@@ -78,7 +79,7 @@ pub async fn run_test(num: usize, interval: u64, change_nodes_cycles: u64, test_
                 auth_list.clone(),
                 talk_to,
                 hearings.get(&name).unwrap().clone(),
-                Arc::<Mutex<HashMap<u64, Bytes>>>::clone(&commit_record),
+                Arc::<Mutex<LruCache<u64, Bytes>>>::clone(&commit_record),
                 Arc::<Mutex<HashMap<Bytes, u64>>>::clone(&height_record),
                 Arc::<MockWal>::clone(wal_record.get(&name).unwrap()),
             ));

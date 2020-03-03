@@ -8,13 +8,15 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use creep::Context;
 use crossbeam_channel::{Receiver, Sender};
+use lru_cache::LruCache;
 use serde::{Deserialize, Serialize};
+
+use overlord::types::{Commit, Hash, Node, OverlordMsg, Status};
+use overlord::{Codec, Consensus, DurationConfig, Overlord, OverlordHandler};
 
 use super::crypto::MockCrypto;
 use super::utils::{gen_random_bytes, get_index, hash, timer_config};
 use super::wal::MockWal;
-use overlord::types::{Commit, Hash, Node, OverlordMsg, Status};
-use overlord::{Codec, Consensus, DurationConfig, Overlord, OverlordHandler};
 
 pub type Channel = (Sender<OverlordMsg<Block>>, Receiver<OverlordMsg<Block>>);
 
@@ -68,8 +70,8 @@ pub struct Adapter {
     pub node_list:     Vec<Node>,
     pub talk_to:       HashMap<Bytes, Sender<OverlordMsg<Block>>>,
     pub hearing:       Receiver<OverlordMsg<Block>>,
-    pub commit_record: Arc<Mutex<HashMap<u64, Bytes>>>, // height => Block
-    pub height_record: Arc<Mutex<HashMap<Bytes, u64>>>, // address => height
+    pub commit_record: Arc<Mutex<LruCache<u64, Bytes>>>, // height => Block
+    pub height_record: Arc<Mutex<HashMap<Bytes, u64>>>,  // address => height
     pub interval:      u64,
 }
 
@@ -79,7 +81,7 @@ impl Adapter {
         node_list: Vec<Node>,
         talk_to: HashMap<Bytes, Sender<OverlordMsg<Block>>>,
         hearing: Receiver<OverlordMsg<Block>>,
-        commit_record: Arc<Mutex<HashMap<u64, Bytes>>>,
+        commit_record: Arc<Mutex<LruCache<u64, Bytes>>>,
         height_record: Arc<Mutex<HashMap<Bytes, u64>>>,
         interval: u64,
     ) -> Adapter {
@@ -123,7 +125,7 @@ impl Consensus<Block> for Adapter {
         commit: Commit<Block>,
     ) -> Result<Status, Box<dyn Error + Send>> {
         let mut commit_record = self.commit_record.lock().unwrap();
-        if let Some(block) = commit_record.get(&commit.height) {
+        if let Some(block) = commit_record.get_mut(&commit.height) {
             // Consistency check
             assert_eq!(block, &commit.content.inner);
         } else {
@@ -191,7 +193,7 @@ impl Participant {
         node_list: Vec<Node>,
         talk_to: HashMap<Bytes, Sender<OverlordMsg<Block>>>,
         hearing: Receiver<OverlordMsg<Block>>,
-        commit_record: Arc<Mutex<HashMap<u64, Bytes>>>,
+        commit_record: Arc<Mutex<LruCache<u64, Bytes>>>,
         height_record: Arc<Mutex<HashMap<Bytes, u64>>>,
         wal: Arc<MockWal>,
     ) -> Self {

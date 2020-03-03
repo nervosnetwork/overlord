@@ -40,6 +40,7 @@ crossbeam-channel = "0.4"
 env_logger = "0.7"
 hasher = { version = "0.1", features = ['hash-keccak'] }
 lazy_static = "1.4"
+lru-cache = "0.1"
 rand = "0.7"
 
 [features]
