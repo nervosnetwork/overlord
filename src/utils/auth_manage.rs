@@ -265,6 +265,23 @@ impl HeightAuthorityManage {
     }
 }
 
+/// give the validators list and bitmap, returns the activated validators, the authority_list MUST
+/// be sorted
+pub fn extract_voters(
+    authority_list: &mut Vec<Node>,
+    address_bitmap: &bytes::Bytes,
+) -> ConsensusResult<Vec<Address>> {
+    authority_list.sort();
+    let bitmap = BitVec::from_bytes(&address_bitmap);
+    let voters: Vec<Address> = bitmap
+        .iter()
+        .zip(authority_list.iter())
+        .filter(|pair| pair.0) //the bitmap must hit
+        .map(|pair| pair.1.address.clone()) //get the corresponding address
+        .collect::<Vec<_>>();
+    Ok(voters)
+}
+
 #[cfg(test)]
 mod test {
     extern crate test;
@@ -275,6 +292,7 @@ mod test {
     use test::Bencher;
 
     use crate::error::ConsensusError;
+    use crate::extract_voters;
     use crate::types::{Address, Node};
     use crate::utils::auth_manage::{AuthorityManage, HeightAuthorityManage};
 
@@ -483,6 +501,24 @@ mod test {
             authority.get_proposer(3, 1, true).unwrap(),
             authority_list[2].address
         );
+    }
+
+    #[test]
+    fn test_extract_voters() {
+        let mut auth_list = gen_auth_list(10);
+        let mut origin_auth_list = auth_list.clone();
+        origin_auth_list.sort();
+        let bit_map = gen_bitmap(10, vec![0, 1, 2]);
+        let res = extract_voters(&mut auth_list, &Bytes::from(bit_map.to_bytes())).unwrap();
+
+        assert_eq!(res.len(), 3);
+
+        for (index, address) in res.iter().enumerate() {
+            assert_eq!(
+                origin_auth_list.get(index).unwrap().address,
+                address.clone()
+            );
+        }
     }
 
     #[bench]
