@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
 use bytes::Bytes;
 use creep::Context;
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use lru_cache::LruCache;
 
 use overlord::types::{Node, OverlordMsg, Status};
 
@@ -15,11 +14,12 @@ use super::primitive::{Block, Channel, Participant};
 use super::utils::{
     create_alive_nodes, get_index, get_index_array, get_max_alive_height, timer_config,
 };
-use super::wal::{MockWal, Record, RECORD_TMP_FILE};
+use super::wal::{Record, RECORD_TMP_FILE};
 
 pub async fn run_test(records: Record, refresh_height: u64, test_height: u64) {
+    let records = Arc::new(records);
     let interval = records.interval;
-    let start_height = get_max_alive_height(&records.height_record, &records.node_record);
+    let start_height = get_max_alive_height(&records, &records.node_record);
     println!("Test start with {:?} nodes，interval of {:?} ms, refresh every {:?} height, begin with {:?} height and terminate after {:?} height",
              records.node_record.len(), interval, refresh_height, start_height, test_height);
 
@@ -33,7 +33,7 @@ pub async fn run_test(records: Record, refresh_height: u64, test_height: u64) {
             get_index_array(&records.node_record, &alive_nodes)
         );
 
-        let height_start = get_max_alive_height(&records.height_record, &alive_nodes);
+        let height_start = get_max_alive_height(&records, &alive_nodes);
 
         let alive_handlers = run_alive_nodes(&records, alive_nodes.clone());
         synchronize_height(
@@ -43,11 +43,23 @@ pub async fn run_test(records: Record, refresh_height: u64, test_height: u64) {
             test_count,
         );
 
-        let mut height_end = get_max_alive_height(&records.height_record, &alive_nodes);
+        let mut height_end = get_max_alive_height(&records, &alive_nodes);
+        let mut last_max_height = height_end;
+        let mut stagnation = 0;
         while height_end - height_start < refresh_height {
             thread::sleep(Duration::from_millis(interval));
-            height_end = get_max_alive_height(&records.height_record, &alive_nodes);
-            records.save(RECORD_TMP_FILE);
+            height_end = get_max_alive_height(&records, &alive_nodes);
+            if height_end == last_max_height {
+                stagnation += 1;
+            } else {
+                stagnation = 0;
+                last_max_height = height_end;
+            }
+            if stagnation > 2000 / interval {
+                println!("consensus stagnation time exceeded {:?} s, save wal", 2);
+                records.save(RECORD_TMP_FILE);
+                stagnation = 0;
+            }
         }
         println!(
             "Cycle {:?} start from {:?}, end with {:?}",
@@ -64,7 +76,7 @@ pub async fn run_test(records: Record, refresh_height: u64, test_height: u64) {
     }
 }
 
-fn run_alive_nodes(records: &Record, alive_nodes: Vec<Node>) -> Vec<Arc<Participant>> {
+fn run_alive_nodes(records: &Arc<Record>, alive_nodes: Vec<Node>) -> Vec<Arc<Participant>> {
     let interval = records.interval;
     let alive_num = alive_nodes.len();
 
@@ -86,13 +98,10 @@ fn run_alive_nodes(records: &Record, alive_nodes: Vec<Node>) -> Vec<Arc<Particip
         talk_to.remove(&name);
 
         let node = Arc::new(Participant::new(
-            (name.clone(), interval),
-            records.node_record.clone(),
+            &name,
             talk_to,
             hearings.get(&name).unwrap().clone(),
-            Arc::<Mutex<LruCache<u64, Bytes>>>::clone(&records.commit_record),
-            Arc::<Mutex<HashMap<Bytes, u64>>>::clone(&records.height_record),
-            Arc::<MockWal>::clone(records.wal_record.get(&name).unwrap()),
+            records,
         ));
 
         alive_handlers.push(Arc::<Participant>::clone(&node));
@@ -106,19 +115,17 @@ fn run_alive_nodes(records: &Record, alive_nodes: Vec<Node>) -> Vec<Arc<Particip
 }
 
 fn synchronize_height(
-    records: &Record,
+    records: &Arc<Record>,
     alive_nodes: Vec<Node>,
     alive_handlers: Vec<Arc<Participant>>,
     test_count: u64,
 ) {
-    let interval = records.interval;
-    let height_record = Arc::<Mutex<HashMap<Bytes, u64>>>::clone(&records.height_record);
-    let node_record = records.node_record.clone();
+    let records = Arc::<Record>::clone(records);
 
     tokio::spawn(async move {
-        thread::sleep(Duration::from_millis(interval));
-        let max_height = get_max_alive_height(&height_record, &alive_nodes);
-        let height_record = height_record.lock().unwrap();
+        thread::sleep(Duration::from_millis(records.interval));
+        let max_height = get_max_alive_height(&records, &alive_nodes);
+        let height_record = records.height_record.lock().unwrap();
         height_record.iter().for_each(|(name, height)| {
             if *height < max_height {
                 alive_handlers
@@ -129,16 +136,16 @@ fn synchronize_height(
                             "Cycle {:?}, synchronize {:?} to node {:?} of height {:?}",
                             test_count,
                             max_height + 1,
-                            get_index(&node_record, name),
+                            get_index(&records.node_record, name),
                             height
                         );
                         let _ = node.handler.send_msg(
                             Context::new(),
                             OverlordMsg::RichStatus(Status {
                                 height:         max_height + 1,
-                                interval:       Some(interval),
+                                interval:       Some(records.interval),
                                 timer_config:   timer_config(),
-                                authority_list: node_record.clone(),
+                                authority_list: records.node_record.clone(),
                             }),
                         );
                     });

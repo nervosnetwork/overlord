@@ -23,13 +23,13 @@ async fn test_3_wal() {
 
 #[tokio::test(threaded_scheduler)]
 async fn test_4_wal() {
-    run_test(Record::new(4, 5), 1, 10).await
+    run_test(Record::new(4, 1), 1, 10000).await
 }
 
 #[tokio::test(threaded_scheduler)]
 async fn test_21_wal() {
     // let _ = env_logger::builder().is_test(true).try_init();
-    run_test(Record::new(21, 5), 1, 10).await
+    run_test(Record::new(21, 1), 1, 10000).await
 }
 
 #[tokio::test(threaded_scheduler)]

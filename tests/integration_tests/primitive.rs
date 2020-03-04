@@ -1,14 +1,13 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 
 use async_trait::async_trait;
 use bytes::Bytes;
 use creep::Context;
 use crossbeam_channel::{Receiver, Sender};
-use lru_cache::LruCache;
 use serde::{Deserialize, Serialize};
 
 use overlord::types::{Commit, Hash, Node, OverlordMsg, Status};
@@ -16,7 +15,7 @@ use overlord::{Codec, Consensus, DurationConfig, Overlord, OverlordHandler};
 
 use super::crypto::MockCrypto;
 use super::utils::{gen_random_bytes, get_index, hash, timer_config};
-use super::wal::MockWal;
+use super::wal::{MockWal, Record, RECORD_TMP_FILE};
 
 pub type Channel = (Sender<OverlordMsg<Block>>, Receiver<OverlordMsg<Block>>);
 
@@ -42,33 +41,24 @@ impl Codec for Block {
 }
 
 pub struct Adapter {
-    pub name:          Bytes, // address
-    pub node_list:     Vec<Node>,
-    pub talk_to:       HashMap<Bytes, Sender<OverlordMsg<Block>>>,
-    pub hearing:       Receiver<OverlordMsg<Block>>,
-    pub commit_record: Arc<Mutex<LruCache<u64, Bytes>>>, // height => Block
-    pub height_record: Arc<Mutex<HashMap<Bytes, u64>>>,  // address => height
-    pub interval:      u64,
+    pub name:    Bytes, // address
+    pub talk_to: HashMap<Bytes, Sender<OverlordMsg<Block>>>,
+    pub hearing: Receiver<OverlordMsg<Block>>,
+    pub records: Arc<Record>,
 }
 
 impl Adapter {
     fn new(
         name: Bytes,
-        node_list: Vec<Node>,
         talk_to: HashMap<Bytes, Sender<OverlordMsg<Block>>>,
         hearing: Receiver<OverlordMsg<Block>>,
-        commit_record: Arc<Mutex<LruCache<u64, Bytes>>>,
-        height_record: Arc<Mutex<HashMap<Bytes, u64>>>,
-        interval: u64,
+        records: Arc<Record>,
     ) -> Adapter {
         Adapter {
             name,
-            node_list,
             talk_to,
             hearing,
-            commit_record,
-            height_record,
-            interval,
+            records,
         }
     }
 }
@@ -100,27 +90,31 @@ impl Consensus<Block> for Adapter {
         height: u64,
         commit: Commit<Block>,
     ) -> Result<Status, Box<dyn Error + Send>> {
-        let mut commit_record = self.commit_record.lock().unwrap();
+        let mut commit_record = self.records.commit_record.lock().unwrap();
         if let Some(block) = commit_record.get_mut(&commit.height) {
             // Consistency check
+            if block != &commit.content.inner {
+                println!("Consistency break!!");
+                self.records.save(RECORD_TMP_FILE);
+            }
             assert_eq!(block, &commit.content.inner);
         } else {
             println!(
                 "node {:?} first commit in height: {:?}",
-                get_index(&self.node_list, &self.name),
+                get_index(&self.records.node_record, &self.name),
                 commit.height,
             );
             commit_record.insert(commit.height, commit.content.inner);
         }
 
-        let mut height_record = self.height_record.lock().unwrap();
+        let mut height_record = self.records.height_record.lock().unwrap();
         height_record.insert(self.name.clone(), commit.height);
 
         Ok(Status {
             height:         height + 1,
-            interval:       Some(self.interval),
+            interval:       Some(self.records.interval),
             timer_config:   None,
-            authority_list: self.node_list.clone(),
+            authority_list: self.records.node_record.clone(),
         })
     }
 
@@ -129,7 +123,7 @@ impl Consensus<Block> for Adapter {
         _ctx: Context,
         _height: u64,
     ) -> Result<Vec<Node>, Box<dyn Error + Send>> {
-        Ok(self.node_list.clone())
+        Ok(self.records.node_record.clone())
     }
 
     async fn broadcast_to_other(
@@ -165,26 +159,24 @@ pub struct Participant {
 
 impl Participant {
     pub fn new(
-        info: (Bytes, u64),
-        node_list: Vec<Node>,
+        name: &Bytes,
         talk_to: HashMap<Bytes, Sender<OverlordMsg<Block>>>,
         hearing: Receiver<OverlordMsg<Block>>,
-        commit_record: Arc<Mutex<LruCache<u64, Bytes>>>,
-        height_record: Arc<Mutex<HashMap<Bytes, u64>>>,
-        wal: Arc<MockWal>,
+        records: &Arc<Record>,
     ) -> Self {
-        let (name, interval) = info;
         let crypto = MockCrypto::new(name.clone());
         let adapter = Arc::new(Adapter::new(
             name.clone(),
-            node_list.clone(),
             talk_to,
             hearing,
-            commit_record,
-            height_record,
-            interval,
+            Arc::<Record>::clone(records),
         ));
-        let overlord = Overlord::new(name, Arc::clone(&adapter), Arc::new(crypto), wal);
+        let overlord = Overlord::new(
+            name.clone(),
+            Arc::clone(&adapter),
+            Arc::new(crypto),
+            Arc::clone(records.wal_record.get(name).unwrap()),
+        );
         let overlord_handler = overlord.get_handler();
 
         overlord_handler
@@ -192,9 +184,9 @@ impl Participant {
                 Context::new(),
                 OverlordMsg::RichStatus(Status {
                     height:         1,
-                    interval:       Some(interval),
+                    interval:       Some(records.interval),
                     timer_config:   timer_config(),
-                    authority_list: node_list,
+                    authority_list: records.node_record.clone(),
                 }),
             )
             .unwrap();

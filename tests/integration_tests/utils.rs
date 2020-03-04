@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use bytes::{Bytes, BytesMut};
 use hasher::{Hasher, HasherKeccak};
@@ -8,6 +8,8 @@ use rand::{random, seq::SliceRandom, thread_rng};
 
 use overlord::types::Node;
 use overlord::DurationConfig;
+
+use super::Record;
 
 lazy_static! {
     static ref HASHER_INST: HasherKeccak = HasherKeccak::new();
@@ -41,11 +43,8 @@ pub fn create_alive_nodes(nodes: Vec<Node>) -> Vec<Node> {
     alive_nodes
 }
 
-pub fn get_max_alive_height(
-    height_record: &Arc<Mutex<HashMap<Bytes, u64>>>,
-    alives: &[Node],
-) -> u64 {
-    let height_record = height_record.lock().unwrap();
+pub fn get_max_alive_height(records: &Arc<Record>, alives: &[Node]) -> u64 {
+    let height_record = records.height_record.lock().unwrap();
     if let Some(max_height) = height_record
         .clone()
         .into_iter()
