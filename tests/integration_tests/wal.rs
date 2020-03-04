@@ -15,7 +15,7 @@ use overlord::types::Node;
 use overlord::{Wal, WalInfo};
 
 use super::primitive::Block;
-use super::utils::gen_random_bytes;
+use super::utils::{create_alive_nodes, gen_random_bytes};
 
 pub const RECORD_TMP_FILE: &str = "./tests/integration_tests/test.json";
 
@@ -45,6 +45,7 @@ impl Wal for MockWal {
 
 pub struct Record {
     pub node_record:   Vec<Node>,
+    pub alive_record:  Mutex<Vec<Node>>,
     pub wal_record:    HashMap<Bytes, Arc<MockWal>>,
     pub commit_record: Arc<Mutex<LruCache<u64, Bytes>>>,
     pub height_record: Arc<Mutex<HashMap<Bytes, u64>>>,
@@ -54,6 +55,7 @@ pub struct Record {
 impl Record {
     pub fn new(num: usize, interval: u64) -> Record {
         let node_record: Vec<Node> = (0..num).map(|_| Node::new(gen_random_bytes())).collect();
+        let alive_record = Mutex::new(create_alive_nodes(node_record.clone()));
         let wal_record: HashMap<Bytes, Arc<MockWal>> = (0..num)
             .map(|i| {
                 (
@@ -73,6 +75,7 @@ impl Record {
 
         Record {
             node_record,
+            alive_record,
             wal_record,
             commit_record,
             height_record,
@@ -82,11 +85,12 @@ impl Record {
 
     fn to_wal(&self) -> RecordForWal {
         let node_record = self.node_record.clone();
-        let wal_record: Vec<(Bytes, Option<WalInfo<Block>>)> = self
+        let alive_record = self.alive_record.lock().unwrap().clone();
+        let wal_record: Vec<TupleWalRecord> = self
             .wal_record
             .iter()
             .map(|(name, wal)| {
-                (
+                TupleWalRecord(
                     name.clone(),
                     wal.inner
                         .lock()
@@ -96,28 +100,35 @@ impl Record {
                 )
             })
             .collect();
-        let commit_record: Vec<(u64, Bytes)> = self
+        let commit_record: Vec<TupleCommitRecord> = self
             .commit_record
             .lock()
             .unwrap()
             .iter()
-            .map(|(height, commit_hash)| (*height, commit_hash.clone()))
+            .map(|(height, commit_hash)| TupleCommitRecord(*height, commit_hash.clone()))
             .collect();
-        let height_record: Vec<(Bytes, u64)> = self
+        let height_record: Vec<TupleHeightRecord> = self
             .height_record
             .lock()
             .unwrap()
             .iter()
-            .map(|(name, height)| (name.clone(), *height))
+            .map(|(name, height)| TupleHeightRecord(name.clone(), *height))
             .collect();
         let interval = self.interval;
         RecordForWal {
             node_record,
+            alive_record,
             wal_record,
             commit_record,
             height_record,
             interval,
         }
+    }
+
+    pub fn update_alive(&self) -> Vec<Node> {
+        let alive_record = create_alive_nodes(self.node_record.clone());
+        *self.alive_record.lock().unwrap() = alive_record.clone();
+        alive_record
     }
 
     pub fn save(&self, filename: &str) {
@@ -134,22 +145,36 @@ impl Record {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Serialize, Deserialize)]
+struct TupleWalRecord(
+    #[serde(with = "overlord::serde_hex")] Bytes,
+    Option<WalInfo<Block>>,
+);
+
+#[derive(Serialize, Deserialize, Clone)]
+struct TupleCommitRecord(u64, #[serde(with = "overlord::serde_hex")] Bytes);
+
+#[derive(Serialize, Deserialize, Clone)]
+struct TupleHeightRecord(#[serde(with = "overlord::serde_hex")] Bytes, u64);
+
+#[derive(Serialize, Deserialize)]
 struct RecordForWal {
     node_record:   Vec<Node>,
-    wal_record:    Vec<(Bytes, Option<WalInfo<Block>>)>,
-    commit_record: Vec<(u64, Bytes)>,
-    height_record: Vec<(Bytes, u64)>,
+    alive_record:  Vec<Node>,
+    wal_record:    Vec<TupleWalRecord>,
+    commit_record: Vec<TupleCommitRecord>,
+    height_record: Vec<TupleHeightRecord>,
     interval:      u64,
 }
 
 impl RecordForWal {
     fn to_record(&self) -> Record {
         let node_record = self.node_record.clone();
+        let alive_record = Mutex::new(self.alive_record.clone());
         let wal_record: HashMap<Bytes, Arc<MockWal>> = self
             .wal_record
             .iter()
-            .map(|(name, wal)| {
+            .map(|TupleWalRecord(name, wal)| {
                 (
                     name.clone(),
                     Arc::new(MockWal {
@@ -159,16 +184,17 @@ impl RecordForWal {
             })
             .collect();
         let mut commit_record: LruCache<u64, Bytes> = LruCache::new(10);
-        for (height, commit_hash) in self.commit_record.clone() {
+        for TupleCommitRecord(height, commit_hash) in self.commit_record.clone() {
             commit_record.insert(height, commit_hash);
         }
         let height_record: HashMap<Bytes, u64> = self
             .height_record
             .iter()
-            .map(|(name, height)| (name.clone(), *height))
+            .map(|TupleHeightRecord(name, height)| (name.clone(), *height))
             .collect();
         Record {
             node_record,
+            alive_record,
             wal_record,
             commit_record: Arc::new(Mutex::new(commit_record)),
             height_record: Arc::new(Mutex::new(height_record)),

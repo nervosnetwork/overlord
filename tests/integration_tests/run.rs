@@ -11,9 +11,7 @@ use crossbeam_channel::{unbounded, Receiver, Sender};
 use overlord::types::{Node, OverlordMsg, Status};
 
 use super::primitive::{Block, Channel, Participant};
-use super::utils::{
-    create_alive_nodes, get_index, get_index_array, get_max_alive_height, timer_config,
-};
+use super::utils::{get_index, get_index_array, get_max_alive_height, timer_config};
 use super::wal::{Record, RECORD_TMP_FILE};
 
 pub async fn run_test(records: Record, refresh_height: u64, test_height: u64) {
@@ -24,8 +22,8 @@ pub async fn run_test(records: Record, refresh_height: u64, test_height: u64) {
              records.node_record.len(), interval, refresh_height, start_height, test_height);
 
     let mut test_count = 0;
+    let mut alive_nodes = { records.alive_record.lock().unwrap().clone() };
     loop {
-        let alive_nodes = create_alive_nodes(records.node_record.clone());
         println!(
             "Cycle {:?} start, generate {:?} alive_nodes of {:?}",
             test_count,
@@ -73,6 +71,8 @@ pub async fn run_test(records: Record, refresh_height: u64, test_height: u64) {
         if height_end - start_height > test_height {
             break;
         }
+
+        alive_nodes = records.update_alive();
     }
 }
 

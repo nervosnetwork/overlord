@@ -232,8 +232,10 @@ impl SignedVote {
 #[derive(Serialize, Deserialize, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct AggregatedSignature {
     /// Aggregated signature.
+    #[serde(with = "super::serde_hex")]
     pub signature: Signature,
     /// Voter address bit map.
+    #[serde(with = "super::serde_hex")]
     pub address_bitmap: Bytes,
 }
 
@@ -251,8 +253,10 @@ pub struct AggregatedVote {
     /// Round of the vote.
     pub round: u64,
     /// Proposal hash of the vote.
+    #[serde(with = "super::serde_hex")]
     pub block_hash: Hash,
     /// The leader that aggregate the signed votes.
+    #[serde(with = "super::serde_hex")]
     pub leader: Address,
 }
 
@@ -358,6 +362,7 @@ impl Status {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Node {
     /// Node address.
+    #[serde(with = "super::serde_hex")]
     pub address: Address,
     /// The propose weight of the node. The field is only effective in `features =
     /// "random_leader"`.
@@ -421,8 +426,10 @@ pub struct AggregatedChoke {
     /// The round of the aggregated choke.
     pub round: u64,
     /// The aggregated signature of the aggregated choke.
+    #[serde(with = "super::serde_hex")]
     pub signature: Signature,
     /// The voters of the aggregated choke.
+    #[serde(with = "super::serde_multi_hex")]
     pub voters: Vec<Address>,
 }
 

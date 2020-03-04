@@ -21,6 +21,7 @@ pub type Channel = (Sender<OverlordMsg<Block>>, Receiver<OverlordMsg<Block>>);
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Block {
+    #[serde(with = "overlord::serde_hex")]
     inner: Bytes,
 }
 
@@ -90,25 +91,30 @@ impl Consensus<Block> for Adapter {
         height: u64,
         commit: Commit<Block>,
     ) -> Result<Status, Box<dyn Error + Send>> {
-        let mut commit_record = self.records.commit_record.lock().unwrap();
-        if let Some(block) = commit_record.get_mut(&commit.height) {
-            // Consistency check
-            if block != &commit.content.inner {
-                println!("Consistency break!!");
-                self.records.save(RECORD_TMP_FILE);
+        let mut consistency_break = false;
+        {
+            let mut commit_record = self.records.commit_record.lock().unwrap();
+            if let Some(block) = commit_record.get_mut(&commit.height) {
+                // Consistency check
+                if block != &commit.content.inner {
+                    consistency_break = true;
+                }
+            } else {
+                println!(
+                    "node {:?} first commit in height: {:?}",
+                    get_index(&self.records.node_record, &self.name),
+                    commit.height,
+                );
+                commit_record.insert(commit.height, commit.content.inner);
+                let mut height_record = self.records.height_record.lock().unwrap();
+                height_record.insert(self.name.clone(), commit.height);
             }
-            assert_eq!(block, &commit.content.inner);
-        } else {
-            println!(
-                "node {:?} first commit in height: {:?}",
-                get_index(&self.records.node_record, &self.name),
-                commit.height,
-            );
-            commit_record.insert(commit.height, commit.content.inner);
         }
 
-        let mut height_record = self.records.height_record.lock().unwrap();
-        height_record.insert(self.name.clone(), commit.height);
+        if consistency_break {
+            self.records.save(RECORD_TMP_FILE);
+            panic!("Consistency break!!");
+        }
 
         Ok(Status {
             height:         height + 1,
