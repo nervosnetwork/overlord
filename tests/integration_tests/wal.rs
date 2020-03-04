@@ -17,7 +17,7 @@ use overlord::{Wal, WalInfo};
 use super::primitive::Block;
 use super::utils::gen_random_bytes;
 
-pub const RECORD_TMP_FILE: &str = "./tests/integration_tests/test_case/case0.json";
+pub const RECORD_TMP_FILE: &str = "./tests/integration_tests/test.json";
 
 pub struct MockWal {
     inner: Mutex<Option<Bytes>>,
@@ -80,7 +80,7 @@ impl Record {
         }
     }
 
-    fn into_wal(&self) -> RecordForWal {
+    fn to_wal(&self) -> RecordForWal {
         let node_record = self.node_record.clone();
         let wal_record: Vec<(Bytes, Option<WalInfo<Block>>)> = self
             .wal_record
@@ -122,7 +122,7 @@ impl Record {
 
     pub fn save(&self, filename: &str) {
         let file = File::create(filename).unwrap();
-        let record_for_wal = self.into_wal();
+        let record_for_wal = self.to_wal();
         serde_json::to_writer_pretty(file, &record_for_wal).unwrap();
     }
 
@@ -130,7 +130,7 @@ impl Record {
         let file = File::open(filename).unwrap();
         let reader = BufReader::new(file);
         let record_for_wal: RecordForWal = serde_json::from_reader(reader).unwrap();
-        record_for_wal.into_record()
+        record_for_wal.to_record()
     }
 }
 
@@ -144,7 +144,7 @@ struct RecordForWal {
 }
 
 impl RecordForWal {
-    fn into_record(&self) -> Record {
+    fn to_record(&self) -> Record {
         let node_record = self.node_record.clone();
         let wal_record: HashMap<Bytes, Arc<MockWal>> = self
             .wal_record
@@ -175,21 +175,4 @@ impl RecordForWal {
             interval: self.interval,
         }
     }
-}
-
-#[test]
-fn test_record() {
-    let record_0 = Record::new(10, 1000);
-    record_0
-        .commit_record
-        .lock()
-        .unwrap()
-        .insert(99, gen_random_bytes());
-    record_0
-        .height_record
-        .lock()
-        .unwrap()
-        .insert(gen_random_bytes(), 100);
-    record_0.save(RECORD_TMP_FILE);
-    let _record_1 = Record::load(RECORD_TMP_FILE);
 }

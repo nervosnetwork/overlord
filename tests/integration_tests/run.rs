@@ -36,7 +36,12 @@ pub async fn run_test(records: Record, refresh_height: u64, test_height: u64) {
         let height_start = get_max_alive_height(&records.height_record, &alive_nodes);
 
         let alive_handlers = run_alive_nodes(&records, alive_nodes.clone());
-        synchronize_height(&records, alive_nodes.clone(), alive_handlers.clone(), test_count);
+        synchronize_height(
+            &records,
+            alive_nodes.clone(),
+            alive_handlers.clone(),
+            test_count,
+        );
 
         let mut height_end = get_max_alive_height(&records.height_record, &alive_nodes);
         while height_end - height_start < refresh_height {
