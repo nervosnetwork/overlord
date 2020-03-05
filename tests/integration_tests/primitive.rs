@@ -105,15 +105,17 @@ impl Consensus<Block> for Adapter {
                     get_index(&self.records.node_record, &self.name),
                     commit.height,
                 );
-                commit_record.insert(commit.height, commit.content.inner);
-                let mut height_record = self.records.height_record.lock().unwrap();
-                height_record.insert(self.name.clone(), commit.height);
             }
         }
 
         if consistency_break {
             self.records.save(RECORD_TMP_FILE);
             panic!("Consistency break!!");
+        } else {
+            let mut commit_record = self.records.commit_record.lock().unwrap();
+            commit_record.insert(commit.height, commit.content.inner);
+            let mut height_record = self.records.height_record.lock().unwrap();
+            height_record.insert(self.name.clone(), commit.height);
         }
 
         Ok(Status {

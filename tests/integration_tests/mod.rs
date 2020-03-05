@@ -13,17 +13,17 @@ const TEST_CASE_DIR: &str = "./tests/integration_tests/test_case/";
 
 #[tokio::test(threaded_scheduler)]
 async fn test_1_wal() {
-    run_test(Record::new(1, 100), 1, 10).await
+    run_test(Record::new(1, 1), 1, 10).await
 }
 
 #[tokio::test(threaded_scheduler)]
 async fn test_3_wal() {
-    run_test(Record::new(3, 100), 1, 10).await
+    run_test(Record::new(3, 1), 1, 10).await
 }
 
 // #[tokio::test(threaded_scheduler)]
 // async fn test_4_wal() {
-//     run_test(Record::new(4, 100), 1, 10).await
+//     run_test(Record::new(4, 1), 1, 10000).await
 // }
 
 // #[tokio::test(threaded_scheduler)]
