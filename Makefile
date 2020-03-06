@@ -13,7 +13,7 @@ SYS_ROCKSDB := $(if ${USE_SYS_ROCKSDB},ROCKSDB_LIB_DIR=${SYS_LIB_DIR},)
 CARGO := env ${SYS_ROCKSDB} cargo
 
 test:
-	${CARGO} test ${VERBOSE} --all -- --nocapture
+	${CARGO} test ${VERBOSE} --all -- --nocapture | grep -v TracePoint
 
 doc:
 	cargo doc --all --no-deps

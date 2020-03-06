@@ -1,10 +1,11 @@
 use derive_more::Display;
+use serde::{Deserialize, Serialize};
 
 use crate::smr::smr_types::{Lock, Step};
 use crate::types::{AggregatedVote, UpdateFrom};
 use crate::Codec;
 
-#[derive(Clone, Debug, Display, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Display, Eq, PartialEq)]
 #[rustfmt::skip]
 #[display(
     fmt = "wal info height {}, round {}, step {:?}",
@@ -36,7 +37,7 @@ impl<T: Codec> WalInfo<T> {
     }
 }
 
-#[derive(Clone, Debug, Display, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Display, PartialEq, Eq)]
 #[display(fmt = "wal lock round {}, qc {:?}", lock_round, lock_votes)]
 pub struct WalLock<T: Codec> {
     pub lock_round: u64,

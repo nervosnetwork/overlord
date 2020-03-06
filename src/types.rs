@@ -50,7 +50,7 @@ impl From<u8> for Role {
 
 /// Vote or QC types. Prevote and precommit QC will promise the rightness and the final consistency
 /// of overlord consensus protocol.
-#[derive(Clone, Debug, Display, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Clone, Debug, Display, PartialEq, Eq, Hash)]
 pub enum VoteType {
     /// Prevote vote or QC.
     #[display(fmt = "Prevote")]
@@ -135,7 +135,7 @@ impl<T: Codec> OverlordMsg<T> {
 }
 
 /// How does state goto the current round.
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum UpdateFrom {
     /// From a prevote quorum certificate.
     PrevoteQC(AggregatedVote),
@@ -232,13 +232,15 @@ impl SignedVote {
 #[derive(Serialize, Deserialize, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct AggregatedSignature {
     /// Aggregated signature.
+    #[serde(with = "super::serde_hex")]
     pub signature: Signature,
     /// Voter address bit map.
+    #[serde(with = "super::serde_hex")]
     pub address_bitmap: Bytes,
 }
 
 /// An aggregated vote.
-#[derive(Clone, Debug, Display, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Clone, Debug, Display, PartialEq, Eq, Hash)]
 #[rustfmt::skip]
 #[display(fmt = "{:?} aggregated vote height {}, round {}", vote_type, height, round)]
 pub struct AggregatedVote {
@@ -251,8 +253,10 @@ pub struct AggregatedVote {
     /// Round of the vote.
     pub round: u64,
     /// Proposal hash of the vote.
+    #[serde(with = "super::serde_hex")]
     pub block_hash: Hash,
     /// The leader that aggregate the signed votes.
+    #[serde(with = "super::serde_hex")]
     pub leader: Address,
 }
 
@@ -355,9 +359,10 @@ impl Status {
 }
 
 /// A node info.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Node {
     /// Node address.
+    #[serde(with = "super::serde_hex")]
     pub address: Address,
     /// The propose weight of the node. The field is only effective in `features =
     /// "random_leader"`.
@@ -414,15 +419,17 @@ pub(crate) struct VerifyResp {
 }
 
 /// An aggregated choke.
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct AggregatedChoke {
     /// The height of the aggregated choke.
     pub height: u64,
     /// The round of the aggregated choke.
     pub round: u64,
     /// The aggregated signature of the aggregated choke.
+    #[serde(with = "super::serde_hex")]
     pub signature: Signature,
     /// The voters of the aggregated choke.
+    #[serde(with = "super::serde_multi_hex")]
     pub voters: Vec<Address>,
 }
 

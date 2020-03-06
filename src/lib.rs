@@ -12,6 +12,10 @@ mod codec;
 pub mod error;
 /// Create and run the overlord consensus process.
 pub mod overlord;
+/// serialize Bytes in hex format
+pub mod serde_hex;
+/// serialize Vec<Bytes> in hex format
+mod serde_multi_hex;
 /// State machine replicas module to do state changes.
 mod smr;
 /// The state module to storage proposals and votes.
