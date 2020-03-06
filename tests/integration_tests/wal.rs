@@ -19,14 +19,19 @@ use super::utils::{create_alive_nodes, gen_random_bytes};
 
 pub const RECORD_TMP_FILE: &str = "./tests/integration_tests/test.json";
 
+#[derive(Clone)]
 pub struct MockWal {
-    inner: Mutex<Option<Bytes>>,
+    test_id:         u64,
+    test_id_updated: Arc<Mutex<u64>>,
+    content:         Arc<Mutex<Option<Bytes>>>,
 }
 
 impl MockWal {
-    pub fn new() -> MockWal {
+    pub fn new(test_id_updated: &Arc<Mutex<u64>>, content: &Arc<Mutex<Option<Bytes>>>) -> MockWal {
         MockWal {
-            inner: Mutex::new(None),
+            test_id:         *test_id_updated.lock().unwrap(),
+            test_id_updated: Arc::<Mutex<u64>>::clone(test_id_updated),
+            content:         Arc::<Mutex<Option<Bytes>>>::clone(content),
         }
     }
 }
@@ -34,19 +39,26 @@ impl MockWal {
 #[async_trait]
 impl Wal for MockWal {
     async fn save(&self, info: Bytes) -> Result<(), Box<dyn Error + Send>> {
-        *self.inner.lock().unwrap() = Some(info);
+        let test_id_updated = *self.test_id_updated.lock().unwrap();
+        // avoid previous test overwrite wal of the latest test
+        if test_id_updated == self.test_id {
+            *self.content.lock().unwrap() = Some(info);
+        } else {
+            panic!("previous test try to overwrite wal");
+        }
         Ok(())
     }
 
     async fn load(&self) -> Result<Option<Bytes>, Box<dyn Error + Send>> {
-        Ok(self.inner.lock().unwrap().as_ref().cloned())
+        Ok(self.content.lock().unwrap().as_ref().cloned())
     }
 }
 
 pub struct Record {
+    pub test_id:       Arc<Mutex<u64>>,
     pub node_record:   Vec<Node>,
     pub alive_record:  Mutex<Vec<Node>>,
-    pub wal_record:    HashMap<Bytes, Arc<MockWal>>,
+    pub wal_record:    HashMap<Bytes, MockWal>,
     pub commit_record: Arc<Mutex<LruCache<u64, Bytes>>>,
     pub height_record: Arc<Mutex<HashMap<Bytes, u64>>>,
     pub interval:      u64,
@@ -54,13 +66,14 @@ pub struct Record {
 
 impl Record {
     pub fn new(num: usize, interval: u64) -> Record {
+        let test_id = Arc::new(Mutex::new(0));
         let node_record: Vec<Node> = (0..num).map(|_| Node::new(gen_random_bytes())).collect();
         let alive_record = Mutex::new(create_alive_nodes(node_record.clone()));
-        let wal_record: HashMap<Bytes, Arc<MockWal>> = (0..num)
+        let wal_record: HashMap<Bytes, MockWal> = (0..num)
             .map(|i| {
                 (
                     node_record.get(i).unwrap().address.clone(),
-                    Arc::new(MockWal::new()),
+                    MockWal::new(&Arc::new(Mutex::new(0)), &Arc::new(Mutex::new(None))),
                 )
             })
             .collect();
@@ -74,6 +87,7 @@ impl Record {
         ));
 
         Record {
+            test_id,
             node_record,
             alive_record,
             wal_record,
@@ -84,6 +98,7 @@ impl Record {
     }
 
     fn to_wal(&self) -> RecordForWal {
+        let test_id = *self.test_id.lock().unwrap();
         let node_record = self.node_record.clone();
         let alive_record = self.alive_record.lock().unwrap().clone();
         let wal_record: Vec<TupleWalRecord> = self
@@ -92,7 +107,7 @@ impl Record {
             .map(|(name, wal)| {
                 TupleWalRecord(
                     name.clone(),
-                    wal.inner
+                    wal.content
                         .lock()
                         .unwrap()
                         .as_ref()
@@ -116,6 +131,7 @@ impl Record {
             .collect();
         let interval = self.interval;
         RecordForWal {
+            test_id,
             node_record,
             alive_record,
             wal_record,
@@ -125,10 +141,50 @@ impl Record {
         }
     }
 
-    pub fn update_alive(&self) -> Vec<Node> {
+    pub fn update_alives(&self, test_id: u64) -> Vec<Node> {
+        self.update_alive_records();
+        self.update_test_id(test_id);
+        self.alive_record.lock().unwrap().clone()
+    }
+
+    fn update_test_id(&self, new_test_id: u64) {
+        *self.test_id.lock().unwrap() = new_test_id;
+    }
+
+    fn update_alive_records(&self) {
         let alive_record = create_alive_nodes(self.node_record.clone());
-        *self.alive_record.lock().unwrap() = alive_record.clone();
-        alive_record
+        *self.alive_record.lock().unwrap() = alive_record;
+    }
+
+    pub fn as_internal(&self) -> RecordInternal {
+        let test_id = *self.test_id.lock().unwrap();
+        let test_id_updated = Arc::<Mutex<u64>>::clone(&self.test_id);
+        let node_record = self.node_record.clone();
+        let alive_record = self.alive_record.lock().unwrap().clone();
+        let wal_record: HashMap<Bytes, MockWal> = self
+            .wal_record
+            .iter()
+            .map(|(address, wal)| {
+                (
+                    address.clone(),
+                    MockWal::new(&test_id_updated, &wal.content),
+                )
+            })
+            .collect();
+        let commit_record = Arc::<Mutex<LruCache<u64, Bytes>>>::clone(&self.commit_record);
+        let height_record = Arc::<Mutex<HashMap<Bytes, u64>>>::clone(&self.height_record);
+        let interval = self.interval;
+
+        RecordInternal {
+            test_id,
+            test_id_updated,
+            node_record,
+            alive_record,
+            wal_record,
+            commit_record,
+            height_record,
+            interval,
+        }
     }
 
     pub fn save(&self, filename: &str) {
@@ -142,6 +198,70 @@ impl Record {
         let reader = BufReader::new(file);
         let record_for_wal: RecordForWal = serde_json::from_reader(reader).unwrap();
         record_for_wal.to_record()
+    }
+}
+
+#[derive(Clone)]
+pub struct RecordInternal {
+    pub test_id:         u64,
+    pub test_id_updated: Arc<Mutex<u64>>,
+    pub node_record:     Vec<Node>,
+    pub alive_record:    Vec<Node>,
+    pub wal_record:      HashMap<Bytes, MockWal>,
+    pub commit_record:   Arc<Mutex<LruCache<u64, Bytes>>>,
+    pub height_record:   Arc<Mutex<HashMap<Bytes, u64>>>,
+    pub interval:        u64,
+}
+
+impl RecordInternal {
+    fn to_wal(&self) -> RecordForWal {
+        let test_id = self.test_id;
+        let node_record = self.node_record.clone();
+        let alive_record = self.alive_record.clone();
+        let wal_record: Vec<TupleWalRecord> = self
+            .wal_record
+            .iter()
+            .map(|(name, wal)| {
+                TupleWalRecord(
+                    name.clone(),
+                    wal.content
+                        .lock()
+                        .unwrap()
+                        .as_ref()
+                        .map(|wal| rlp::decode(&wal).unwrap()),
+                )
+            })
+            .collect();
+        let commit_record: Vec<TupleCommitRecord> = self
+            .commit_record
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(height, commit_hash)| TupleCommitRecord(*height, commit_hash.clone()))
+            .collect();
+        let height_record: Vec<TupleHeightRecord> = self
+            .height_record
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(name, height)| TupleHeightRecord(name.clone(), *height))
+            .collect();
+        let interval = self.interval;
+        RecordForWal {
+            test_id,
+            node_record,
+            alive_record,
+            wal_record,
+            commit_record,
+            height_record,
+            interval,
+        }
+    }
+
+    pub fn save(&self, filename: &str) {
+        let file = File::create(filename).unwrap();
+        let record_for_wal = self.to_wal();
+        serde_json::to_writer_pretty(file, &record_for_wal).unwrap();
     }
 }
 
@@ -159,6 +279,7 @@ struct TupleHeightRecord(#[serde(with = "overlord::serde_hex")] Bytes, u64);
 
 #[derive(Serialize, Deserialize)]
 struct RecordForWal {
+    test_id:       u64,
     node_record:   Vec<Node>,
     alive_record:  Vec<Node>,
     wal_record:    Vec<TupleWalRecord>,
@@ -169,18 +290,20 @@ struct RecordForWal {
 
 impl RecordForWal {
     fn to_record(&self) -> Record {
+        let test_id = Arc::new(Mutex::new(self.test_id));
         let node_record = self.node_record.clone();
         let alive_record = Mutex::new(self.alive_record.clone());
-        let wal_record: HashMap<Bytes, Arc<MockWal>> = self
+        let wal_record: HashMap<Bytes, MockWal> = self
             .wal_record
             .iter()
             .map(|TupleWalRecord(name, wal)| {
-                (
-                    name.clone(),
-                    Arc::new(MockWal {
-                        inner: Mutex::new(wal.as_ref().map(|wal| Bytes::from(wal.rlp_bytes()))),
-                    }),
-                )
+                (name.clone(), MockWal {
+                    test_id:         self.test_id,
+                    test_id_updated: Arc::clone(&test_id),
+                    content:         Arc::new(Mutex::new(
+                        wal.as_ref().map(|wal| Bytes::from(wal.rlp_bytes())),
+                    )),
+                })
             })
             .collect();
         let mut commit_record: LruCache<u64, Bytes> = LruCache::new(10);
@@ -193,6 +316,7 @@ impl RecordForWal {
             .map(|TupleHeightRecord(name, height)| (name.clone(), *height))
             .collect();
         Record {
+            test_id,
             node_record,
             alive_record,
             wal_record,

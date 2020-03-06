@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -15,38 +15,37 @@ use super::utils::{get_index, get_index_array, get_max_alive_height, timer_confi
 use super::wal::{Record, RECORD_TMP_FILE};
 
 pub async fn run_test(records: Record, refresh_height: u64, test_height: u64) {
-    let records = Arc::new(records);
     let interval = records.interval;
-    let start_height = get_max_alive_height(&records, &records.node_record);
+    let start_height = get_max_alive_height(&records.height_record, &records.node_record);
     println!("Test start with {:?} nodes，interval of {:?} ms, refresh every {:?} height, begin with {:?} height and terminate after {:?} height",
              records.node_record.len(), interval, refresh_height, start_height, test_height);
 
-    let mut test_count = 0;
+    let mut test_id = 0;
     let mut alive_nodes = { records.alive_record.lock().unwrap().clone() };
     loop {
         println!(
             "Cycle {:?} start, generate {:?} alive_nodes of {:?}",
-            test_count,
+            test_id,
             alive_nodes.len(),
             get_index_array(&records.node_record, &alive_nodes)
         );
 
-        let height_start = get_max_alive_height(&records, &alive_nodes);
+        let height_start = get_max_alive_height(&records.height_record, &alive_nodes);
 
         let alive_handlers = run_alive_nodes(&records, alive_nodes.clone());
         synchronize_height(
             &records,
             alive_nodes.clone(),
             alive_handlers.clone(),
-            test_count,
+            test_id,
         );
 
-        let mut height_end = get_max_alive_height(&records, &alive_nodes);
+        let mut height_end = get_max_alive_height(&records.height_record, &alive_nodes);
         let mut last_max_height = height_end;
         let mut stagnation = 0;
         while height_end - height_start < refresh_height {
             thread::sleep(Duration::from_millis(interval));
-            height_end = get_max_alive_height(&records, &alive_nodes);
+            height_end = get_max_alive_height(&records.height_record, &alive_nodes);
             if height_end == last_max_height {
                 stagnation += 1;
             } else {
@@ -61,22 +60,23 @@ pub async fn run_test(records: Record, refresh_height: u64, test_height: u64) {
         }
         println!(
             "Cycle {:?} start from {:?}, end with {:?}",
-            test_count, height_start, height_end
+            test_id, height_start, height_end
         );
 
         kill_alive_nodes(alive_handlers);
 
-        test_count += 1;
+        test_id += 1;
 
         if height_end - start_height > test_height {
             break;
         }
 
-        alive_nodes = records.update_alive();
+        alive_nodes = records.update_alives(test_id);
     }
 }
 
-fn run_alive_nodes(records: &Arc<Record>, alive_nodes: Vec<Node>) -> Vec<Arc<Participant>> {
+fn run_alive_nodes(records: &Record, alive_nodes: Vec<Node>) -> Vec<Arc<Participant>> {
+    let records = records.as_internal();
     let interval = records.interval;
     let alive_num = alive_nodes.len();
 
@@ -89,19 +89,19 @@ fn run_alive_nodes(records: &Arc<Record>, alive_nodes: Vec<Node>) -> Vec<Arc<Par
 
     let mut alive_handlers = Vec::new();
     for node in alive_nodes.iter() {
-        let name = node.address.clone();
+        let address = node.address.clone();
         let mut talk_to: HashMap<Bytes, Sender<OverlordMsg<Block>>> = alive_nodes
             .iter()
             .map(|node| node.address.clone())
             .zip(channels.iter().map(|(sender, _)| sender.clone()))
             .collect();
-        talk_to.remove(&name);
+        talk_to.remove(&address);
 
         let node = Arc::new(Participant::new(
-            &name,
+            &address,
             talk_to,
-            hearings.get(&name).unwrap().clone(),
-            records,
+            hearings.get(&address).unwrap().clone(),
+            records.clone(),
         ));
 
         alive_handlers.push(Arc::<Participant>::clone(&node));
@@ -115,37 +115,39 @@ fn run_alive_nodes(records: &Arc<Record>, alive_nodes: Vec<Node>) -> Vec<Arc<Par
 }
 
 fn synchronize_height(
-    records: &Arc<Record>,
+    records: &Record,
     alive_nodes: Vec<Node>,
     alive_handlers: Vec<Arc<Participant>>,
-    test_count: u64,
+    test_id: u64,
 ) {
-    let records = Arc::<Record>::clone(records);
+    let interval = records.interval;
+    let height_record = Arc::<Mutex<HashMap<Bytes, u64>>>::clone(&records.height_record);
+    let node_record = records.node_record.clone();
 
     tokio::spawn(async move {
-        thread::sleep(Duration::from_millis(records.interval));
-        let max_height = get_max_alive_height(&records, &alive_nodes);
-        let height_record = records.height_record.lock().unwrap();
-        height_record.iter().for_each(|(name, height)| {
+        thread::sleep(Duration::from_millis(interval));
+        let max_height = get_max_alive_height(&height_record, &alive_nodes);
+        let height_record = height_record.lock().unwrap();
+        height_record.iter().for_each(|(address, height)| {
             if *height < max_height {
                 alive_handlers
                     .iter()
-                    .filter(|node| node.adapter.name == name)
+                    .filter(|node| node.adapter.address == address)
                     .for_each(|node| {
                         println!(
                             "Cycle {:?}, synchronize {:?} to node {:?} of height {:?}",
-                            test_count,
+                            test_id,
                             max_height + 1,
-                            get_index(&records.node_record, name),
+                            get_index(&node_record, address),
                             height
                         );
                         let _ = node.handler.send_msg(
                             Context::new(),
                             OverlordMsg::RichStatus(Status {
                                 height:         max_height + 1,
-                                interval:       Some(records.interval),
+                                interval:       Some(interval),
                                 timer_config:   timer_config(),
-                                authority_list: records.node_record.clone(),
+                                authority_list: node_record.clone(),
                             }),
                         );
                     });
