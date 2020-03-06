@@ -16,6 +16,7 @@ use overlord::{Wal, WalInfo};
 
 use super::primitive::Block;
 use super::utils::{create_alive_nodes, gen_random_bytes};
+use crate::integration_tests::utils::to_hex;
 
 pub const RECORD_TMP_FILE: &str = "./tests/integration_tests/test.json";
 
@@ -23,13 +24,19 @@ pub const RECORD_TMP_FILE: &str = "./tests/integration_tests/test.json";
 pub struct MockWal {
     test_id:         u64,
     test_id_updated: Arc<Mutex<u64>>,
+    address:         Bytes,
     content:         Arc<Mutex<Option<Bytes>>>,
 }
 
 impl MockWal {
-    pub fn new(test_id_updated: &Arc<Mutex<u64>>, content: &Arc<Mutex<Option<Bytes>>>) -> MockWal {
+    pub fn new(
+        test_id_updated: &Arc<Mutex<u64>>,
+        addr: Bytes,
+        content: &Arc<Mutex<Option<Bytes>>>,
+    ) -> MockWal {
         MockWal {
             test_id:         *test_id_updated.lock().unwrap(),
+            address:         addr,
             test_id_updated: Arc::<Mutex<u64>>::clone(test_id_updated),
             content:         Arc::<Mutex<Option<Bytes>>>::clone(content),
         }
@@ -42,6 +49,8 @@ impl Wal for MockWal {
         let test_id_updated = *self.test_id_updated.lock().unwrap();
         // avoid previous test overwrite wal of the latest test
         if test_id_updated == self.test_id {
+            let content: WalInfo<Block> = rlp::decode(&info).unwrap();
+            println!("{:?} save {:?}", to_hex(&self.address), content);
             *self.content.lock().unwrap() = Some(info);
         } else {
             panic!("previous test try to overwrite wal");
@@ -50,7 +59,12 @@ impl Wal for MockWal {
     }
 
     async fn load(&self) -> Result<Option<Bytes>, Box<dyn Error + Send>> {
-        Ok(self.content.lock().unwrap().as_ref().cloned())
+        let info = self.content.lock().unwrap().as_ref().cloned();
+        if let Some(info) = info.clone() {
+            let content: WalInfo<Block> = rlp::decode(&info).unwrap();
+            println!("{:?} load {:?}", to_hex(&self.address), content);
+        }
+        Ok(info)
     }
 }
 
@@ -71,9 +85,14 @@ impl Record {
         let alive_record = Mutex::new(create_alive_nodes(node_record.clone()));
         let wal_record: HashMap<Bytes, MockWal> = (0..num)
             .map(|i| {
+                let address = node_record.get(i).unwrap().address.clone();
                 (
-                    node_record.get(i).unwrap().address.clone(),
-                    MockWal::new(&Arc::new(Mutex::new(0)), &Arc::new(Mutex::new(None))),
+                    address.clone(),
+                    MockWal::new(
+                        &Arc::new(Mutex::new(0)),
+                        address,
+                        &Arc::new(Mutex::new(None)),
+                    ),
                 )
             })
             .collect();
@@ -104,9 +123,9 @@ impl Record {
         let wal_record: Vec<TupleWalRecord> = self
             .wal_record
             .iter()
-            .map(|(name, wal)| {
+            .map(|(address, wal)| {
                 TupleWalRecord(
-                    name.clone(),
+                    address.clone(),
                     wal.content
                         .lock()
                         .unwrap()
@@ -127,7 +146,7 @@ impl Record {
             .lock()
             .unwrap()
             .iter()
-            .map(|(name, height)| TupleHeightRecord(name.clone(), *height))
+            .map(|(address, height)| TupleHeightRecord(address.clone(), *height))
             .collect();
         let interval = self.interval;
         RecordForWal {
@@ -167,7 +186,7 @@ impl Record {
             .map(|(address, wal)| {
                 (
                     address.clone(),
-                    MockWal::new(&test_id_updated, &wal.content),
+                    MockWal::new(&test_id_updated, address.clone(), &wal.content),
                 )
             })
             .collect();
@@ -221,9 +240,9 @@ impl RecordInternal {
         let wal_record: Vec<TupleWalRecord> = self
             .wal_record
             .iter()
-            .map(|(name, wal)| {
+            .map(|(address, wal)| {
                 TupleWalRecord(
-                    name.clone(),
+                    address.clone(),
                     wal.content
                         .lock()
                         .unwrap()
@@ -244,7 +263,7 @@ impl RecordInternal {
             .lock()
             .unwrap()
             .iter()
-            .map(|(name, height)| TupleHeightRecord(name.clone(), *height))
+            .map(|(address, height)| TupleHeightRecord(address.clone(), *height))
             .collect();
         let interval = self.interval;
         RecordForWal {
@@ -296,10 +315,11 @@ impl RecordForWal {
         let wal_record: HashMap<Bytes, MockWal> = self
             .wal_record
             .iter()
-            .map(|TupleWalRecord(name, wal)| {
-                (name.clone(), MockWal {
+            .map(|TupleWalRecord(address, wal)| {
+                (address.clone(), MockWal {
                     test_id:         self.test_id,
                     test_id_updated: Arc::clone(&test_id),
+                    address:         address.clone(),
                     content:         Arc::new(Mutex::new(
                         wal.as_ref().map(|wal| Bytes::from(wal.rlp_bytes())),
                     )),
@@ -313,7 +333,7 @@ impl RecordForWal {
         let height_record: HashMap<Bytes, u64> = self
             .height_record
             .iter()
-            .map(|TupleHeightRecord(name, height)| (name.clone(), *height))
+            .map(|TupleHeightRecord(address, height)| (address.clone(), *height))
             .collect();
         Record {
             test_id,

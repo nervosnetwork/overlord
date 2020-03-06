@@ -14,7 +14,7 @@ use overlord::types::{Commit, Hash, Node, OverlordMsg, Status};
 use overlord::{Codec, Consensus, DurationConfig, Overlord, OverlordHandler};
 
 use super::crypto::MockCrypto;
-use super::utils::{gen_random_bytes, get_index, hash, timer_config};
+use super::utils::{gen_random_bytes, hash, timer_config, to_hex};
 use super::wal::{MockWal, RECORD_TMP_FILE};
 use crate::integration_tests::wal::RecordInternal;
 
@@ -92,26 +92,28 @@ impl Consensus<Block> for Adapter {
         height: u64,
         commit: Commit<Block>,
     ) -> Result<Status, Box<dyn Error + Send>> {
+        let commit_block_hash = hash(&commit.content.inner);
+
         {
             let test_id_updated = *self.records.test_id_updated.lock().unwrap();
             // avoid previous test overwrite commit_records and height_records of the latest test
             if test_id_updated != self.records.test_id {
-                panic!("previous test try to overwrite records");
+                panic!("Previous test try to overwrite records");
             }
         }
 
         let mut consistency_break = false;
         {
             let mut commit_record = self.records.commit_record.lock().unwrap();
-            if let Some(block) = commit_record.get_mut(&commit.height) {
+            if let Some(block_hash) = commit_record.get_mut(&commit.height) {
                 // Consistency check
-                if block != &commit.content.inner {
+                if block_hash != &commit_block_hash {
                     consistency_break = true;
                 }
             } else {
                 println!(
                     "node {:?} first commit in height: {:?}",
-                    get_index(&self.records.node_record, &self.address),
+                    to_hex(&self.address),
                     commit.height,
                 );
             }
@@ -121,8 +123,13 @@ impl Consensus<Block> for Adapter {
             self.records.save(RECORD_TMP_FILE);
             panic!("Consistency break!!");
         } else {
+            println!(
+                "node {:?} commit in height: {:?}",
+                to_hex(&self.address),
+                commit.height,
+            );
             let mut commit_record = self.records.commit_record.lock().unwrap();
-            commit_record.insert(commit.height, commit.content.inner);
+            commit_record.insert(commit.height, commit_block_hash);
             let mut height_record = self.records.height_record.lock().unwrap();
             height_record.insert(self.address.clone(), commit.height);
         }

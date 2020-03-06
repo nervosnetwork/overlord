@@ -49,7 +49,7 @@ pub fn get_max_alive_height(
     if let Some(max_height) = height_record
         .clone()
         .into_iter()
-        .filter(|(name, _)| alives.iter().any(|node| node.address == name))
+        .filter(|(address, _)| alives.iter().any(|node| node.address == address))
         .collect::<HashMap<Bytes, u64>>()
         .values()
         .max()
@@ -58,6 +58,17 @@ pub fn get_max_alive_height(
     } else {
         0
     }
+}
+
+pub fn to_hex_strings(nodes: &[Node]) -> Vec<String> {
+    nodes
+        .iter()
+        .map(|node| hex::encode(&node.address))
+        .collect()
+}
+
+pub fn to_hex(address: &Bytes) -> String {
+    hex::encode(address)
 }
 
 pub fn get_index_array(nodes: &[Node], alives: &[Node]) -> Vec<usize> {
@@ -69,10 +80,10 @@ pub fn get_index_array(nodes: &[Node], alives: &[Node]) -> Vec<usize> {
         .collect()
 }
 
-pub fn get_index(nodes: &[Node], name: &Bytes) -> usize {
+pub fn get_index(nodes: &[Node], address: &Bytes) -> usize {
     let mut index = std::usize::MAX;
     nodes.iter().enumerate().for_each(|(i, node)| {
-        if node.address == name {
+        if node.address == address {
             index = i;
         }
     });

@@ -11,7 +11,7 @@ use crossbeam_channel::{unbounded, Receiver, Sender};
 use overlord::types::{Node, OverlordMsg, Status};
 
 use super::primitive::{Block, Channel, Participant};
-use super::utils::{get_index, get_index_array, get_max_alive_height, timer_config};
+use super::utils::{get_max_alive_height, timer_config, to_hex, to_hex_strings};
 use super::wal::{Record, RECORD_TMP_FILE};
 
 pub async fn run_test(records: Record, refresh_height: u64, test_height: u64) {
@@ -27,7 +27,7 @@ pub async fn run_test(records: Record, refresh_height: u64, test_height: u64) {
             "Cycle {:?} start, generate {:?} alive_nodes of {:?}",
             test_id,
             alive_nodes.len(),
-            get_index_array(&records.node_record, &alive_nodes)
+            to_hex_strings(&alive_nodes)
         );
 
         let height_start = get_max_alive_height(&records.height_record, &alive_nodes);
@@ -138,7 +138,7 @@ fn synchronize_height(
                             "Cycle {:?}, synchronize {:?} to node {:?} of height {:?}",
                             test_id,
                             max_height + 1,
-                            get_index(&node_record, address),
+                            to_hex(address),
                             height
                         );
                         let _ = node.handler.send_msg(
