@@ -49,8 +49,8 @@ impl Wal for MockWal {
         let test_id_updated = *self.test_id_updated.lock().unwrap();
         // avoid previous test overwrite wal of the latest test
         if test_id_updated == self.test_id {
-            let content: WalInfo<Block> = rlp::decode(&info).unwrap();
-            println!("{:?} save {:?}", to_hex(&self.address), content);
+            // let content: WalInfo<Block> = rlp::decode(&info).unwrap();
+            // println!("{:?} save {:?}", to_hex(&self.address), content);
             *self.content.lock().unwrap() = Some(info);
         } else {
             panic!("previous test try to overwrite wal");
