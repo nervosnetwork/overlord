@@ -214,10 +214,6 @@ impl StateMachine {
 
         // If the proposal trigger is from timer, goto prevote step directly.
         if source == TriggerSource::Timer {
-            if self.step == Step::Brake {
-                return Ok(());
-            }
-
             // This event is for timer to set a prevote timer.
             let (round, hash) = if let Some(lock) = &self.lock {
                 (Some(lock.round), lock.hash.clone())
@@ -291,7 +287,7 @@ impl StateMachine {
             return Ok(());
         }
 
-        if self.step > Step::Prevote {
+        if prevote_round == self.round && self.step > Step::Prevote {
             return Ok(());
         }
 
@@ -331,13 +327,7 @@ impl StateMachine {
         // precommit step directly.
         self.check()?;
         let vote_round = prevote_round;
-        if let Some(lock) = self.lock.clone() {
-            if vote_round > lock.round {
-                self.update_polc(prevote_hash, vote_round);
-            }
-        } else {
-            self.update_polc(prevote_hash, vote_round);
-        }
+        self.update_polc(prevote_hash, vote_round);
 
         if vote_round > self.round {
             let (lock_round, lock_proposal) = self
@@ -392,7 +382,7 @@ impl StateMachine {
             return Ok(());
         }
 
-        if self.step > Step::Precommit {
+        if self.step == Step::Commit {
             return Ok(());
         }
 
