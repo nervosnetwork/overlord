@@ -219,16 +219,16 @@ impl StateMachine {
             }
 
             // This event is for timer to set a prevote timer.
-            let round = if let Some(lock) = &self.lock {
-                Some(lock.round)
+            let (round, hash) = if let Some(lock) = &self.lock {
+                (Some(lock.round), lock.hash.clone())
             } else {
-                None
+                (None, Hash::new())
             };
 
             self.throw_event(SMREvent::PrevoteVote {
                 height:     self.height,
                 round:      self.round,
-                block_hash: Hash::new(),
+                block_hash: hash,
                 lock_round: round,
             })?;
             self.goto_step(Step::Prevote);

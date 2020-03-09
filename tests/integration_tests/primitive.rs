@@ -14,8 +14,9 @@ use overlord::types::{Commit, Hash, Node, OverlordMsg, Status};
 use overlord::{Codec, Consensus, DurationConfig, Overlord, OverlordHandler};
 
 use super::crypto::MockCrypto;
-use super::utils::{gen_random_bytes, get_index, hash, timer_config};
-use super::wal::{MockWal, Record, RECORD_TMP_FILE};
+use super::utils::{gen_random_bytes, hash, timer_config, to_hex};
+use super::wal::{MockWal, RECORD_TMP_FILE};
+use crate::integration_tests::wal::RecordInternal;
 
 pub type Channel = (Sender<OverlordMsg<Block>>, Receiver<OverlordMsg<Block>>);
 
@@ -42,21 +43,21 @@ impl Codec for Block {
 }
 
 pub struct Adapter {
-    pub name:    Bytes, // address
+    pub address: Bytes, // address
     pub talk_to: HashMap<Bytes, Sender<OverlordMsg<Block>>>,
     pub hearing: Receiver<OverlordMsg<Block>>,
-    pub records: Arc<Record>,
+    pub records: RecordInternal,
 }
 
 impl Adapter {
     fn new(
-        name: Bytes,
+        address: Bytes,
         talk_to: HashMap<Bytes, Sender<OverlordMsg<Block>>>,
         hearing: Receiver<OverlordMsg<Block>>,
-        records: Arc<Record>,
+        records: RecordInternal,
     ) -> Adapter {
         Adapter {
-            name,
+            address,
             talk_to,
             hearing,
             records,
@@ -91,18 +92,28 @@ impl Consensus<Block> for Adapter {
         height: u64,
         commit: Commit<Block>,
     ) -> Result<Status, Box<dyn Error + Send>> {
+        let commit_block_hash = hash(&commit.content.inner);
+
+        {
+            let test_id_updated = *self.records.test_id_updated.lock().unwrap();
+            // avoid previous test overwrite commit_records and height_records of the latest test
+            if test_id_updated != self.records.test_id {
+                panic!("Previous test try to overwrite records");
+            }
+        }
+
         let mut consistency_break = false;
         {
             let mut commit_record = self.records.commit_record.lock().unwrap();
-            if let Some(block) = commit_record.get_mut(&commit.height) {
+            if let Some(block_hash) = commit_record.get_mut(&commit.height) {
                 // Consistency check
-                if block != &commit.content.inner {
+                if block_hash != &commit_block_hash {
                     consistency_break = true;
                 }
             } else {
                 println!(
                     "node {:?} first commit in height: {:?}",
-                    get_index(&self.records.node_record, &self.name),
+                    to_hex(&self.address),
                     commit.height,
                 );
             }
@@ -112,10 +123,15 @@ impl Consensus<Block> for Adapter {
             self.records.save(RECORD_TMP_FILE);
             panic!("Consistency break!!");
         } else {
+            println!(
+                "node {:?} commit in height: {:?}",
+                to_hex(&self.address),
+                commit.height,
+            );
             let mut commit_record = self.records.commit_record.lock().unwrap();
-            commit_record.insert(commit.height, commit.content.inner);
+            commit_record.insert(commit.height, commit_block_hash);
             let mut height_record = self.records.height_record.lock().unwrap();
-            height_record.insert(self.name.clone(), commit.height);
+            height_record.insert(self.address.clone(), commit.height);
         }
 
         Ok(Status {
@@ -148,10 +164,10 @@ impl Consensus<Block> for Adapter {
     async fn transmit_to_relayer(
         &self,
         _ctx: Context,
-        name: Bytes,
+        address: Bytes,
         words: OverlordMsg<Block>,
     ) -> Result<(), Box<dyn Error + Send>> {
-        if let Some(sender) = self.talk_to.get(&name) {
+        if let Some(sender) = self.talk_to.get(&address) {
             let _ = sender.send(words);
         }
         Ok(())
@@ -167,23 +183,23 @@ pub struct Participant {
 
 impl Participant {
     pub fn new(
-        name: &Bytes,
+        address: &Bytes,
         talk_to: HashMap<Bytes, Sender<OverlordMsg<Block>>>,
         hearing: Receiver<OverlordMsg<Block>>,
-        records: &Arc<Record>,
+        records: RecordInternal,
     ) -> Self {
-        let crypto = MockCrypto::new(name.clone());
+        let crypto = MockCrypto::new(address.clone());
         let adapter = Arc::new(Adapter::new(
-            name.clone(),
+            address.clone(),
             talk_to,
             hearing,
-            Arc::<Record>::clone(records),
+            records.clone(),
         ));
         let overlord = Overlord::new(
-            name.clone(),
+            address.clone(),
             Arc::clone(&adapter),
             Arc::new(crypto),
-            Arc::clone(records.wal_record.get(name).unwrap()),
+            Arc::new(records.wal_record.get(address).unwrap().clone()),
         );
         let overlord_handler = overlord.get_handler();
 
@@ -194,7 +210,7 @@ impl Participant {
                     height:         1,
                     interval:       Some(records.interval),
                     timer_config:   timer_config(),
-                    authority_list: records.node_record.clone(),
+                    authority_list: records.node_record,
                 }),
             )
             .unwrap();

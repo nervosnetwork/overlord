@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use bytes::{Bytes, BytesMut};
 use hasher::{Hasher, HasherKeccak};
@@ -8,8 +8,6 @@ use rand::{random, seq::SliceRandom, thread_rng};
 
 use overlord::types::Node;
 use overlord::DurationConfig;
-
-use super::Record;
 
 lazy_static! {
     static ref HASHER_INST: HasherKeccak = HasherKeccak::new();
@@ -43,12 +41,15 @@ pub fn create_alive_nodes(nodes: Vec<Node>) -> Vec<Node> {
     alive_nodes
 }
 
-pub fn get_max_alive_height(records: &Arc<Record>, alives: &[Node]) -> u64 {
-    let height_record = records.height_record.lock().unwrap();
+pub fn get_max_alive_height(
+    height_record: &Arc<Mutex<HashMap<Bytes, u64>>>,
+    alives: &[Node],
+) -> u64 {
+    let height_record = height_record.lock().unwrap();
     if let Some(max_height) = height_record
         .clone()
         .into_iter()
-        .filter(|(name, _)| alives.iter().any(|node| node.address == name))
+        .filter(|(address, _)| alives.iter().any(|node| node.address == address))
         .collect::<HashMap<Bytes, u64>>()
         .values()
         .max()
@@ -57,6 +58,17 @@ pub fn get_max_alive_height(records: &Arc<Record>, alives: &[Node]) -> u64 {
     } else {
         0
     }
+}
+
+pub fn to_hex_strings(nodes: &[Node]) -> Vec<String> {
+    nodes
+        .iter()
+        .map(|node| hex::encode(&node.address))
+        .collect()
+}
+
+pub fn to_hex(address: &Bytes) -> String {
+    hex::encode(address)
 }
 
 pub fn get_index_array(nodes: &[Node], alives: &[Node]) -> Vec<usize> {
@@ -68,10 +80,10 @@ pub fn get_index_array(nodes: &[Node], alives: &[Node]) -> Vec<usize> {
         .collect()
 }
 
-pub fn get_index(nodes: &[Node], name: &Bytes) -> usize {
+pub fn get_index(nodes: &[Node], address: &Bytes) -> usize {
     let mut index = std::usize::MAX;
     nodes.iter().enumerate().for_each(|(i, node)| {
-        if node.address == name {
+        if node.address == address {
             index = i;
         }
     });
