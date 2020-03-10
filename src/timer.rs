@@ -7,11 +7,14 @@ use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::{Stream, StreamExt};
 use futures::{FutureExt, SinkExt};
 use futures_timer::Delay;
+#[cfg(not(feature = "log_prefix"))]
 use log::{debug, error, info};
 
 use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
 use crate::smr::{Event, SMRHandler};
 use crate::DurationConfig;
+#[cfg(feature = "log_prefix")]
+use crate::{debug, error, info};
 use crate::{error::ConsensusError, ConsensusResult, INIT_HEIGHT, INIT_ROUND};
 use crate::{types::Hash, utils::timer_config::TimerConfig};
 

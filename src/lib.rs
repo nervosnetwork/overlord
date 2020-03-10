@@ -10,6 +10,9 @@
 mod codec;
 /// Overlord error module.
 pub mod error;
+/// prefix log macros
+#[cfg(feature = "log_prefix")]
+mod r#macro;
 /// Create and run the overlord consensus process.
 pub mod overlord;
 /// serialize Bytes in hex format
@@ -40,6 +43,10 @@ use std::fmt::Debug;
 
 use async_trait::async_trait;
 use bytes::Bytes;
+#[cfg(feature = "log_prefix")]
+use lazy_static::lazy_static;
+#[cfg(feature = "log_prefix")]
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ConsensusError;
@@ -50,6 +57,12 @@ pub type ConsensusResult<T> = ::std::result::Result<T, ConsensusError>;
 
 const INIT_HEIGHT: u64 = 0;
 const INIT_ROUND: u64 = 0;
+
+#[cfg(feature = "log_prefix")]
+lazy_static! {
+    /// prefix of log
+    pub static ref LOG_PREFIX: RwLock<String> = RwLock::new(String::from(""));
+}
 
 /// Trait for some functions that consensus needs.
 #[async_trait]

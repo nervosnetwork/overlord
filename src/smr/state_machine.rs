@@ -4,6 +4,7 @@ use std::task::{Context, Poll};
 use derive_more::Display;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::Stream;
+#[cfg(not(feature = "log_prefix"))]
 use log::{debug, info};
 use moodyblues_sdk::trace;
 
@@ -11,6 +12,8 @@ use crate::smr::smr_types::{
     FromWhere, Lock, SMREvent, SMRStatus, SMRTrigger, Step, TriggerSource, TriggerType,
 };
 use crate::wal::SMRBase;
+#[cfg(feature = "log_prefix")]
+use crate::{debug, info};
 use crate::{error::ConsensusError, smr::Event, types::Hash};
 use crate::{ConsensusResult, INIT_HEIGHT, INIT_ROUND};
 

@@ -11,6 +11,7 @@ use derive_more::Display;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::{select, StreamExt};
 use futures_timer::Delay;
+#[cfg(not(feature = "log_prefix"))]
 use log::{debug, error, info, warn};
 use moodyblues_sdk::trace;
 use rlp::encode;
@@ -27,6 +28,8 @@ use crate::types::{
 };
 use crate::utils::auth_manage::AuthorityManage;
 use crate::wal::{WalInfo, WalLock};
+#[cfg(feature = "log_prefix")]
+use crate::{debug, error, info, warn};
 use crate::{Codec, Consensus, ConsensusResult, Crypto, Wal, INIT_HEIGHT, INIT_ROUND};
 
 const FUTURE_HEIGHT_GAP: u64 = 5;

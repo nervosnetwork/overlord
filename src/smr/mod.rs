@@ -11,8 +11,11 @@ use std::task::{Context, Poll};
 
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::{FusedStream, Stream, StreamExt};
+#[cfg(not(feature = "log_prefix"))]
 use log::error;
 
+#[cfg(feature = "log_prefix")]
+use crate::error;
 use crate::smr::smr_types::{SMREvent, SMRStatus, SMRTrigger, TriggerSource, TriggerType};
 use crate::smr::state_machine::StateMachine;
 use crate::types::Hash;

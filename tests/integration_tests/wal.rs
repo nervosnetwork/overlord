@@ -15,8 +15,7 @@ use overlord::types::Node;
 use overlord::{Wal, WalInfo};
 
 use super::primitive::Block;
-use super::utils::{create_alive_nodes, gen_random_bytes};
-use crate::integration_tests::utils::to_hex;
+use super::utils::{create_alive_nodes, gen_random_bytes, to_hex};
 
 pub const RECORD_TMP_FILE: &str = "./tests/integration_tests/test.json";
 

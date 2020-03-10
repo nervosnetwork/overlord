@@ -14,8 +14,7 @@ use overlord::{Codec, Consensus, DurationConfig, Overlord, OverlordHandler};
 
 use super::crypto::MockCrypto;
 use super::utils::{gen_random_bytes, hash, timer_config, to_hex};
-use super::wal::{MockWal, RECORD_TMP_FILE};
-use crate::integration_tests::wal::RecordInternal;
+use super::wal::{MockWal, RecordInternal, RECORD_TMP_FILE};
 
 pub type Channel = (Sender<OverlordMsg<Block>>, Receiver<OverlordMsg<Block>>);
 
@@ -201,6 +200,8 @@ impl Participant {
             Arc::clone(&adapter),
             Arc::new(crypto),
             Arc::new(records.wal_record.get(address).unwrap().clone()),
+            #[cfg(feature = "log_prefix")]
+            &hex::encode(address),
         );
         let overlord_handler = overlord.get_handler();
 
