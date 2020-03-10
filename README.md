@@ -18,7 +18,7 @@ Detaild intruduction: [中文](./docs/architecture_zh.md)|[English](./docs/archi
 
 ```toml
 [dependencies]
-overlord = "0.2.0-alpha.9"
+overlord = "0.2.0-alpha.10"
 ```
 
 ### Example
