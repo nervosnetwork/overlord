@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -32,7 +31,7 @@ pub async fn run_test(records: Record, refresh_height: u64, test_height: u64) {
 
         let height_start = get_max_alive_height(&records.height_record, &alive_nodes);
 
-        let alive_handlers = run_alive_nodes(&records, alive_nodes.clone());
+        let (alive_handlers, senders) = run_alive_nodes(&records, alive_nodes.clone());
         synchronize_height(
             &records,
             alive_nodes.clone(),
@@ -63,7 +62,7 @@ pub async fn run_test(records: Record, refresh_height: u64, test_height: u64) {
             test_id, height_start, height_end
         );
 
-        kill_alive_nodes(alive_handlers);
+        kill_alive_nodes(alive_handlers, senders);
 
         test_id += 1;
 
@@ -75,7 +74,10 @@ pub async fn run_test(records: Record, refresh_height: u64, test_height: u64) {
     }
 }
 
-fn run_alive_nodes(records: &Record, alive_nodes: Vec<Node>) -> Vec<Arc<Participant>> {
+fn run_alive_nodes(
+    records: &Record,
+    alive_nodes: Vec<Node>,
+) -> (Vec<Arc<Participant>>, Vec<Sender<OverlordMsg<Block>>>) {
     let records = records.as_internal();
     let interval = records.interval;
     let alive_num = alive_nodes.len();
@@ -111,7 +113,10 @@ fn run_alive_nodes(records: &Record, alive_nodes: Vec<Node>) -> Vec<Arc<Particip
             node.run(interval, timer_config(), list).await.unwrap();
         });
     }
-    alive_handlers
+    (
+        alive_handlers,
+        channels.iter().map(|channel| channel.0.clone()).collect(),
+    )
 }
 
 fn synchronize_height(
@@ -156,11 +161,16 @@ fn synchronize_height(
     });
 }
 
-fn kill_alive_nodes(alive_handlers: Vec<Arc<Participant>>) {
+fn kill_alive_nodes(
+    alive_handlers: Vec<Arc<Participant>>,
+    senders: Vec<Sender<OverlordMsg<Block>>>,
+) {
     alive_handlers.iter().for_each(|node| {
-        node.stopped.store(true, Ordering::Relaxed);
         node.handler
             .send_msg(Context::new(), OverlordMsg::Stop)
             .unwrap()
     });
+    senders
+        .iter()
+        .for_each(|sender| sender.send(OverlordMsg::Stop).unwrap());
 }

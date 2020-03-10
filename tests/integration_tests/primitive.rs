@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::error::Error;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
 
@@ -92,13 +91,21 @@ impl Consensus<Block> for Adapter {
         height: u64,
         commit: Commit<Block>,
     ) -> Result<Status, Box<dyn Error + Send>> {
+        let status = Status {
+            height:         height + 1,
+            interval:       Some(self.records.interval),
+            timer_config:   None,
+            authority_list: self.records.node_record.clone(),
+        };
+
         let commit_block_hash = hash(&commit.content.inner);
 
         {
             let test_id_updated = *self.records.test_id_updated.lock().unwrap();
             // avoid previous test overwrite commit_records and height_records of the latest test
             if test_id_updated != self.records.test_id {
-                panic!("Previous test try to overwrite records");
+                println!("Previous test try to overwrite records");
+                return Ok(status);
             }
         }
 
@@ -134,12 +141,7 @@ impl Consensus<Block> for Adapter {
             height_record.insert(self.address.clone(), commit.height);
         }
 
-        Ok(Status {
-            height:         height + 1,
-            interval:       Some(self.records.interval),
-            timer_config:   None,
-            authority_list: self.records.node_record.clone(),
-        })
+        Ok(status)
     }
 
     async fn get_authority_list(
@@ -178,7 +180,6 @@ pub struct Participant {
     pub overlord: Arc<Overlord<Block, Adapter, MockCrypto, MockWal>>,
     pub handler:  OverlordHandler<Block>,
     pub adapter:  Arc<Adapter>,
-    pub stopped:  Arc<AtomicBool>,
 }
 
 impl Participant {
@@ -219,7 +220,6 @@ impl Participant {
             overlord: Arc::new(overlord),
             handler: overlord_handler,
             adapter,
-            stopped: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -231,7 +231,6 @@ impl Participant {
     ) -> Result<(), Box<dyn Error + Send>> {
         let adapter = Arc::<Adapter>::clone(&self.adapter);
         let handler = self.handler.clone();
-        let stopped = Arc::<AtomicBool>::clone(&self.stopped);
 
         thread::spawn(move || loop {
             if let Ok(msg) = adapter.hearing.recv() {
@@ -250,11 +249,11 @@ impl Participant {
                     OverlordMsg::SignedChoke(choke) => {
                         let _ = handler.send_msg(Context::new(), OverlordMsg::SignedChoke(choke));
                     }
+                    OverlordMsg::Stop => {
+                        break;
+                    }
                     _ => {}
                 }
-            }
-            if stopped.load(Ordering::Relaxed) {
-                break;
             }
         });
 
