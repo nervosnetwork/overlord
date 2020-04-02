@@ -9,6 +9,7 @@ use creep::Context;
 use crossbeam_channel::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
 
+use overlord::error::ConsensusError;
 use overlord::types::{Commit, Hash, Node, OverlordMsg, Status};
 use overlord::{Codec, Consensus, DurationConfig, Overlord, OverlordHandler};
 
@@ -174,6 +175,8 @@ impl Consensus<Block> for Adapter {
         }
         Ok(())
     }
+
+    fn report_error(&self, _ctx: Context, _err: ConsensusError) {}
 }
 
 pub struct Participant {

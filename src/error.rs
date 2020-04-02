@@ -5,7 +5,7 @@ use std::error::Error;
 use derive_more::Display;
 
 /// Overlord consensus error.
-#[derive(Debug, Display)]
+#[derive(Clone, Debug, Display)]
 pub enum ConsensusError {
     ///
     #[display(fmt = "Invalid address")]

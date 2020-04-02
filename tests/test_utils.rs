@@ -6,6 +6,7 @@ use blake2b_simd::blake2b;
 use bytes::{Bytes, BytesMut};
 use creep::Context;
 use crossbeam_channel::Sender;
+use overlord::error::ConsensusError;
 use overlord::types::{Address, Commit, Hash, Node, OverlordMsg, Signature, Status};
 use overlord::{Codec, Consensus, Crypto};
 use rand::random;
@@ -121,6 +122,8 @@ impl Consensus<Pill> for ConsensusHelper<Pill> {
         self.msg_tx.send(message).unwrap();
         Ok(())
     }
+
+    fn report_error(&self, _ctx: Context, _err: ConsensusError) {}
 }
 
 #[derive(Clone)]
