@@ -402,7 +402,7 @@ where
             "check_block_response".to_string(),
             Some(json!({
                 "height": self.height,
-                "hash": block_hash,
+                "hash": hex::encode(block_hash.clone()),
                 "is_pass": true,
             })),
         );
