@@ -8,10 +8,11 @@ use std::fmt::Debug;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use futures::channel::mpsc::UnboundedReceiver;
 
 use crate::error::ConsensusError;
-use crate::types::{Address, BlockState, ExecResult, Hash, Height, OverlordMsg, Proof, Signature};
+use crate::types::{
+    Address, BlockState, ExecResult, Hash, Height, HeightRange, OverlordMsg, Proof, Signature,
+};
 
 const INIT_HEIGHT: u64 = 0;
 const INIT_ROUND: u64 = 0;
@@ -22,18 +23,19 @@ pub trait Consensus<B: Blk, S: Clone + Debug>: Send + Sync {
         &self,
         ctx: Context,
         height: Height,
-        exec_height: Height,
+        pre_exec_height: Height,
         pre_hash: Hash,
         pre_proof: Proof,
         block_states: Vec<BlockState<S>>,
-    ) -> Result<(B, Hash), Box<dyn Error + Send>>;
+    ) -> Result<B, Box<dyn Error + Send>>;
 
     async fn check_block(
         &self,
         ctx: Context,
         height: Height,
-        block_hash: Hash,
+        pre_exec_height: Height,
         block: B,
+        block_states: Vec<BlockState<S>>,
     ) -> Result<(), Box<dyn Error + Send>>;
 
     async fn exec_block(
@@ -56,13 +58,11 @@ pub trait Consensus<B: Blk, S: Clone + Debug>: Send + Sync {
         msg: OverlordMsg<B>,
     ) -> Result<(), Box<dyn Error + Send>>;
 
-    async fn receiver(&self, ctx: Context) -> UnboundedReceiver<OverlordMsg<B>>;
-
-    async fn get_block(
+    async fn get_blocks(
         &self,
         ctx: Context,
-        height: Height,
-    ) -> Result<(B, Proof), Box<dyn Error + Send>>;
+        height_range: HeightRange,
+    ) -> Result<Vec<B>, Box<dyn Error + Send>>;
 
     async fn handle_error(&self, ctx: Context, err: ConsensusError);
 }
@@ -73,11 +73,15 @@ pub trait Blk: Clone + Debug + Send + PartialEq + Eq {
 
     fn decode(data: Bytes) -> Result<Self, Box<dyn Error + Send>>;
 
-    fn get_pre_hash(&self) -> Result<Hash, Box<dyn Error + Send>>;
+    fn hash(&self) -> Hash;
 
-    fn get_exec_height(&self) -> Result<Height, Box<dyn Error + Send>>;
+    fn get_pre_hash(&self) -> Hash;
 
-    fn get_proof(&self) -> Result<Proof, Box<dyn Error + Send>>;
+    fn get_height(&self) -> Height;
+
+    fn get_exec_height(&self) -> Height;
+
+    fn get_proof(&self) -> Proof;
 }
 
 /// provide DefaultWal
