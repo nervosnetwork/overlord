@@ -4,10 +4,10 @@ use bytes::Bytes;
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
 
-use crate::Blk;
+use crate::{Blk, ConsensusError, ConsensusResult};
 
-pub type Address = Bytes;
 pub type Hash = Bytes;
+pub type Address = Bytes;
 pub type Signature = Bytes;
 
 pub type Height = u64;

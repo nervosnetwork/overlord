@@ -21,9 +21,14 @@ creep = "0.2"
 derive_more = "0.99"
 futures = { version = "0.3", features = [ "async-await" ] }
 futures-timer = "3.0"
+hasher = { version = "0.1", features = ['hash-keccak'] }
 hex = "0.4"
+lazy_static = "1.4"
 log = "0.4"
 moodyblues-sdk = "0.3"
+ophelia-bls-amcl = "0.1"
+ophelia-secp256k1 = "0.2"
+ophelia = "0.2"
 parking_lot = "0.10"
 prime_tools = "0.2"
 rand_core = "0.5"
@@ -40,7 +45,6 @@ blake2b_simd = "0.5"
 crossbeam-channel = "0.4"
 env_logger = "0.7"
 hasher = { version = "0.1", features = ['hash-keccak'] }
-lazy_static = "1.4"
 lru-cache = "0.1"
 rand = "0.7"
 
