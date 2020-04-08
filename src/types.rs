@@ -4,7 +4,7 @@ use bytes::Bytes;
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
 
-use crate::{Blk, ConsensusError, ConsensusResult};
+use crate::Blk;
 
 pub type Hash = Bytes;
 pub type Address = Bytes;

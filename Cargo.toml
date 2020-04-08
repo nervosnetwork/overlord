@@ -31,12 +31,14 @@ ophelia-secp256k1 = "0.2"
 ophelia = "0.2"
 parking_lot = "0.10"
 prime_tools = "0.2"
+rand = "0.7"
 rand_core = "0.5"
 rand_pcg = "0.2"
 rlp = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0"
 serde_json = "1.0"
+tentacle-secio = { version = "0.1", features = [ "flatc" ] }
 tokio = { version = "0.2", features = ["macros", "rt-core", "rt-threaded"]}
 
 [dev-dependencies]

@@ -1,5 +1,6 @@
 pub use creep::Context;
 
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Debug;
 
@@ -88,27 +89,26 @@ pub trait Wal {
 
 /// provide DefaultCrypto
 pub trait Crypto: Send {
-    fn hash(&self, msg: Bytes) -> Hash;
+    fn hash(msg: &Bytes) -> Hash;
 
-    fn sign(&self, hash: Hash) -> Result<Signature, Box<dyn Error + Send>>;
+    fn sign(&self, hash: &Hash) -> Result<Signature, Box<dyn Error + Send>>;
 
     fn verify_signature(
         &self,
-        signature: Signature,
-        hash: Hash,
-        signer: Address,
+        signature: &Signature,
+        hash: &Hash,
+        signer: &Address,
     ) -> Result<(), Box<dyn Error + Send>>;
 
-    fn aggregate_signatures(
+    fn aggregate_sign(
         &self,
-        signatures: Vec<Signature>,
-        signers: Vec<Address>,
+        signature_map: HashMap<&Address, &Signature>,
     ) -> Result<Signature, Box<dyn Error + Send>>;
 
     fn verify_aggregated_signature(
         &self,
-        aggregate_signature: Signature,
-        msg_hash: Hash,
-        signers: Vec<Address>,
+        aggregate_signature: &Signature,
+        msg_hash: &Hash,
+        signers: Vec<&Address>,
     ) -> Result<(), Box<dyn Error + Send>>;
 }
