@@ -6,7 +6,10 @@ use bytes::{Bytes, BytesMut};
 use derive_more::Display;
 use hasher::{Hasher, HasherKeccak};
 use lazy_static::lazy_static;
-use ophelia::{BlsSignatureVerify, Error as SigError, HashValue, PrivateKey, PublicKey, Signature, ToBlsPublicKey};
+use ophelia::{
+    BlsSignatureVerify, Error as SigError, HashValue, PrivateKey, PublicKey, Signature,
+    ToBlsPublicKey,
+};
 use ophelia_bls_amcl::{BlsCommonReference, BlsPrivateKey, BlsPublicKey, BlsSignature};
 use parking_lot::RwLock;
 use rand::distributions::Alphanumeric;
@@ -27,12 +30,12 @@ const ADDRESS_LEN: usize = 20;
 
 pub struct DefaultCrypto {
     pri_key:    BlsPrivateKey,
-    auth_list:   RwLock<HashMap<Address, BlsPublicKey>>,
+    auth_list:  RwLock<HashMap<Address, BlsPublicKey>>,
     common_ref: BlsCommonReference,
 }
 
 impl Crypto for DefaultCrypto {
-    fn hash(msg: &Bytes) -> Hash{
+    fn hash(msg: &Bytes) -> Hash {
         let mut out = [0u8; HASH_LEN];
         out.copy_from_slice(&HASHER_INST.digest(msg));
         BytesMut::from(out.as_ref()).freeze()
@@ -123,11 +126,14 @@ impl DefaultCrypto {
         let common_ref = hex_str_to_common_ref(&common_ref_hex_str);
         let pri_key = hex_str_to_bls_pri_key(&pri_key_hex_str);
 
-        let auth_list: HashMap<Address, BlsPublicKey> = auth_list_hex_strs.iter().map(|(address, pub_key_hex_str)| {
-            let address = Bytes::from(hex_decode(address));
-            let pub_key = hex_str_to_bls_pub_key(pub_key_hex_str);
-            (address, pub_key)
-        }).collect();
+        let auth_list: HashMap<Address, BlsPublicKey> = auth_list_hex_strs
+            .iter()
+            .map(|(address, pub_key_hex_str)| {
+                let address = Bytes::from(hex_decode(address));
+                let pub_key = hex_str_to_bls_pub_key(pub_key_hex_str);
+                (address, pub_key)
+            })
+            .collect();
 
         let auth_list = RwLock::new(auth_list);
 
@@ -155,7 +161,7 @@ pub struct KeyPair {
 #[derive(Default, Serialize, Debug, PartialEq, Eq)]
 pub struct KeyPairs {
     pub common_ref: String,
-    pub key_pairs:   Vec<KeyPair>,
+    pub key_pairs:  Vec<KeyPair>,
 }
 
 pub fn gen_key_pairs(number: usize, pri_keys: Vec<String>, common_ref: Option<String>) -> KeyPairs {
@@ -166,16 +172,17 @@ pub fn gen_key_pairs(number: usize, pri_keys: Vec<String>, common_ref: Option<St
     let common_ref_str: String = if common_ref.is_none() {
         gen_random_common_ref()
     } else {
-        String::from_utf8(hex_decode(&common_ref.unwrap())).expect("common_ref should be a valid utf8 string")
+        String::from_utf8(hex_decode(&common_ref.unwrap()))
+            .expect("common_ref should be a valid utf8 string")
     };
 
     let mut key_pairs = KeyPairs {
         common_ref: add_0x(hex::encode(common_ref_str.as_str())),
-        key_pairs:   vec![],
+        key_pairs:  vec![],
     };
 
     for i in 0..number {
-        let key_pair = gen_keypair(pri_keys.get(i) , common_ref_str.as_str().into());
+        let key_pair = gen_keypair(pri_keys.get(i), common_ref_str.as_str().into());
         key_pairs.key_pairs.push(key_pair);
     }
 
@@ -200,15 +207,15 @@ fn gen_random_pri_key() -> Bytes {
     DefaultCrypto::hash(&BytesMut::from(seed.as_ref()).freeze())
 }
 
-fn hex_decode(str: &str) -> Vec<u8> {
-    hex::decode(ensure_trim0x(str)).expect("hex decode failed")
+fn hex_decode(hex_str: &str) -> Vec<u8> {
+    hex::decode(ensure_trim0x(hex_str)).expect("hex decode failed")
 }
 
 fn ensure_trim0x(str: &str) -> &str {
     if str.starts_with("0x") || str.starts_with("0X") {
         &str[2..]
     } else {
-       str
+        str
     }
 }
 
@@ -226,10 +233,12 @@ fn hex_str_to_bls_pub_key(hex_str: &str) -> BlsPublicKey {
 
 fn hex_str_to_common_ref(hex_str: &str) -> BlsCommonReference {
     let common_ref = hex_decode(hex_str);
-    std::str::from_utf8(common_ref.as_ref()).expect("common_ref should be a valid utf8 string").into()
+    std::str::from_utf8(common_ref.as_ref())
+        .expect("common_ref should be a valid utf8 string")
+        .into()
 }
 
-fn gen_address(pub_key: Bytes) -> Bytes {
+fn pub_key_to_address(pub_key: Bytes) -> Bytes {
     let mut address = DefaultCrypto::hash(&pub_key);
     address.truncate(ADDRESS_LEN);
     address
@@ -242,9 +251,10 @@ fn gen_keypair(pri_key: Option<&String>, common_ref_str: BlsCommonReference) -> 
     } else {
         Bytes::from(hex_decode(pri_key.unwrap()))
     };
-    let sec_key_pair = SecioKeyPair::secp256k1_raw_key(pri_key.as_ref()).expect("build secp256k1 keypair failed");
+    let sec_key_pair =
+        SecioKeyPair::secp256k1_raw_key(pri_key.as_ref()).expect("build secp256k1 keypair failed");
     let pub_key = sec_key_pair.to_public_key().inner();
-    let address = gen_address(Bytes::from(pub_key.clone()));
+    let address = pub_key_to_address(Bytes::from(pub_key.clone()));
 
     key_pair.private_key = add_0x(hex::encode(pri_key.as_ref()));
     key_pair.public_key = add_0x(hex::encode(pub_key));
@@ -355,7 +365,10 @@ mod test {
             "0x82fa6a3978aae4e7527c6a10e9cff9c4b018053e".to_owned(),
             "0x5dc3a5d4246d0468e1f0ac3776607df40481bbf6".to_owned(),
             "0xfd6d62572ec57829485c78f9febe2cb18438332c".to_owned(),
-        ].iter().map(|address|Bytes::from(hex_decode(address))).collect();
+        ]
+        .iter()
+        .map(|address| Bytes::from(hex_decode(address)))
+        .collect();
 
         let auth_list: HashMap<String, String> = vec![
             ("0x77667feeaccdc991f0f21182bd04ba7277c881c1".to_owned(),
@@ -368,22 +381,32 @@ mod test {
              "0x041a004fe6b2913dd165ee595e6884c4faf1431284406034c6a2906995801cbf677e96892a0ad0b2d63264d7c5b3a28dc20ada9dee72cd425e44ff77a1f2f7b413bcf346c0a3bc5595e9f18dd4d96c151c632d45d7c01d15c2c5991dd7719f2a38".to_owned()),
         ].into_iter().collect();
 
-        let crypto_0 = DefaultCrypto::new(pri_keys[0].clone(), auth_list.clone(), common_ref.clone());
-        let crypto_1 = DefaultCrypto::new(pri_keys[1].clone(), auth_list.clone(), common_ref.clone());
-        let crypto_2 = DefaultCrypto::new(pri_keys[2].clone(), auth_list.clone(), common_ref.clone());
-        let crypto_3 = DefaultCrypto::new(pri_keys[3].clone(), auth_list.clone(), common_ref.clone());
+        let crypto_0 =
+            DefaultCrypto::new(pri_keys[0].clone(), auth_list.clone(), common_ref.clone());
+        let crypto_1 =
+            DefaultCrypto::new(pri_keys[1].clone(), auth_list.clone(), common_ref.clone());
+        let crypto_2 =
+            DefaultCrypto::new(pri_keys[2].clone(), auth_list.clone(), common_ref.clone());
+        let crypto_3 =
+            DefaultCrypto::new(pri_keys[3].clone(), auth_list.clone(), common_ref.clone());
 
         let msg = Bytes::from("test_default_crypto");
         let hash = DefaultCrypto::hash(&msg);
 
         // test sign and verify_signature
         let sig_0 = crypto_0.sign(&hash).unwrap();
-        crypto_0.verify_signature(&sig_0, &hash, &addresses[0]).unwrap();
+        crypto_0
+            .verify_signature(&sig_0, &hash, &addresses[0])
+            .unwrap();
 
         let sig_1 = crypto_1.sign(&hash).unwrap();
-        crypto_0.verify_signature(&sig_1, &hash, &addresses[1]).unwrap();
+        crypto_0
+            .verify_signature(&sig_1, &hash, &addresses[1])
+            .unwrap();
 
-        assert!(crypto_2.verify_signature(&sig_1, &hash, &addresses[2]).is_err());
+        assert!(crypto_2
+            .verify_signature(&sig_1, &hash, &addresses[2])
+            .is_err());
 
         // test aggregate_sign and verify_aggregated_signature
         let mut map = HashMap::new();
@@ -393,6 +416,8 @@ mod test {
         signers.push(&addresses[1]);
         signers.push(&addresses[0]);
         let agg_sig = crypto_3.aggregate_sign(map).unwrap();
-        crypto_0.verify_aggregated_signature(&agg_sig, &hash, signers).unwrap();
+        crypto_0
+            .verify_aggregated_signature(&agg_sig, &hash, signers)
+            .unwrap();
     }
 }

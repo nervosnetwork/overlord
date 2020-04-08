@@ -1,6 +1,6 @@
 [package]
 name = "overlord"
-version = "0.2.0-alpha.10"
+version = "0.3.0-alpha.1"
 authors = ["Eason Gao <kaoimin@qq.com>"]
 edition = "2018"
 license = "MIT"
@@ -16,28 +16,28 @@ Overlord consensus procotol.
 [dependencies]
 async-trait = "0.1"
 bit-vec = "0.6"
-bytes = { version = "0.5", features = ["serde"] }
 creep = "0.2"
-derive_more = "0.99"
-futures = { version = "0.3", features = [ "async-await" ] }
-futures-timer = "3.0"
-hasher = { version = "0.1", features = ['hash-keccak'] }
-hex = "0.4"
-lazy_static = "1.4"
 log = "0.4"
-moodyblues-sdk = "0.3"
-ophelia-bls-amcl = "0.1"
-ophelia-secp256k1 = "0.2"
+hex = "0.4"
 ophelia = "0.2"
+lazy_static = "1.4"
+futures-timer = "3.0"
+moodyblues-sdk = "0.3"
+ophelia-secp256k1 = "0.2"
+ophelia-bls-amcl = "0.1"
 parking_lot = "0.10"
 prime_tools = "0.2"
-rand = "0.7"
 rand_core = "0.5"
 rand_pcg = "0.2"
 rlp = "0.4"
-serde = { version = "1.0", features = ["derive"] }
-serde_derive = "1.0"
+rand = "0.7"
 serde_json = "1.0"
+serde_derive = "1.0"
+derive_more = "0.99"
+bytes = { version = "0.5", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+hasher = { version = "0.1", features = ['hash-keccak'] }
+futures = { version = "0.3", features = [ "async-await" ] }
 tentacle-secio = { version = "0.1", features = [ "flatc" ] }
 tokio = { version = "0.2", features = ["macros", "rt-core", "rt-threaded"]}
 
