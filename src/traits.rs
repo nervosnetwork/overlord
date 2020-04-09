@@ -59,6 +59,8 @@ pub trait Adapter<B: Blk, S: Clone + Debug>: Send + Sync {
         height_range: HeightRange,
     ) -> Result<Vec<B>, Box<dyn Error + Send>>;
 
+    async fn get_last_exec_height(&self, ctx: Context) -> Result<Height, Box<dyn Error + Send>>;
+
     async fn handle_error(&self, ctx: Context, err: ConsensusError);
 }
 
@@ -84,7 +86,7 @@ pub trait Blk: Clone + Debug + Send + PartialEq + Eq {
 pub trait Wal {
     async fn save(&self, info: Bytes) -> Result<(), Box<dyn Error + Send>>;
 
-    async fn load(&self) -> Result<Option<Bytes>, Box<dyn Error + Send>>;
+    async fn load(&self) -> Result<Bytes, Box<dyn Error + Send>>;
 }
 
 /// provide DefaultCrypto

@@ -283,9 +283,6 @@ pub enum CryptoError {
 
     #[display(fmt = "Verify aggregated signature failed, {:?}", _0)]
     VerifyAggregateFailed(SigError),
-
-    #[display(fmt = "Mismatch number, signature number {} address number {}", _0, _1)]
-    MisMatchNumber(usize, usize),
 }
 
 impl From<CryptoError> for Box<dyn Error + Send> {
