@@ -61,11 +61,11 @@ impl Crypto for DefaultCrypto {
             .get(signer)
             .ok_or_else(|| CryptoError::UnauthorizedAddress(hex::encode(signer)))?;
         let signature = BlsSignature::try_from(signature.as_ref())
-            .map_err(|e| CryptoError::TryInfoBlsSignatureFailed(e))?;
+            .map_err(CryptoError::TryInfoBlsSignatureFailed)?;
 
         signature
             .verify(&hash, &pub_key, &self.common_ref)
-            .map_err(|e| CryptoError::VerifyFailed(e))?;
+            .map_err(CryptoError::VerifyFailed)?;
         Ok(())
     }
 
@@ -80,7 +80,7 @@ impl Crypto for DefaultCrypto {
                 .get(signer)
                 .ok_or_else(|| CryptoError::UnauthorizedAddress(hex::encode(signer)))?;
             let signature = BlsSignature::try_from(signature.as_ref())
-                .map_err(|e| CryptoError::TryInfoBlsSignatureFailed(e))?;
+                .map_err(CryptoError::TryInfoBlsSignatureFailed)?;
 
             combine.push((signature, pub_key.to_owned()));
         }
@@ -106,13 +106,13 @@ impl Crypto for DefaultCrypto {
 
         let aggregate_key = BlsPublicKey::aggregate(pub_keys);
         let aggregated_signature = BlsSignature::try_from(aggregated_signature.as_ref())
-            .map_err(|e| CryptoError::TryInfoBlsSignatureFailed(e))?;
+            .map_err(CryptoError::TryInfoBlsSignatureFailed)?;
         let hash =
             HashValue::try_from(hash.as_ref()).map_err(|_| CryptoError::TryInfoHashValueFailed)?;
 
         aggregated_signature
             .verify(&hash, &aggregate_key, &self.common_ref)
-            .map_err(|e| CryptoError::VerifyAggregateFailed(e))?;
+            .map_err(CryptoError::VerifyAggregateFailed)?;
         Ok(())
     }
 }
@@ -169,11 +169,11 @@ pub fn gen_key_pairs(number: usize, pri_keys: Vec<String>, common_ref: Option<St
         panic!("private keys length cannot be larger than number");
     }
 
-    let common_ref_str: String = if common_ref.is_none() {
-        gen_random_common_ref()
-    } else {
-        String::from_utf8(hex_decode(&common_ref.unwrap()))
+    let common_ref_str: String = if let Some(common_ref) = common_ref {
+        String::from_utf8(hex_decode(&common_ref))
             .expect("common_ref should be a valid utf8 string")
+    } else {
+        gen_random_common_ref()
     };
 
     let mut key_pairs = KeyPairs {
@@ -246,10 +246,10 @@ fn pub_key_to_address(pub_key: Bytes) -> Bytes {
 
 fn gen_keypair(pri_key: Option<&String>, common_ref_str: BlsCommonReference) -> KeyPair {
     let mut key_pair = KeyPair::default();
-    let pri_key = if pri_key.is_none() {
-        gen_random_pri_key()
+    let pri_key = if let Some(pri_key) = pri_key {
+        Bytes::from(hex_decode(pri_key))
     } else {
-        Bytes::from(hex_decode(pri_key.unwrap()))
+        gen_random_pri_key()
     };
     let sec_key_pair =
         SecioKeyPair::secp256k1_raw_key(pri_key.as_ref()).expect("build secp256k1 keypair failed");
@@ -317,7 +317,7 @@ mod test {
         let key_pairs = gen_key_pairs(4, pri_keys, Some(common_ref.clone()));
 
         let key_pairs_cmp = KeyPairs{
-            common_ref: common_ref.clone(),
+            common_ref,
             key_pairs: vec![
                 KeyPair{
                     private_key:    "0xeba570f6b2cabd67aede56941baa6cc66729bfbf4e15bfd7df805ae0e4f66596".to_owned(),
@@ -387,8 +387,7 @@ mod test {
             DefaultCrypto::new(pri_keys[1].clone(), auth_list.clone(), common_ref.clone());
         let crypto_2 =
             DefaultCrypto::new(pri_keys[2].clone(), auth_list.clone(), common_ref.clone());
-        let crypto_3 =
-            DefaultCrypto::new(pri_keys[3].clone(), auth_list.clone(), common_ref.clone());
+        let crypto_3 = DefaultCrypto::new(pri_keys[3].clone(), auth_list, common_ref);
 
         let msg = Bytes::from("test_default_crypto");
         let hash = DefaultCrypto::hash(&msg);
