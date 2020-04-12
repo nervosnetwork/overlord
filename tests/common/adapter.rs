@@ -21,14 +21,30 @@ pub struct OverlordAdapter {
     mem_pool: Arc<MemPool>,
     storage:  Arc<Storage>,
 
-    address:        Address,
-    pre_state_root: Hash,
+    address:         Address,
+    last_state_root: Hash,
 }
 
 impl OverlordAdapter {
-    // pub fn new(address: Address, network: Arc<Network>) -> Self {
-    //     OverlordAdapter { address, network }
-    // }
+    pub fn new(
+        address: Address,
+        network: &Arc<Network>,
+        mem_pool: &Arc<MemPool>,
+        storage: &Arc<Storage>,
+    ) -> Self {
+        let network = Arc::<Network>::clone(network);
+        let mem_pool = Arc::<MemPool>::clone(mem_pool);
+        let storage = Arc::<Storage>::clone(storage);
+        let last_state_root = Hash::default();
+
+        OverlordAdapter {
+            network,
+            mem_pool,
+            storage,
+            address,
+            last_state_root,
+        }
+    }
 }
 
 #[async_trait]
@@ -42,7 +58,7 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         pre_proof: Proof,
         block_states: Vec<BlockState<ExecState>>,
     ) -> Result<Block, Box<dyn Error + Send>> {
-        let mut state_root = self.pre_state_root.clone();
+        let mut state_root = self.last_state_root.clone();
         let receipt_roots: Vec<Hash> = block_states
             .iter()
             .map(|block_state| {
@@ -66,7 +82,7 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         block: &Block,
         block_states: &[BlockState<ExecState>],
     ) -> Result<(), Box<dyn Error + Send>> {
-        let mut expect_state_root = self.pre_state_root.clone();
+        let mut expect_state_root = self.last_state_root.clone();
         let expect_receipt_roots: Vec<Hash> = block_states
             .iter()
             .map(|block_state| {
