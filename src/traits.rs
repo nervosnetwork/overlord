@@ -38,12 +38,15 @@ pub trait Adapter<B: Blk, S: Clone + Debug + Default>: Send + Sync {
         block: &B,
     ) -> Result<Bytes, Box<dyn Error + Send>>;
 
-    async fn exec_block(
+    async fn save_and_exec_block_with_proof(
         &self,
         ctx: Context,
         height: Height,
         full_block: Bytes,
+        proof: Proof,
     ) -> Result<ExecResult<S>, Box<dyn Error + Send>>;
+
+    async fn register_network(&self, _ctx: Context, sender: UnboundedSender<OverlordMsg<B>>);
 
     async fn broadcast(
         &self,
@@ -58,15 +61,13 @@ pub trait Adapter<B: Blk, S: Clone + Debug + Default>: Send + Sync {
         msg: OverlordMsg<B>,
     ) -> Result<(), Box<dyn Error + Send>>;
 
-    async fn get_blocks(
+    async fn get_block_with_proofs(
         &self,
         ctx: Context,
         height_range: HeightRange,
     ) -> Result<Vec<(B, Proof)>, Box<dyn Error + Send>>;
 
-    async fn get_last_exec_height(&self, ctx: Context) -> Result<Height, Box<dyn Error + Send>>;
-
-    async fn register_network(&self, _ctx: Context, sender: UnboundedSender<OverlordMsg<B>>);
+    async fn get_latest_height(&self, ctx: Context) -> Result<Height, Box<dyn Error + Send>>;
 
     async fn handle_error(&self, ctx: Context, err: ConsensusError);
 }

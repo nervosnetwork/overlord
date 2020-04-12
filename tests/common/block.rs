@@ -1,10 +1,20 @@
 use std::error::Error;
 
 use bytes::Bytes;
+use derive_more::Display;
 use overlord::{Blk, ConsensusConfig, Crypto, DefaultCrypto, Hash, Height, Proof};
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Display, PartialEq, Eq, Serialize, Deserialize)]
+#[display(
+    fmt = "{{ pre_hash: {}, height: {}, exec_height: {}, pre_proof: {}, state_root: {}, tx: {} }}",
+    "hex::encode(pre_hash)",
+    height,
+    exec_height,
+    pre_proof,
+    "hex::encode(state_root)",
+    tx
+)]
 pub struct Block {
     pub pre_hash:      Hash,
     pub height:        Height,

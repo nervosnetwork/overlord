@@ -14,12 +14,14 @@ use crate::common::block::{Block, ExecState, FullBlock};
 use crate::common::executor::Executor;
 use crate::common::mem_pool::MemPool;
 use crate::common::network::Network;
+use crate::common::storage::Storage;
 
 pub struct OverlordAdapter {
-    address:  Address,
     network:  Arc<Network>,
     mem_pool: Arc<MemPool>,
-    // storage: Arc<>,
+    storage:  Arc<Storage>,
+
+    address:        Address,
     pre_state_root: Hash,
 }
 
@@ -89,14 +91,22 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         Ok(Bytes::from(vec))
     }
 
-    async fn exec_block(
+    async fn save_and_exec_block_with_proof(
         &self,
         _ctx: Context,
-        _height: Height,
+        height: Height,
         full_block: Bytes,
+        proof: Proof,
     ) -> Result<ExecResult<ExecState>, Box<dyn Error + Send>> {
         let full_block: FullBlock = bincode::deserialize(&full_block).unwrap();
+        let block = full_block.block.clone();
+        self.storage
+            .save_block_with_proof(self.address.clone(), height, block, proof);
         Ok(Executor::exec(&full_block))
+    }
+
+    async fn register_network(&self, _ctx: Context, sender: UnboundedSender<OverlordMsg<Block>>) {
+        self.network.register(self.address.clone(), sender);
     }
 
     async fn broadcast(
@@ -116,20 +126,16 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         self.network.transmit(&to, msg)
     }
 
-    async fn get_blocks(
+    async fn get_block_with_proofs(
         &self,
         _ctx: Context,
-        _height_range: HeightRange,
+        range: HeightRange,
     ) -> Result<Vec<(Block, Proof)>, Box<dyn Error + Send>> {
-        Ok(vec![])
+        Ok(self.storage.get_block_with_proof(&self.address, range))
     }
 
-    async fn get_last_exec_height(&self, _ctx: Context) -> Result<Height, Box<dyn Error + Send>> {
-        Ok(0)
-    }
-
-    async fn register_network(&self, _ctx: Context, sender: UnboundedSender<OverlordMsg<Block>>) {
-        self.network.register(self.address.clone(), sender);
+    async fn get_latest_height(&self, _ctx: Context) -> Result<Height, Box<dyn Error + Send>> {
+        Ok(self.storage.get_latest_height(&self.address))
     }
 
     async fn handle_error(&self, _ctx: Context, _err: ConsensusError) {}
