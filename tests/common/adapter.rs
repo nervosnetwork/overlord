@@ -121,7 +121,11 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         Ok(Executor::exec(&full_block))
     }
 
-    async fn register_network(&self, _ctx: Context, sender: UnboundedSender<OverlordMsg<Block>>) {
+    async fn register_network(
+        &self,
+        _ctx: Context,
+        sender: UnboundedSender<(Context, OverlordMsg<B>)>,
+    ) {
         self.network.register(self.address.clone(), sender);
     }
 

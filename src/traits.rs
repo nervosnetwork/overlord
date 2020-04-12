@@ -46,7 +46,11 @@ pub trait Adapter<B: Blk, S: Clone + Debug + Default>: Send + Sync {
         proof: Proof,
     ) -> Result<ExecResult<S>, Box<dyn Error + Send>>;
 
-    async fn register_network(&self, _ctx: Context, sender: UnboundedSender<OverlordMsg<B>>);
+    async fn register_network(
+        &self,
+        _ctx: Context,
+        sender: UnboundedSender<(Context, OverlordMsg<B>)>,
+    );
 
     async fn broadcast(
         &self,

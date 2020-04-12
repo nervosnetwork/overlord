@@ -5,10 +5,6 @@ pub mod types;
 
 mod wal;
 
-use std::fmt::Debug;
-use std::marker::PhantomData;
-use std::sync::Arc;
-
 pub use crypto::{gen_key_pairs, DefaultCrypto};
 pub use error::{ConsensusError, ConsensusResult};
 pub use traits::{Adapter, Blk, Crypto};
@@ -17,15 +13,21 @@ pub use types::{
     Proof, Round, Signature,
 };
 
-use creep::Context;
-use futures::channel::mpsc::{unbounded, UnboundedSender};
+use std::fmt::Debug;
+use std::marker::PhantomData;
+use std::sync::Arc;
 
-#[derive(Clone)]
+use creep::Context;
+use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
+
 pub struct OverlordServer<A, B: Blk, C, S> {
-    inner:     UnboundedSender<(Context, OverlordMsg<B>)>,
-    phantom_a: PhantomData<A>,
-    phantom_c: PhantomData<C>,
-    phantom_s: PhantomData<S>,
+    adapter: Arc<A>,
+    crypto:  C,
+    network: UnboundedReceiver<(Context, OverlordMsg<B>)>,
+
+    address: Address,
+
+    phantom_data: PhantomData<S>,
 }
 
 impl<A, B, C, S> OverlordServer<A, B, C, S>
@@ -35,16 +37,19 @@ where
     C: Crypto,
     S: Clone + Debug + Default,
 {
-    // run overlord
-    pub fn new(_address: Address, _adapter: Arc<A>, _crypto: Arc<C>) -> Self {
-        let (sender, _receiver) = unbounded();
-        // Todo: run overlord
+    pub fn new(address: Address, adapter: &Arc<A>, crypto: C) -> Self {
+        let (sender, receiver) = unbounded();
+        adapter.register_network(Context::default(), sender);
 
         OverlordServer {
-            inner:     sender,
-            phantom_a: PhantomData,
-            phantom_c: PhantomData,
-            phantom_s: PhantomData,
+            adapter: Arc::<A>::clone(adapter),
+            crypto,
+            network: receiver,
+            address,
+            phantom_data: PhantomData,
         }
     }
+
+    // Todo: run overlord
+    pub fn run() {}
 }

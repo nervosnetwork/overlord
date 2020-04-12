@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::error::Error;
 
 use bytes::Bytes;
+use creep::Context;
 use futures::channel::mpsc::{unbounded, UnboundedSender};
 use overlord::{Address, OverlordMsg};
 use parking_lot::RwLock;
@@ -11,11 +12,15 @@ use overlord::types::{AggregatedVote, SignedProposal};
 
 #[derive(Default)]
 pub struct Network {
-    handlers: RwLock<HashMap<Address, UnboundedSender<OverlordMsg<Block>>>>,
+    handlers: RwLock<HashMap<Address, UnboundedSender<(Context, OverlordMsg<Block>)>>>,
 }
 
 impl Network {
-    pub fn register(&self, address: Address, sender: UnboundedSender<OverlordMsg<Block>>) {
+    pub fn register(
+        &self,
+        address: Address,
+        sender: UnboundedSender<(Context, OverlordMsg<Block>)>,
+    ) {
         let mut handlers = self.handlers.write();
         handlers.insert(address, sender);
     }
@@ -30,7 +35,7 @@ impl Network {
             .iter()
             .filter(|(address, _)| address != &from)
             .for_each(|(_, sender)| {
-                let _ = sender.unbounded_send(msg.clone());
+                let _ = sender.unbounded_send((Context::default(), msg.clone()));
             });
 
         Ok(())
@@ -43,7 +48,7 @@ impl Network {
     ) -> Result<(), Box<dyn Error + Send>> {
         let handler = self.handlers.read();
         let sender = handler.get(to).unwrap();
-        let _ = sender.unbounded_send(msg);
+        let _ = sender.unbounded_send((Context::default(), msg));
         Ok(())
     }
 }
