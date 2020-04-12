@@ -289,7 +289,7 @@ pub struct BlockState<S: Clone + Debug + Default> {
     pub state:  S,
 }
 
-#[derive(Clone, Debug, Display, Default)]
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
     fmt = "{{ interval: {}, max_exec_behind: {}, timer_config: {}, authority_list: {} }}",
     interval,
@@ -304,7 +304,7 @@ pub struct ConsensusConfig {
     pub authority_list:  Vec<Node>,
 }
 
-#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
     fmt = "{{ propose_ratio: {}, pre_vote_ratio: {}, pre_commit_ratio: {}, brake_ratio: {} }}",
     propose_ratio,
@@ -317,6 +317,17 @@ pub struct DurationConfig {
     pub pre_vote_ratio:   u64,
     pub pre_commit_ratio: u64,
     pub brake_ratio:      u64,
+}
+
+impl Default for DurationConfig {
+    fn default() -> DurationConfig {
+        DurationConfig {
+            propose_ratio:    15,
+            pre_vote_ratio:   10,
+            pre_commit_ratio: 7,
+            brake_ratio:      10,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]

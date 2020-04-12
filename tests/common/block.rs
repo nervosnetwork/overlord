@@ -1,24 +1,24 @@
 use std::error::Error;
 
 use bytes::Bytes;
-use overlord::{Blk, Crypto, DefaultCrypto, Hash, Height, Proof};
+use overlord::{Blk, ConsensusConfig, Crypto, DefaultCrypto, Hash, Height, Proof};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Block {
-    pre_hash:      Hash,
-    height:        Height,
-    exec_height:   Height,
-    proof:         Proof,
-    state_root:    Hash,
-    receipt_roots: Vec<Hash>,
-    tx_root:       Hash,
+    pub pre_hash:      Hash,
+    pub height:        Height,
+    pub exec_height:   Height,
+    pub pre_proof:     Proof,
+    pub state_root:    Hash,
+    pub receipt_roots: Vec<Hash>,
+    pub tx:            Transaction,
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct ExecState {
-    state_root:   Hash,
-    receipt_root: Hash,
+impl Block {
+    pub fn genesis_block() -> Self {
+        Block::default()
+    }
 }
 
 impl Blk for Block {
@@ -47,8 +47,21 @@ impl Blk for Block {
     }
 
     fn get_proof(&self) -> Proof {
-        self.proof.clone()
+        self.pre_proof.clone()
     }
+}
+
+pub type Transaction = ConsensusConfig;
+
+#[derive(Clone, Debug, Default)]
+pub struct ExecState {
+    pub state_root:   Hash,
+    pub receipt_root: Hash,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FullBlock {
+    pub block: Block,
 }
 
 #[test]

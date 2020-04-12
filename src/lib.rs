@@ -14,8 +14,8 @@ pub use supports::{
 };
 pub use traits::{Adapter, Blk, Crypto, Wal};
 pub use types::{
-    Address, BlockState, ExecResult, Hash, Height, HeightRange, OverlordMsg, Proof, Round,
-    Signature,
+    Address, BlockState, ConsensusConfig, ExecResult, Hash, Height, HeightRange, OverlordMsg,
+    Proof, Round, Signature,
 };
 
 use creep::Context;

@@ -19,26 +19,30 @@ pub trait Adapter<B: Blk, S: Clone + Debug + Default>: Send + Sync {
         &self,
         ctx: Context,
         height: Height,
-        pre_exec_height: Height,
+        exec_height: Height,
         pre_hash: Hash,
         pre_proof: Proof,
         block_states: Vec<BlockState<S>>,
     ) -> Result<B, Box<dyn Error + Send>>;
 
-    async fn check_block(
+    async fn check_block_states(
         &self,
         ctx: Context,
-        height: Height,
-        pre_exec_height: Height,
-        block: B,
-        block_states: Vec<BlockState<S>>,
+        block: &B,
+        block_states: &[BlockState<S>],
     ) -> Result<(), Box<dyn Error + Send>>;
+
+    async fn fetch_full_block(
+        &self,
+        ctx: Context,
+        block: &B,
+    ) -> Result<Bytes, Box<dyn Error + Send>>;
 
     async fn exec_block(
         &self,
         ctx: Context,
         height: Height,
-        block: B,
+        full_block: Bytes,
     ) -> Result<ExecResult<S>, Box<dyn Error + Send>>;
 
     async fn broadcast(
