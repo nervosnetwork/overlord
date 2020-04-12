@@ -6,6 +6,7 @@ use std::fmt::Debug;
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use futures::channel::mpsc::UnboundedSender;
 
 use crate::error::ConsensusError;
 use crate::types::{
@@ -13,7 +14,7 @@ use crate::types::{
 };
 
 #[async_trait]
-pub trait Adapter<B: Blk, S: Clone + Debug>: Send + Sync {
+pub trait Adapter<B: Blk, S: Clone + Debug + Default>: Send + Sync {
     async fn create_block(
         &self,
         ctx: Context,
@@ -49,7 +50,7 @@ pub trait Adapter<B: Blk, S: Clone + Debug>: Send + Sync {
     async fn transmit(
         &self,
         ctx: Context,
-        addr: Address,
+        to: Address,
         msg: OverlordMsg<B>,
     ) -> Result<(), Box<dyn Error + Send>>;
 
@@ -57,18 +58,20 @@ pub trait Adapter<B: Blk, S: Clone + Debug>: Send + Sync {
         &self,
         ctx: Context,
         height_range: HeightRange,
-    ) -> Result<Vec<B>, Box<dyn Error + Send>>;
+    ) -> Result<Vec<(B, Proof)>, Box<dyn Error + Send>>;
 
     async fn get_last_exec_height(&self, ctx: Context) -> Result<Height, Box<dyn Error + Send>>;
+
+    async fn register_network(&self, _ctx: Context, sender: UnboundedSender<OverlordMsg<B>>);
 
     async fn handle_error(&self, ctx: Context, err: ConsensusError);
 }
 
 /// should ensure the same serialization results in different environments
-pub trait Blk: Clone + Debug + Send + PartialEq + Eq {
+pub trait Blk: Clone + Debug + Default + Send + PartialEq + Eq {
     fn encode(&self) -> Result<Bytes, Box<dyn Error + Send>>;
 
-    fn decode(data: Bytes) -> Result<Self, Box<dyn Error + Send>>;
+    fn decode(data: &Bytes) -> Result<Self, Box<dyn Error + Send>>;
 
     fn get_block_hash(&self) -> Hash;
 

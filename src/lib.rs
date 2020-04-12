@@ -13,12 +13,16 @@ pub use supports::{
     default_wal::DefaultWal,
 };
 pub use traits::{Adapter, Blk, Crypto, Wal};
-pub use types::{Address, Hash, Height, OverlordMsg, Proof, Round, Signature};
+pub use types::{
+    Address, BlockState, ExecResult, Hash, Height, HeightRange, OverlordMsg, Proof, Round,
+    Signature,
+};
 
 use creep::Context;
 use futures::channel::mpsc::{unbounded, UnboundedSender};
 
-pub struct Overlord<A, B: Blk, C, S, W> {
+#[derive(Clone)]
+pub struct OverlordServer<A, B: Blk, C, S, W> {
     inner:     UnboundedSender<(Context, OverlordMsg<B>)>,
     phantom_a: PhantomData<A>,
     phantom_c: PhantomData<C>,
@@ -26,12 +30,12 @@ pub struct Overlord<A, B: Blk, C, S, W> {
     phantom_w: PhantomData<W>,
 }
 
-impl<A, B, C, S, W> Overlord<A, B, C, S, W>
+impl<A, B, C, S, W> OverlordServer<A, B, C, S, W>
 where
     A: Adapter<B, S>,
     B: Blk,
     C: Crypto,
-    S: Clone + Debug,
+    S: Clone + Debug + Default,
     W: Wal,
 {
     // run overlord
@@ -39,18 +43,12 @@ where
         let (sender, _receiver) = unbounded();
         // Todo: run overlord
 
-        Overlord {
+        OverlordServer {
             inner:     sender,
             phantom_a: PhantomData,
             phantom_c: PhantomData,
             phantom_s: PhantomData,
             phantom_w: PhantomData,
         }
-    }
-
-    pub fn send_msg(&self, ctx: Context, msg: OverlordMsg<B>) -> ConsensusResult<()> {
-        self.inner
-            .unbounded_send((ctx, msg))
-            .map_err(|e| ConsensusError::Other(format!("Send message error {:?}", e)))
     }
 }

@@ -25,14 +25,16 @@ pub enum OverlordMsg<B: Blk> {
     #[display(fmt = "signed_choke: {}", _0)]
     SignedChoke(SignedChoke),
     #[display(fmt = "current_height: {}", _0)]
-    CurrentHeight(Height),
+    SignedHeight(SignedHeight),
     #[display(fmt = "request_sync: {:?}", _0)]
-    RequestSync(HeightRange),
+    SyncRequest(SyncRequest),
     #[display(fmt = "response_sync")]
-    ResponseSync(Vec<B>),
+    SyncResponse(SyncResponse<B>),
+    #[display(fmt = "stop overlord")]
+    Stop,
 }
 
-#[derive(Clone, Debug, Display, PartialEq, Eq)]
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq)]
 #[display(
     fmt = "{{ signature: {}, proposal: {} }}",
     "hex::encode(signature)",
@@ -43,7 +45,7 @@ pub struct SignedProposal<B: Blk> {
     pub proposal:  Proposal<B>,
 }
 
-#[derive(Clone, Debug, Display, PartialEq, Eq)]
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq)]
 #[display(
     fmt = "{{ height: {}, round: {}, block_hash: {}, lock: {}, proposer: {} }}",
     height,
@@ -61,14 +63,14 @@ pub struct Proposal<B: Blk> {
     pub proposer:   Address,
 }
 
-#[derive(Clone, Debug, Display, PartialEq, Eq)]
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq)]
 #[display(fmt = "{{ lock_round: {}, lock_votes: {} }}", lock_round, lock_votes)]
 pub struct PoLC {
     pub lock_round: Round,
     pub lock_votes: AggregatedVote,
 }
 
-#[derive(Clone, Debug, Display, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash)]
 #[display(
     fmt = "{{ signature: {}, vote: {}, voter: {} }}",
     "hex::encode(signature)",
@@ -81,7 +83,7 @@ pub struct SignedVote {
     pub voter:     Address,
 }
 
-#[derive(Clone, Debug, Display, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash)]
 #[display(
     fmt = "{{ height: {}, round: {}, vote_type: {}, block_hash: {} }}",
     height,
@@ -96,7 +98,7 @@ pub struct Vote {
     pub block_hash: Hash,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Display, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Display, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum VoteType {
     #[display(fmt = "PreVote")]
     PreVote,
@@ -104,7 +106,13 @@ pub enum VoteType {
     PreCommit,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Display, PartialEq, Eq, Hash)]
+impl Default for VoteType {
+    fn default() -> Self {
+        VoteType::PreVote
+    }
+}
+
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[display(
     fmt = "{{ agg_signature: {}, vote_type: {}, height: {}, round: {}, block_hash: {}, leader: {} }}",
     agg_signature,
@@ -123,7 +131,7 @@ pub struct AggregatedVote {
     pub leader:        Address,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Display, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Display, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[display(
     fmt = "{{ signature: {}, address_bitmap: {} }}",
     "hex::encode(signature)",
@@ -134,7 +142,7 @@ pub struct AggregatedSignature {
     pub address_bitmap: Bytes,
 }
 
-#[derive(Clone, Debug, Display, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Display, PartialEq, Eq, Hash)]
 #[display(
     fmt = "{{ signature: {}, choke: {}, address: {} }}",
     "hex::encode(signature)",
@@ -147,7 +155,7 @@ pub struct SignedChoke {
     pub address:   Address,
 }
 
-#[derive(Clone, Debug, Display, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash)]
 #[display(fmt = "{{ height: {}, round: {}, from: {} }}", height, round, from)]
 pub struct Choke {
     pub height: Height,
@@ -155,7 +163,7 @@ pub struct Choke {
     pub from:   UpdateFrom,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Display, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, Display, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum UpdateFrom {
     #[display(fmt = "UpdateFrom::PreVoteQC ( {} )", _0)]
     PreVoteQC(AggregatedVote),
@@ -165,7 +173,13 @@ pub enum UpdateFrom {
     ChokeQC(AggregatedChoke),
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Display, Hash, PartialEq, Eq)]
+impl Default for UpdateFrom {
+    fn default() -> Self {
+        UpdateFrom::PreVoteQC(AggregatedVote::default())
+    }
+}
+
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[display(
     fmt = "{{ height: {}, round: {}, signature: {}, voters: {} }}",
     height,
@@ -180,7 +194,54 @@ pub struct AggregatedChoke {
     pub voters:    Vec<Address>,
 }
 
-#[derive(Clone, Debug, Display, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[display(
+    fmt = "{{ height: {}, address: {}, signature: {} }}",
+    height,
+    "hex::encode(address)",
+    "hex::encode(signature)"
+)]
+pub struct SignedHeight {
+    pub height:    Height,
+    pub address:   Address,
+    pub signature: Signature,
+}
+
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[display(
+    fmt = "{{ request_range: {}, requester: {}, signature: {} }}",
+    request_range,
+    "hex::encode(requester)",
+    "hex::encode(signature)"
+)]
+pub struct SyncRequest {
+    pub request_range: HeightRange,
+    pub requester:     Address,
+    pub signature:     Signature,
+}
+
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[display(
+    fmt = "{{ response_range: {}, responder: {}, signature: {} }}",
+    response_range,
+    "hex::encode(responder)",
+    "hex::encode(signature)"
+)]
+pub struct SyncResponse<B: Blk> {
+    pub response_range:    HeightRange,
+    pub block_with_proofs: Vec<(B, Proof)>,
+    pub responder:         Address,
+    pub signature:         Signature,
+}
+
+#[derive(Clone, Debug, Default, Display, PartialEq, Eq, Serialize, Deserialize)]
+#[display(fmt = "{{ from: {}, to: {} }}", from, to)]
+pub struct HeightRange {
+    pub from: Height,
+    pub to:   Height,
+}
+
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
     fmt = "{{ height: {}, round: {}, block_hash: {}, agg_signature: {} }}",
     height,
@@ -195,7 +256,7 @@ pub struct Proof {
     pub agg_signature: AggregatedSignature,
 }
 
-#[derive(Clone, Debug, Display, PartialEq, Eq)]
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq)]
 #[display(
     fmt = "{{ height: {}, round: {}, block_hash: {}, is_pass: {} }}",
     height,
@@ -210,25 +271,25 @@ pub(crate) struct VerifyResp {
     pub(crate) is_pass:    bool,
 }
 
-#[derive(Clone, Debug, Display)]
+#[derive(Clone, Debug, Display, Default)]
 #[display(
     fmt = "{{ consensus_config: {}, block_states: {} }}",
     consensus_config,
     block_states
 )]
-pub struct ExecResult<S: Clone + Debug> {
+pub struct ExecResult<S: Clone + Debug + Default> {
     pub consensus_config: ConsensusConfig,
     pub block_states:     BlockState<S>,
 }
 
-#[derive(Clone, Debug, Display)]
+#[derive(Clone, Debug, Display, Default)]
 #[display(fmt = "{{ height: {}, state: {:?} }}", height, state)]
-pub struct BlockState<S: Clone + Debug> {
+pub struct BlockState<S: Clone + Debug + Default> {
     pub height: Height,
     pub state:  S,
 }
 
-#[derive(Clone, Debug, Display)]
+#[derive(Clone, Debug, Display, Default)]
 #[display(
     fmt = "{{ interval: {}, max_exec_behind: {}, timer_config: {}, authority_list: {} }}",
     interval,
@@ -243,7 +304,7 @@ pub struct ConsensusConfig {
     pub authority_list:  Vec<Node>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Display, PartialEq, Eq)]
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
     fmt = "{{ propose_ratio: {}, pre_vote_ratio: {}, pre_commit_ratio: {}, brake_ratio: {} }}",
     propose_ratio,
@@ -258,7 +319,7 @@ pub struct DurationConfig {
     pub brake_ratio:      u64,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Display, PartialEq, Eq)]
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
     fmt = "{{ address: {}, propose_w: {}, vote_w: {} }}",
     "hex::encode(address)",
@@ -271,12 +332,6 @@ pub struct Node {
     pub vote_weight:    u32,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct HeightRange {
-    pub from: Height,
-    pub to:   Height,
-}
-
 struct DisplayVec<T: std::fmt::Display>(Vec<T>);
 
 impl<T: std::fmt::Display> std::fmt::Display for DisplayVec<T> {
@@ -287,55 +342,5 @@ impl<T: std::fmt::Display> std::fmt::Display for DisplayVec<T> {
         }
         write!(f, "]")?;
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn test_display_types() {
-        let node = Node {
-            address:        Bytes::from("666"),
-            propose_weight: 100,
-            vote_weight:    90,
-        };
-        println!("node: {}", node);
-
-        let consensus_config = ConsensusConfig {
-            interval:        3000,
-            max_exec_behind: 10,
-            timer_config:    DurationConfig {
-                propose_ratio:    10,
-                pre_vote_ratio:   10,
-                pre_commit_ratio: 10,
-                brake_ratio:      10,
-            },
-            authority_list:  vec![node],
-        };
-        println!("consensus_config: {}", consensus_config);
-
-        let aggregated_signature = AggregatedSignature {
-            signature:      Bytes::from("666"),
-            address_bitmap: Bytes::from("666"),
-        };
-        println!("aggregated_signature: {}", aggregated_signature);
-
-        let aggregate_vote = AggregatedVote {
-            agg_signature: aggregated_signature,
-            vote_type:     VoteType::PreCommit,
-            height:        100,
-            round:         10,
-            block_hash:    Bytes::from("666"),
-            leader:        Bytes::from("666"),
-        };
-        println!("aggregate_vote: {}", aggregate_vote);
-
-        let polc = PoLC {
-            lock_round: 2,
-            lock_votes: aggregate_vote,
-        };
-        println!("polc: {}", polc);
     }
 }
