@@ -89,14 +89,6 @@ pub trait Blk: Clone + Debug + Default + Send + PartialEq + Eq {
     fn get_proof(&self) -> Proof;
 }
 
-/// provide DefaultWal
-#[async_trait]
-pub trait Wal {
-    async fn save(&self, info: Bytes) -> Result<(), Box<dyn Error + Send>>;
-
-    async fn load(&self) -> Result<Bytes, Box<dyn Error + Send>>;
-}
-
 /// provide DefaultCrypto
 pub trait Crypto: Send {
     fn hash(msg: &Bytes) -> Hash;
