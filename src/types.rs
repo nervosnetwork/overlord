@@ -343,6 +343,16 @@ pub struct Node {
     pub vote_weight:    u32,
 }
 
+impl Node {
+    pub fn new(address: Address) -> Self {
+        Node {
+            address,
+            propose_weight: 1,
+            vote_weight: 1,
+        }
+    }
+}
+
 struct DisplayVec<T: std::fmt::Display>(Vec<T>);
 
 impl<T: std::fmt::Display> std::fmt::Display for DisplayVec<T> {

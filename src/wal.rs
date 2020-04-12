@@ -8,8 +8,11 @@ use derive_more::Display;
 
 use crate::{Hash, Height};
 
+#[allow(dead_code)]
 const STATE_SUB_DIR: &str = "state";
+#[allow(dead_code)]
 const STATE_FILE_NAME: &str = "state.wal";
+#[allow(dead_code)]
 const FULL_BLOCK_SUB_DIR: &str = "full_block";
 
 /// Simple Write Ahead Logging
@@ -30,6 +33,7 @@ impl Wal {
         }
     }
 
+    #[allow(dead_code)]
     pub fn save_state(&self, state: &Bytes) -> Result<(), WalError> {
         self.safe_save_file(
             self.state_dir_path.clone(),
@@ -38,10 +42,12 @@ impl Wal {
         )
     }
 
+    #[allow(dead_code)]
     pub fn load_state(&self) -> Result<Bytes, WalError> {
         self.safe_load_file(self.state_dir_path.clone(), STATE_FILE_NAME.to_owned())
     }
 
+    #[allow(dead_code)]
     pub fn save_full_block(
         &self,
         height: Height,
@@ -53,12 +59,14 @@ impl Wal {
         self.safe_save_file(dir, file_name, full_block)
     }
 
+    #[allow(dead_code)]
     pub fn load_full_block(&self, height: Height, block_hash: &Hash) -> Result<Bytes, WalError> {
         let dir = self.assemble_full_block_dir(height);
         let file_name = hex::encode(block_hash) + ".wal";
         self.safe_load_file(dir, file_name)
     }
 
+    #[allow(dead_code)]
     pub fn remove_full_blocks(&self, height: Height) -> Result<(), WalError> {
         let mut full_block_path = self.wal_dir_path.clone();
         full_block_path.push(FULL_BLOCK_SUB_DIR);
@@ -87,10 +95,11 @@ impl Wal {
         Ok(())
     }
 
+    #[allow(dead_code)]
     fn safe_open_file(&self, dir: PathBuf, file_name: String) -> Result<fs::File, WalError> {
         ensure_dir_exists(&dir);
 
-        let mut wal_file_path = dir.clone();
+        let mut wal_file_path = dir;
         wal_file_path.push(file_name);
 
         fs::OpenOptions::new()
@@ -101,6 +110,7 @@ impl Wal {
             .map_err(WalError::OpenFileFailed)
     }
 
+    #[allow(dead_code)]
     fn safe_save_file(&self, dir: PathBuf, file_name: String, data: &[u8]) -> Result<(), WalError> {
         let mut wal_file = self.safe_open_file(dir, file_name)?;
 
@@ -110,6 +120,7 @@ impl Wal {
         Ok(())
     }
 
+    #[allow(dead_code)]
     fn safe_load_file(&self, dir: PathBuf, file_name: String) -> Result<Bytes, WalError> {
         let mut wal_file = self.safe_open_file(dir, file_name)?;
 
@@ -120,6 +131,7 @@ impl Wal {
         Ok(Bytes::from(read_buf))
     }
 
+    #[allow(dead_code)]
     fn assemble_full_block_dir(&self, height: Height) -> PathBuf {
         let mut full_block_dir = self.wal_dir_path.clone();
         full_block_dir.push(FULL_BLOCK_SUB_DIR);
@@ -128,12 +140,14 @@ impl Wal {
     }
 }
 
+#[allow(dead_code)]
 fn ensure_dir_exists(dir: &PathBuf) {
     if !dir.exists() {
         fs::create_dir_all(dir).expect("Create wal directory failed");
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Display)]
 pub enum WalError {
     #[display(fmt = "Open wal file failed, {:?}", _0)]

@@ -13,6 +13,7 @@ pub struct Storage {
 }
 
 impl Storage {
+    #[allow(dead_code)]
     pub fn register(&self, address: Address) {
         let mut latest_height_map = self.latest_height_map.write();
         (*latest_height_map).insert(address, 0);
@@ -86,9 +87,4 @@ impl Storage {
             );
         }
     }
-}
-
-#[test]
-fn test_range() {
-    (9..10).for_each(|i| println!("{}", i));
 }

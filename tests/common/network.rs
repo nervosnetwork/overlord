@@ -10,9 +10,12 @@ use parking_lot::RwLock;
 use crate::common::block::Block;
 use overlord::types::{AggregatedVote, SignedProposal};
 
+type OverlordSender = UnboundedSender<(Context, OverlordMsg<Block>)>;
+
+#[allow(dead_code)]
 #[derive(Default)]
 pub struct Network {
-    handlers: RwLock<HashMap<Address, UnboundedSender<(Context, OverlordMsg<Block>)>>>,
+    handlers: RwLock<HashMap<Address, OverlordSender>>,
 }
 
 impl Network {
@@ -78,13 +81,13 @@ fn test_network() {
     let msg = OverlordMsg::SignedProposal(SignedProposal::default());
     network.broadcast(&addresses[0], msg.clone()).unwrap();
     assert!(receiver_0.try_next().is_err());
-    assert_eq!(receiver_1.try_next().unwrap().unwrap(), msg);
+    assert_eq!(receiver_1.try_next().unwrap().unwrap().1, msg);
     assert!(receiver_2.try_next().is_err());
 
     // test transmit
     let msg = OverlordMsg::AggregatedVote(AggregatedVote::default());
     network.transmit(&addresses[0], msg.clone()).unwrap();
-    assert_eq!(receiver_0.try_next().unwrap().unwrap(), msg);
+    assert_eq!(receiver_0.try_next().unwrap().unwrap().1, msg);
     assert!(receiver_1.try_next().is_err());
     assert!(receiver_2.try_next().is_err());
 
@@ -93,8 +96,8 @@ fn test_network() {
     let msg = OverlordMsg::SignedProposal(SignedProposal::default());
     network.broadcast(&addresses[0], msg.clone()).unwrap();
     assert!(receiver_0.try_next().is_err());
-    assert_eq!(receiver_1.try_next().unwrap().unwrap(), msg);
-    assert_eq!(receiver_2.try_next().unwrap().unwrap(), msg);
+    assert_eq!(receiver_1.try_next().unwrap().unwrap().1, msg);
+    assert_eq!(receiver_2.try_next().unwrap().unwrap().1, msg);
 
     // test sender drop
     {

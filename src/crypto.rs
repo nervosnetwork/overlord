@@ -25,6 +25,12 @@ lazy_static! {
     static ref HASHER_INST: HasherKeccak = HasherKeccak::new();
 }
 
+pub type AddressHex = String;
+pub type PriKeyHex = String;
+pub type PubKeyHex = String;
+pub type BlsPubKeyHex = String;
+pub type CommonRefHex = String;
+
 const HASH_LEN: usize = 32;
 const ADDRESS_LEN: usize = 20;
 
@@ -119,14 +125,14 @@ impl Crypto for DefaultCrypto {
 
 impl DefaultCrypto {
     pub fn new(
-        pri_key_hex_str: String,
-        auth_list_hex_strs: HashMap<String, String>,
-        common_ref_hex_str: String,
+        pri_key_hex_str: PriKeyHex,
+        auth_list_hex_str: HashMap<AddressHex, BlsPubKeyHex>,
+        common_ref_hex_str: CommonRefHex,
     ) -> Self {
         let common_ref = hex_str_to_common_ref(&common_ref_hex_str);
         let pri_key = hex_str_to_bls_pri_key(&pri_key_hex_str);
 
-        let auth_list: HashMap<Address, BlsPublicKey> = auth_list_hex_strs
+        let auth_list: HashMap<Address, BlsPublicKey> = auth_list_hex_str
             .iter()
             .map(|(address, pub_key_hex_str)| {
                 let address = Bytes::from(hex_decode(address));
@@ -152,25 +158,38 @@ impl DefaultCrypto {
 
 #[derive(Default, Serialize, Debug, PartialEq, Eq)]
 pub struct KeyPair {
-    pub private_key:    String,
-    pub public_key:     String,
-    pub address:        String,
-    pub bls_public_key: String,
+    pub private_key:    PriKeyHex,
+    pub public_key:     PubKeyHex,
+    pub address:        AddressHex,
+    pub bls_public_key: BlsPubKeyHex,
 }
 
 #[derive(Default, Serialize, Debug, PartialEq, Eq)]
 pub struct KeyPairs {
-    pub common_ref: String,
+    pub common_ref: CommonRefHex,
     pub key_pairs:  Vec<KeyPair>,
 }
 
-pub fn gen_key_pairs(number: usize, pri_keys: Vec<String>, common_ref: Option<String>) -> KeyPairs {
+impl KeyPairs {
+    pub fn get_address_list(&self) -> Vec<Address> {
+        self.key_pairs
+            .iter()
+            .map(|key_pair| Bytes::from(hex_decode(&key_pair.address)))
+            .collect()
+    }
+}
+
+pub fn gen_key_pairs(
+    number: usize,
+    pri_keys: Vec<PriKeyHex>,
+    common_ref: Option<CommonRefHex>,
+) -> KeyPairs {
     if pri_keys.len() > number {
         panic!("private keys length cannot be larger than number");
     }
 
-    let common_ref_str: String = if let Some(common_ref) = common_ref {
-        String::from_utf8(hex_decode(&common_ref))
+    let common_ref_str: CommonRefHex = if let Some(common_ref) = common_ref {
+        CommonRefHex::from_utf8(hex_decode(&common_ref))
             .expect("common_ref should be a valid utf8 string")
     } else {
         gen_random_common_ref()
@@ -194,11 +213,11 @@ fn add_0x(s: String) -> String {
     "0x".to_owned() + &s
 }
 
-fn gen_random_common_ref() -> String {
+fn gen_random_common_ref() -> CommonRefHex {
     rand::thread_rng()
         .sample_iter(&Alphanumeric)
         .take(10)
-        .collect::<String>()
+        .collect::<CommonRefHex>()
 }
 
 fn gen_random_pri_key() -> Bytes {
@@ -244,7 +263,7 @@ fn pub_key_to_address(pub_key: Bytes) -> Bytes {
     address
 }
 
-fn gen_keypair(pri_key: Option<&String>, common_ref_str: BlsCommonReference) -> KeyPair {
+fn gen_keypair(pri_key: Option<&PriKeyHex>, common_ref_str: BlsCommonReference) -> KeyPair {
     let mut key_pair = KeyPair::default();
     let pri_key = if let Some(pri_key) = pri_key {
         Bytes::from(hex_decode(pri_key))
@@ -276,7 +295,7 @@ pub enum CryptoError {
     TryInfoBlsSignatureFailed(SigError),
 
     #[display(fmt = "Unauthorized address {}", _0)]
-    UnauthorizedAddress(String),
+    UnauthorizedAddress(AddressHex),
 
     #[display(fmt = "Verify signature failed, {:?}", _0)]
     VerifyFailed(SigError),
@@ -367,7 +386,7 @@ mod test {
         .map(|address| Bytes::from(hex_decode(address)))
         .collect();
 
-        let auth_list: HashMap<String, String> = vec![
+        let auth_list: HashMap<AddressHex, BlsPubKeyHex> = vec![
             ("0x77667feeaccdc991f0f21182bd04ba7277c881c1".to_owned(),
              "0x0405b1319fe6a8d06be2f892b26ccdee27373447be077a0d847f6b14b356e6cf2d7d2fe5efdde912f527275663cf8e511719268f490b55853bc30bbc6657367e5a33a0a1bb63777325f52deeaae0f06a577fd9764c56520b9c5ffde542a4696f69".to_owned()),
             ("0x82fa6a3978aae4e7527c6a10e9cff9c4b018053e".to_owned(),

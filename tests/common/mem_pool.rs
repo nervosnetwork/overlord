@@ -14,9 +14,15 @@ impl MemPool {
         }
     }
 
-    pub fn send_transaction(&self, new_tx: Transaction) {
+    #[allow(dead_code)]
+    pub fn send_tx(&self, new_tx: Transaction) {
         let mut tx = self.tx.write();
         *tx = new_tx;
+    }
+
+    #[allow(dead_code)]
+    pub fn get_tx(&self) -> Transaction {
+        self.tx.read().clone()
     }
 
     pub fn package(
