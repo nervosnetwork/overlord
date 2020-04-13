@@ -3,6 +3,7 @@ pub mod error;
 pub mod traits;
 pub mod types;
 
+mod collections;
 mod wal;
 
 pub use crypto::{gen_key_pairs, AddressHex, BlsPubKeyHex, DefaultCrypto, PriKeyHex};

@@ -30,11 +30,11 @@ impl Platform {
         let key_pairs = gen_key_pairs(node_number, vec![], None);
         let addresses = key_pairs.get_address_list();
         let init_config = init_config(addresses.clone());
-
         let mem_pool = Arc::new(MemPool::new(init_config));
-        let common_ref_hex = key_pairs.common_ref.clone();
 
         run_nodes(key_pairs, &network, &mem_pool, &storage);
+
+        let common_ref_hex = key_pairs.common_ref.clone();
 
         Platform {
             network,
@@ -85,12 +85,15 @@ fn run_nodes(
         .into_iter()
         .zip(key_pairs.key_pairs)
         .for_each(|(address, key_pair)| {
+            storage.register(address.clone());
+
             let adapter = OverlordAdapter::new(address.clone(), network, mem_pool, storage);
             let crypto = DefaultCrypto::new(
                 key_pair.private_key,
                 auth_list_hex.clone(),
                 common_ref_hex.clone(),
             );
+
             let overlord_server = OverlordServer::new(address, adapter, crypto, &key_pair.address);
             overlord_server.run()
         });

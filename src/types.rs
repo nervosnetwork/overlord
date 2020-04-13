@@ -18,17 +18,21 @@ pub type Round = u64;
 pub enum OverlordMsg<B: Blk> {
     #[display(fmt = "signed_proposal: {}", _0)]
     SignedProposal(SignedProposal<B>),
-    #[display(fmt = "signed_vote: {}", _0)]
-    SignedVote(SignedVote),
-    #[display(fmt = "aggregated_vote: {}", _0)]
-    AggregatedVote(AggregatedVote),
+    #[display(fmt = "signed_Pre_vote: {}", _0)]
+    SignedPreVote(SignedPreVote),
+    #[display(fmt = "signed_Pre_vote: {}", _0)]
+    SignedPreCommit(SignedPreCommit),
+    #[display(fmt = "pre_vote_qc: {}", _0)]
+    PreVoteQC(PreVoteQC),
+    #[display(fmt = "pre_commit_qc: {}", _0)]
+    PreCommitQC(PreCommitQC),
     #[display(fmt = "signed_choke: {}", _0)]
     SignedChoke(SignedChoke),
-    #[display(fmt = "current_height: {}", _0)]
+    #[display(fmt = "signed_height: {}", _0)]
     SignedHeight(SignedHeight),
-    #[display(fmt = "request_sync: {:?}", _0)]
+    #[display(fmt = "sync_request: {}", _0)]
     SyncRequest(SyncRequest),
-    #[display(fmt = "response_sync")]
+    #[display(fmt = "sync_response: {}", _0)]
     SyncResponse(SyncResponse<B>),
     #[display(fmt = "stop overlord")]
     Stop,
@@ -67,7 +71,7 @@ pub struct Proposal<B: Blk> {
 #[display(fmt = "{{ lock_round: {}, lock_votes: {} }}", lock_round, lock_votes)]
 pub struct PoLC {
     pub lock_round: Round,
-    pub lock_votes: AggregatedVote,
+    pub lock_votes: PreVoteQC,
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash)]
@@ -82,6 +86,9 @@ pub struct SignedVote {
     pub vote:      Vote,
     pub voter:     Address,
 }
+
+pub type SignedPreVote = SignedVote;
+pub type SignedPreCommit = SignedVote;
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash)]
 #[display(
@@ -130,6 +137,9 @@ pub struct AggregatedVote {
     pub block_hash:    Hash,
     pub leader:        Address,
 }
+
+pub type PreVoteQC = AggregatedVote;
+pub type PreCommitQC = AggregatedVote;
 
 #[derive(Clone, Debug, Default, Display, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[display(
