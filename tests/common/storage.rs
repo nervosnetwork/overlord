@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::collections::HashMap;
 
 use overlord::{Address, Height, HeightRange, Proof};
@@ -13,7 +15,6 @@ pub struct Storage {
 }
 
 impl Storage {
-    #[allow(dead_code)]
     pub fn register(&self, address: Address) {
         let mut latest_height_map = self.latest_height_map.write();
         (*latest_height_map).insert(address, 0);

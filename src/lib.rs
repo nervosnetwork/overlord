@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 pub mod crypto;
 pub mod error;
 pub mod traits;
@@ -22,7 +24,6 @@ use futures::channel::mpsc::{unbounded, UnboundedReceiver};
 
 use crate::wal::Wal;
 
-#[allow(dead_code)]
 pub struct OverlordServer<A, B: Blk, C, S> {
     adapter: A,
     crypto:  C,

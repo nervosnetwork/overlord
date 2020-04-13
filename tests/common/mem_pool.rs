@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use overlord::{Hash, Height, Proof};
 use parking_lot::RwLock;
 
@@ -14,13 +16,11 @@ impl MemPool {
         }
     }
 
-    #[allow(dead_code)]
     pub fn send_tx(&self, new_tx: Transaction) {
         let mut tx = self.tx.write();
         *tx = new_tx;
     }
 
-    #[allow(dead_code)]
     pub fn get_tx(&self) -> Transaction {
         self.tx.read().clone()
     }

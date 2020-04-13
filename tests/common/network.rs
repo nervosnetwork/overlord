@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::collections::HashMap;
 use std::error::Error;
 
@@ -8,11 +10,10 @@ use overlord::{Address, OverlordMsg};
 use parking_lot::RwLock;
 
 use crate::common::block::Block;
-use overlord::types::{AggregatedVote, SignedProposal};
+use overlord::types::{PreVoteQC, SignedProposal};
 
 type OverlordSender = UnboundedSender<(Context, OverlordMsg<Block>)>;
 
-#[allow(dead_code)]
 #[derive(Default)]
 pub struct Network {
     handlers: RwLock<HashMap<Address, OverlordSender>>,
@@ -85,7 +86,7 @@ fn test_network() {
     assert!(receiver_2.try_next().is_err());
 
     // test transmit
-    let msg = OverlordMsg::AggregatedVote(AggregatedVote::default());
+    let msg = OverlordMsg::PreVoteQC(PreVoteQC::default());
     network.transmit(&addresses[0], msg.clone()).unwrap();
     assert_eq!(receiver_0.try_next().unwrap().unwrap().1, msg);
     assert!(receiver_1.try_next().is_err());
@@ -104,6 +105,6 @@ fn test_network() {
         let (sender_3, _) = unbounded();
         network.register(addresses[3].clone(), sender_3);
     }
-    let msg = OverlordMsg::AggregatedVote(AggregatedVote::default());
+    let msg = OverlordMsg::PreVoteQC(PreVoteQC::default());
     network.transmit(&addresses[3], msg).unwrap();
 }

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -12,7 +14,6 @@ use overlord::{
     DurationConfig, Node, OverlordServer,
 };
 
-#[allow(dead_code)]
 pub struct Platform {
     network:  Arc<Network>,
     mem_pool: Arc<MemPool>,
@@ -28,13 +29,13 @@ impl Platform {
         let storage = Arc::new(Storage::default());
 
         let key_pairs = gen_key_pairs(node_number, vec![], None);
+        let common_ref_hex = key_pairs.common_ref.clone();
+
         let addresses = key_pairs.get_address_list();
         let init_config = init_config(addresses.clone());
         let mem_pool = Arc::new(MemPool::new(init_config));
 
         run_nodes(key_pairs, &network, &mem_pool, &storage);
-
-        let common_ref_hex = key_pairs.common_ref.clone();
 
         Platform {
             network,
@@ -45,7 +46,6 @@ impl Platform {
         }
     }
 
-    #[allow(dead_code)]
     pub fn add_nodes(&self, node_number: usize) -> Vec<Node> {
         let key_pairs = gen_key_pairs(node_number, vec![], Some(self.common_ref_hex.clone()));
         let address_list = key_pairs.get_address_list();
@@ -53,7 +53,6 @@ impl Platform {
         to_auth_list(address_list)
     }
 
-    #[allow(dead_code)]
     pub fn set_auth_list(&self, address_list: Vec<Node>) {
         let old_tx = self.mem_pool.get_tx();
 

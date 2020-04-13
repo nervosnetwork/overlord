@@ -98,10 +98,10 @@ pub struct Vote {
     "hex::encode(voter)"
 )]
 pub struct SignedPreVote {
-    pub signature: Signature,
-    pub vote:      Vote,
-    pub vote_weight:    Weight,
-    pub voter:     Address,
+    pub signature:   Signature,
+    pub vote:        Vote,
+    pub vote_weight: Weight,
+    pub voter:       Address,
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash)]
@@ -113,10 +113,10 @@ pub struct SignedPreVote {
     "hex::encode(voter)"
 )]
 pub struct SignedPreCommit {
-    pub signature: Signature,
-    pub vote:      Vote,
-    pub vote_weight:   Weight,
-    pub voter:     Address,
+    pub signature:   Signature,
+    pub vote:        Vote,
+    pub vote_weight: Weight,
+    pub voter:       Address,
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -166,11 +166,11 @@ pub struct AggregatedSignature {
     "hex::encode(signer)"
 )]
 pub struct SignedChoke {
-    pub signature: Signature,
-    pub choke:     Choke,
-    pub vote_weight:    Weight,
-    pub from:   UpdateFrom,
-    pub signer:   Address,
+    pub signature:   Signature,
+    pub choke:       Choke,
+    pub vote_weight: Weight,
+    pub from:        UpdateFrom,
+    pub signer:      Address,
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
