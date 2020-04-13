@@ -91,27 +91,31 @@ pub struct Vote {
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash)]
 #[display(
-    fmt = "{{ signature: {}, vote: {}, voter: {} }}",
+    fmt = "{{ signature: {}, vote: {}, vote_weight: {}, voter: {} }}",
     "hex::encode(signature)",
     vote,
+    vote_weight,
     "hex::encode(voter)"
 )]
 pub struct SignedPreVote {
     pub signature: Signature,
     pub vote:      Vote,
+    pub vote_weight:    Weight,
     pub voter:     Address,
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash)]
 #[display(
-fmt = "{{ signature: {}, vote: {}, voter: {} }}",
-"hex::encode(signature)",
-vote,
-"hex::encode(voter)"
+    fmt = "{{ signature: {}, vote: {}, vote_weight: {}, voter: {} }}",
+    "hex::encode(signature)",
+    vote,
+    vote_weight,
+    "hex::encode(voter)"
 )]
 pub struct SignedPreCommit {
     pub signature: Signature,
     pub vote:      Vote,
+    pub vote_weight:   Weight,
     pub voter:     Address,
 }
 
@@ -124,8 +128,8 @@ pub struct SignedPreCommit {
 )]
 pub struct PreVoteQC {
     pub aggregated_signature: AggregatedSignature,
-    pub vote:          Vote,
-    pub leader:        Address,
+    pub vote:                 Vote,
+    pub leader:               Address,
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -137,8 +141,8 @@ pub struct PreVoteQC {
 )]
 pub struct PreCommitQC {
     pub aggregated_signature: AggregatedSignature,
-    pub vote:          Vote,
-    pub leader:        Address,
+    pub vote:                 Vote,
+    pub leader:               Address,
 }
 
 #[derive(Clone, Debug, Default, Display, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -154,23 +158,26 @@ pub struct AggregatedSignature {
 
 #[derive(Clone, Debug, Default, Display, PartialEq, Eq, Hash)]
 #[display(
-    fmt = "{{ signature: {}, choke: {}, address: {} }}",
+    fmt = "{{ signature: {}, choke: {}, vote_weight: {}, from: {}, signer: {} }}",
     "hex::encode(signature)",
     choke,
-    "hex::encode(address)"
+    vote_weight,
+    from,
+    "hex::encode(signer)"
 )]
 pub struct SignedChoke {
     pub signature: Signature,
     pub choke:     Choke,
-    pub address:   Address,
+    pub vote_weight:    Weight,
+    pub from:   UpdateFrom,
+    pub signer:   Address,
 }
 
-#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash)]
-#[display(fmt = "{{ height: {}, round: {}, from: {} }}", height, round, from)]
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[display(fmt = "{{ height: {}, round: {}}}", height, round)]
 pub struct Choke {
     pub height: Height,
     pub round:  Round,
-    pub from:   UpdateFrom,
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -182,8 +189,8 @@ pub struct Choke {
 )]
 pub struct ChokeQC {
     pub aggregated_signature: AggregatedSignature,
-    pub height: Height,
-    pub round:  Round,
+    pub height:               Height,
+    pub round:                Round,
 }
 
 #[derive(Clone, Debug, Display, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -250,13 +257,9 @@ pub struct HeightRange {
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[display(
-    fmt = "{{ vote: {}, agg_signature: {} }}",
-    vote,
-    agg_signature
-)]
+#[display(fmt = "{{ vote: {}, agg_signature: {} }}", vote, agg_signature)]
 pub struct Proof {
-    pub vote:        Vote,
+    pub vote:          Vote,
     pub agg_signature: AggregatedSignature,
 }
 
