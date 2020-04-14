@@ -3,12 +3,14 @@ use std::error::Error;
 
 use bytes::Bytes;
 use derive_more::Display;
+use log::warn;
 use rlp::{encode, Encodable};
 use serde::export::PhantomData;
 
 use crate::types::{
-    Aggregates, Node, PreCommitQC, PreVoteQC, PriKeyHex, Proposal, PubKeyHex, SelectMode,
-    SignedPreCommit, SignedPreVote, SignedProposal, Vote, VoteType, Weight,
+    Aggregates, Choke, Node, PreCommitQC, PreVoteQC, PriKeyHex, Proof, Proposal, PubKeyHex,
+    SelectMode, SignedChoke, SignedPreCommit, SignedPreVote, SignedProposal, UpdateFrom, Vote,
+    VoteType, Weight,
 };
 use crate::{Adapter, Address, Blk, CommonHex, Crypto, Hash, Signature, St};
 
@@ -62,7 +64,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
     }
 
     pub fn sign_pre_vote(&self, vote: Vote) -> Result<SignedPreVote, AuthError> {
-        let hash = hash_vote::<A, B, S>(&vote, VoteType::PreVote);
+        let hash = hash_vote::<A, B, Vote, S>(&vote, VoteType::PreVote);
         let signature = self.sign(&hash)?;
         Ok(SignedPreVote::new(
             vote,
@@ -76,12 +78,12 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         &self,
         signed_pre_vote: SignedPreVote,
     ) -> Result<(), AuthError> {
-        let hash = hash_vote::<A, B, S>(&signed_pre_vote.vote, VoteType::PreVote);
+        let hash = hash_vote::<A, B, Vote, S>(&signed_pre_vote.vote, VoteType::PreVote);
         self.verify_signature(&signed_pre_vote.voter, &hash, &signed_pre_vote.signature)
     }
 
     pub fn sign_pre_commit(&self, vote: Vote) -> Result<SignedPreCommit, AuthError> {
-        let hash = hash_vote::<A, B, S>(&vote, VoteType::PreCommit);
+        let hash = hash_vote::<A, B, Vote, S>(&vote, VoteType::PreCommit);
         let signature = self.sign(&hash)?;
         Ok(SignedPreCommit::new(
             vote,
@@ -95,7 +97,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         &self,
         signed_pre_commit: SignedPreCommit,
     ) -> Result<(), AuthError> {
-        let hash = hash_vote::<A, B, S>(&signed_pre_commit.vote, VoteType::PreCommit);
+        let hash = hash_vote::<A, B, Vote, S>(&signed_pre_commit.vote, VoteType::PreCommit);
         self.verify_signature(
             &signed_pre_commit.voter,
             &hash,
@@ -117,8 +119,8 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
     }
 
     pub fn verify_pre_vote_qc_aggregates(&self, pre_vote_qc: PreVoteQC) -> Result<(), AuthError> {
-        let hash = hash_vote::<A, B, S>(&pre_vote_qc.vote, VoteType::PreVote);
-        self.verify_aggregate(&hash, &pre_vote_qc.aggregates)
+        let hash = hash_vote::<A, B, Vote, S>(&pre_vote_qc.vote, VoteType::PreVote);
+        self.verify_aggregate(&hash, &pre_vote_qc.aggregates, false)
     }
 
     pub fn aggregate_pre_commits(
@@ -138,8 +140,30 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         &self,
         pre_commit_qc: PreCommitQC,
     ) -> Result<(), AuthError> {
-        let hash = hash_vote::<A, B, S>(&pre_commit_qc.vote, VoteType::PreCommit);
-        self.verify_aggregate(&hash, &pre_commit_qc.aggregates)
+        let hash = hash_vote::<A, B, Vote, S>(&pre_commit_qc.vote, VoteType::PreCommit);
+        self.verify_aggregate(&hash, &pre_commit_qc.aggregates, false)
+    }
+
+    pub fn sign_choke(&self, choke: Choke, from: UpdateFrom) -> Result<SignedChoke, AuthError> {
+        let hash = hash_vote::<A, B, Choke, S>(&choke, VoteType::Choke);
+        let signature = self.sign(&hash)?;
+        Ok(SignedChoke::new(
+            choke,
+            self.vote_weight,
+            from,
+            self.address.clone(),
+            signature,
+        ))
+    }
+
+    pub fn verify_choke_signature(&self, signed_choke: SignedChoke) -> Result<(), AuthError> {
+        let hash = hash_vote::<A, B, Choke, S>(&signed_choke.choke, VoteType::Choke);
+        self.verify_signature(&signed_choke.voter, &hash, &signed_choke.signature)
+    }
+
+    pub fn verify_proof(&self, proof: Proof) -> Result<(), AuthError> {
+        let hash = hash_vote::<A, B, Vote, S>(&proof.vote, VoteType::PreCommit);
+        self.verify_aggregate(&hash, &proof.aggregates, true)
     }
 
     fn sign(&self, hash: &Hash) -> Result<Signature, AuthError> {
@@ -169,9 +193,26 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         A::CryptoImpl::aggregate(&self.current_auth.list, signatures).map_err(AuthError::CryptoErr)
     }
 
-    fn verify_aggregate(&self, hash: &Hash, aggregates: &Aggregates) -> Result<(), AuthError> {
+    fn verify_aggregate(
+        &self,
+        hash: &Hash,
+        aggregates: &Aggregates,
+        is_proof: bool,
+    ) -> Result<(), AuthError> {
         let common_ref = self.common_ref.clone();
-        A::CryptoImpl::verify_aggregates(common_ref, &hash, &self.current_auth.list, &aggregates)
+
+        let auth_list = if is_proof {
+            if let Some(last_auth) = &self.last_auth {
+                &last_auth.list
+            } else {
+                warn!("verify proof of height 0, which will always pass");
+                return Ok(());
+            }
+        } else {
+            &self.current_auth.list
+        };
+
+        A::CryptoImpl::verify_aggregates(common_ref, &hash, auth_list, &aggregates)
             .map_err(AuthError::CryptoErr)
     }
 }
@@ -181,8 +222,8 @@ fn hash<A: Adapter<B, S>, B: Blk, E: Encodable, S: St>(data: &E) -> Hash {
     A::CryptoImpl::hash(&Bytes::from(encode))
 }
 
-fn hash_vote<A: Adapter<B, S>, B: Blk, S: St>(vote: &Vote, vote_type: VoteType) -> Hash {
-    let mut encode = encode(vote);
+fn hash_vote<A: Adapter<B, S>, B: Blk, E: Encodable, S: St>(data: &E, vote_type: VoteType) -> Hash {
+    let mut encode = encode(data);
     encode.insert(0, vote_type.into());
     A::CryptoImpl::hash(&Bytes::from(encode))
 }

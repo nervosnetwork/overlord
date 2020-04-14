@@ -208,6 +208,24 @@ pub struct SignedChoke {
     pub signature:   Signature,
 }
 
+impl SignedChoke {
+    pub fn new(
+        choke: Choke,
+        vote_weight: Weight,
+        from: UpdateFrom,
+        voter: Address,
+        signature: Signature,
+    ) -> Self {
+        SignedChoke {
+            choke,
+            vote_weight,
+            from,
+            voter,
+            signature,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[display(fmt = "{{ height: {}, round: {}}}", height, round)]
 pub struct Choke {
@@ -292,6 +310,15 @@ pub struct HeightRange {
 pub struct Proof {
     pub vote:       Vote,
     pub aggregates: Aggregates,
+}
+
+impl From<PreCommitQC> for Proof {
+    fn from(pre_commit_qc: PreCommitQC) -> Self {
+        Proof {
+            vote:       pre_commit_qc.vote,
+            aggregates: pre_commit_qc.aggregates,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq)]
