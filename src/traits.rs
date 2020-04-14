@@ -17,7 +17,7 @@ use crate::types::{
 use crate::PriKeyHex;
 
 #[async_trait]
-pub trait Adapter<B: Blk, S: Clone + Debug + Default>: Send + Sync {
+pub trait Adapter<B: Blk, S: St>: Send + Sync {
     type CryptoImpl: Crypto;
 
     async fn create_block(
@@ -97,6 +97,8 @@ pub trait Blk: Clone + Debug + Default + Send + PartialEq + Eq {
 
     fn get_proof(&self) -> Proof;
 }
+
+pub trait St: Clone + Debug + Default {}
 
 /// provide DefaultCrypto
 pub trait Crypto: Send {

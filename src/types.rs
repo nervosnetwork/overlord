@@ -55,7 +55,7 @@ pub struct SignedProposal<B: Blk> {
     pub proposal:  Proposal<B>,
 }
 
-#[derive(Clone, Debug, Display, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
     fmt = "{{ height: {}, round: {}, block_hash: {}, lock: {}, proposer: {} }}",
     height,
@@ -73,7 +73,7 @@ pub struct Proposal<B: Blk> {
     pub proposer:   Address,
 }
 
-#[derive(Clone, Debug, Display, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[display(fmt = "{{ lock_round: {}, lock_votes: {} }}", lock_round, lock_votes)]
 pub struct PoLC {
     pub lock_round: Round,
@@ -185,16 +185,10 @@ pub struct Choke {
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[display(
-    fmt = "{{ aggregates: {}, height: {}, round: {} }}",
-    aggregates,
-    height,
-    round
-)]
+#[display(fmt = "{{ aggregates: {}, choke: {} }}", aggregates, choke)]
 pub struct ChokeQC {
     pub aggregates: Aggregates,
-    pub height:     Height,
-    pub round:      Round,
+    pub choke:      Choke,
 }
 
 #[derive(Clone, Debug, Display, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -304,17 +298,33 @@ pub struct BlockState<S: Clone + Debug + Default> {
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
-    fmt = "{{ interval: {}, max_exec_behind: {}, timer_config: {}, authority_list: {} }}",
+    fmt = "{{ interval: {}, max_exec_behind: {}, mode: {}, timer_config: {}, auth_list: {} }}",
     interval,
     max_exec_behind,
+    mode,
     timer_config,
-    "DisplayVec(authority_list.clone())"
+    "DisplayVec(auth_list.clone())"
 )]
 pub struct OverlordConfig {
     pub interval:        u64,
     pub max_exec_behind: u64,
+    pub mode:            SelectMode,
     pub timer_config:    DurationConfig,
-    pub authority_list:  Vec<Node>,
+    pub auth_list:       Vec<Node>,
+}
+
+#[derive(Clone, Debug, Display, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SelectMode {
+    #[display(fmt = "InTurn")]
+    InTurn,
+    #[display(fmt = "Random")]
+    Random,
+}
+
+impl Default for SelectMode {
+    fn default() -> Self {
+        SelectMode::InTurn
+    }
 }
 
 #[derive(Clone, Debug, Display, PartialEq, Eq, Serialize, Deserialize)]
@@ -352,16 +362,23 @@ impl Default for DurationConfig {
 )]
 pub struct Node {
     pub address:        Address,
+    pub pub_key:        PubKeyHex,
     pub propose_weight: Weight,
     pub vote_weight:    Weight,
 }
 
 impl Node {
-    pub fn new(address: Address) -> Self {
+    pub fn new(
+        address: Address,
+        pub_key: PubKeyHex,
+        propose_weight: Weight,
+        vote_weight: Weight,
+    ) -> Self {
         Node {
             address,
-            propose_weight: 1,
-            vote_weight: 1,
+            pub_key,
+            propose_weight,
+            vote_weight,
         }
     }
 }

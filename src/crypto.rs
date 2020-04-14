@@ -46,7 +46,7 @@ impl Crypto for DefaultCrypto {
     }
 
     fn sign(pri_key: PriKeyHex, hash: &Hash) -> Result<SigBytes, Box<dyn Error + Send>> {
-        let pri_key = hex_str_to_bls_pri_key(&pri_key)?;
+        let pri_key = hex_to_bls_pri_key(&pri_key)?;
         let hash_value =
             HashValue::try_from(hash.as_ref()).map_err(|_| CryptoError::TryInfoHashValueFailed)?;
         let sig = pri_key.sign_message(&hash_value);
@@ -59,8 +59,8 @@ impl Crypto for DefaultCrypto {
         hash: &Hash,
         signature: &SigBytes,
     ) -> Result<(), Box<dyn Error + Send>> {
-        let pub_key = hex_str_to_bls_pub_key(&pub_key)?;
-        let common_ref = hex_str_to_common_ref(&common_ref)?;
+        let pub_key = hex_to_bls_pub_key(&pub_key)?;
+        let common_ref = hex_to_common_ref(&common_ref)?;
         let hash =
             HashValue::try_from(hash.as_ref()).map_err(|_| CryptoError::TryInfoHashValueFailed)?;
 
@@ -83,7 +83,7 @@ impl Crypto for DefaultCrypto {
             if let Some(signature) = signatures.get(address) {
                 let signature = BlsSignature::try_from(signature.as_ref())
                     .map_err(CryptoError::TryInfoBlsSignatureFailed)?;
-                let pub_key = hex_str_to_bls_pub_key(pub_key_hex)?;
+                let pub_key = hex_to_bls_pub_key(pub_key_hex)?;
                 combine.push((signature, pub_key));
                 bit_map.set(index, true);
             }
@@ -113,7 +113,7 @@ impl Crypto for DefaultCrypto {
             let pub_key = auth_map
                 .get(signer)
                 .ok_or_else(|| CryptoError::UnauthorizedAddress(hex::encode(signer)))?;
-            let pub_key = hex_str_to_bls_pub_key(pub_key)?;
+            let pub_key = hex_to_bls_pub_key(pub_key)?;
             pub_keys.push(pub_key);
         }
 
@@ -122,7 +122,7 @@ impl Crypto for DefaultCrypto {
             .map_err(CryptoError::TryInfoBlsSignatureFailed)?;
         let hash =
             HashValue::try_from(hash.as_ref()).map_err(|_| CryptoError::TryInfoHashValueFailed)?;
-        let common_ref = hex_str_to_common_ref(&common_ref)?;
+        let common_ref = hex_to_common_ref(&common_ref)?;
 
         aggregated_signature
             .verify(&hash, &aggregate_key, &common_ref)
@@ -223,19 +223,19 @@ fn ensure_trim0x(str: &str) -> &str {
     }
 }
 
-fn hex_str_to_bls_pri_key(hex_str: &str) -> Result<BlsPrivateKey, CryptoError> {
+fn hex_to_bls_pri_key(hex_str: &str) -> Result<BlsPrivateKey, CryptoError> {
     let mut pri_key = Vec::new();
     pri_key.extend_from_slice(&[0u8; 16]);
     pri_key.append(&mut hex_decode(hex_str)?);
     BlsPrivateKey::try_from(pri_key.as_ref()).map_err(CryptoError::TryInfoBlsPriKeyFailed)
 }
 
-fn hex_str_to_bls_pub_key(hex_str: &str) -> Result<BlsPublicKey, CryptoError> {
+fn hex_to_bls_pub_key(hex_str: &str) -> Result<BlsPublicKey, CryptoError> {
     let pub_key = hex_decode(hex_str)?;
     BlsPublicKey::try_from(pub_key.as_ref()).map_err(CryptoError::TryInfoBlsPubKeyFailed)
 }
 
-fn hex_str_to_common_ref(hex_str: &str) -> Result<BlsCommonReference, CryptoError> {
+fn hex_to_common_ref(hex_str: &str) -> Result<BlsCommonReference, CryptoError> {
     let common_ref = hex_decode(hex_str)?;
     std::str::from_utf8(common_ref.as_ref())
         .map(|str| str.into())

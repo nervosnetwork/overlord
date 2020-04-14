@@ -2,22 +2,22 @@
 
 pub mod crypto;
 pub mod error;
-pub mod proof;
 pub mod traits;
 pub mod types;
 
+// mod auth_manage;
 mod cabinet;
+// mod fixed_encode;
 mod wal;
 
 pub use crypto::{gen_key_pairs, AddressHex, BlsPubKeyHex, DefaultCrypto, PriKeyHex};
 pub use error::{ConsensusError, ConsensusResult};
-pub use traits::{Adapter, Blk, Crypto};
+pub use traits::{Adapter, Blk, Crypto, St};
 pub use types::{
     Address, BlockState, CommonHex, DurationConfig, ExecResult, Hash, Height, HeightRange, Node,
     OverlordConfig, OverlordMsg, Proof, Round, Signature,
 };
 
-use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -40,7 +40,7 @@ impl<A, B, S> OverlordServer<A, B, S>
 where
     A: Adapter<B, S>,
     B: Blk,
-    S: Clone + Debug + Default,
+    S: St,
 {
     pub fn new(my_address: Address, adapter: &Arc<A>, wal_path: &str) -> Self {
         let (sender, receiver) = unbounded();

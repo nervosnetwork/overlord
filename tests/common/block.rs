@@ -2,7 +2,7 @@ use std::error::Error;
 
 use bytes::Bytes;
 use derive_more::Display;
-use overlord::{Blk, Crypto, DefaultCrypto, Hash, Height, OverlordConfig, Proof};
+use overlord::{Blk, Crypto, DefaultCrypto, Hash, Height, OverlordConfig, Proof, St};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, Display, PartialEq, Eq, Serialize, Deserialize)]
@@ -68,6 +68,8 @@ pub struct ExecState {
     pub state_root:   Hash,
     pub receipt_root: Hash,
 }
+
+impl St for ExecState {}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FullBlock {
