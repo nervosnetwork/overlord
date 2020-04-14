@@ -121,28 +121,28 @@ pub struct SignedPreCommit {
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[display(
-    fmt = "{{ aggregated_signature: {}, vote: {}, leader: {} }}",
-    aggregated_signature,
+    fmt = "{{ aggregates: {}, vote: {}, leader: {} }}",
+    aggregates,
     vote,
     "hex::encode(leader)"
 )]
 pub struct PreVoteQC {
-    pub aggregated_signature: AggregatedSignature,
-    pub vote:                 Vote,
-    pub leader:               Address,
+    pub aggregates: Aggregates,
+    pub vote:       Vote,
+    pub leader:     Address,
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[display(
-    fmt = "{{ aggregated_signature: {}, vote: {}, leader: {} }}",
-    aggregated_signature,
+    fmt = "{{ aggregates: {}, vote: {}, leader: {} }}",
+    aggregates,
     vote,
     "hex::encode(leader)"
 )]
 pub struct PreCommitQC {
-    pub aggregated_signature: AggregatedSignature,
-    pub vote:                 Vote,
-    pub leader:               Address,
+    pub aggregates: Aggregates,
+    pub vote:       Vote,
+    pub leader:     Address,
 }
 
 #[derive(Clone, Debug, Default, Display, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -151,7 +151,7 @@ pub struct PreCommitQC {
     "hex::encode(signature)",
     "hex::encode(address_bitmap)"
 )]
-pub struct AggregatedSignature {
+pub struct Aggregates {
     pub signature:      Signature,
     pub address_bitmap: Bytes,
 }
@@ -182,15 +182,15 @@ pub struct Choke {
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[display(
-    fmt = "{{ aggregated_signature: {}, height: {}, round: {} }}",
-    aggregated_signature,
+    fmt = "{{ aggregates: {}, height: {}, round: {} }}",
+    aggregates,
     height,
     round
 )]
 pub struct ChokeQC {
-    pub aggregated_signature: AggregatedSignature,
-    pub height:               Height,
-    pub round:                Round,
+    pub aggregates: Aggregates,
+    pub height:     Height,
+    pub round:      Round,
 }
 
 #[derive(Clone, Debug, Display, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -224,12 +224,14 @@ pub struct SignedHeight {
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
-    fmt = "{{ request_range: {}, requester: {}, signature: {} }}",
+    fmt = "{{ request_id: {}, request_range: {}, requester: {}, signature: {} }}",
+    "hex::encode(request_id)",
     request_range,
     "hex::encode(requester)",
     "hex::encode(signature)"
 )]
 pub struct SyncRequest {
+    pub request_id:    Hash,
     pub request_range: HeightRange,
     pub requester:     Address,
     pub signature:     Signature,
@@ -237,13 +239,13 @@ pub struct SyncRequest {
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
-    fmt = "{{ response_range: {}, responder: {}, signature: {} }}",
-    response_range,
+    fmt = "{{ request_id: {}, responder: {}, signature: {} }}",
+    "hex::encode(request_id)",
     "hex::encode(responder)",
     "hex::encode(signature)"
 )]
 pub struct SyncResponse<B: Blk> {
-    pub response_range:    HeightRange,
+    pub request_id:        Hash,
     pub block_with_proofs: Vec<(B, Proof)>,
     pub responder:         Address,
     pub signature:         Signature,
@@ -260,7 +262,7 @@ pub struct HeightRange {
 #[display(fmt = "{{ vote: {}, agg_signature: {} }}", vote, agg_signature)]
 pub struct Proof {
     pub vote:          Vote,
-    pub agg_signature: AggregatedSignature,
+    pub agg_signature: Aggregates,
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq)]
