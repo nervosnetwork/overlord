@@ -6,14 +6,14 @@ use std::error::Error;
 use derive_more::Display;
 
 use crate::types::{
-    ChokeQC, PreCommitQC, PreVoteQC, SignedChoke, SignedPreCommit, SignedPreVote, SignedProposal,
-    Weight,
+    ChokeQC, CumulativeWeight, PreCommitQC, PreVoteQC, SignedChoke, SignedPreCommit, SignedPreVote,
+    SignedProposal, VoteType, Weight,
 };
 use crate::{Address, Blk, Hash, Height, Round};
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Display)]
-pub enum CollectData<B: Blk> {
+pub enum Capsule<B: Blk> {
     #[display(fmt = "signed_proposal: {}", _0)]
     SignedProposal(SignedProposal<B>),
     #[display(fmt = "signed_pre_vote: {}", _0)]
@@ -30,25 +30,25 @@ pub enum CollectData<B: Blk> {
     ChokeQC(ChokeQC),
 }
 
-impl<B: Blk> From<SignedProposal<B>> for CollectData<B> {
+impl<B: Blk> From<SignedProposal<B>> for Capsule<B> {
     fn from(data: SignedProposal<B>) -> Self {
-        CollectData::SignedProposal(data)
+        Capsule::SignedProposal(data)
     }
 }
 
-macro_rules! impl_from_for_collect_data {
+macro_rules! impl_capsule {
     ($($struct: ident),+) => {
         $(
-            impl<B:Blk> From<$struct> for CollectData<B> {
+            impl<B:Blk> From<$struct> for Capsule<B> {
                 fn from(data: $struct) -> Self {
-                    CollectData::$struct(data)
+                    Capsule::$struct(data)
                 }
             }
         )+
     }
 }
 
-impl_from_for_collect_data!(
+impl_capsule!(
     SignedPreVote,
     SignedPreCommit,
     SignedChoke,
@@ -58,36 +58,36 @@ impl_from_for_collect_data!(
 );
 
 #[derive(Default)]
-pub struct HeightCollector<B: Blk>(BTreeMap<Height, RoundCollector<B>>);
+pub struct Cabinet<B: Blk>(BTreeMap<Height, Drawer<B>>);
 
-impl<B: Blk> HeightCollector<B> {
+impl<B: Blk> Cabinet<B> {
     pub fn insert(
         &mut self,
         height: Height,
         round: Round,
-        data: CollectData<B>,
+        data: Capsule<B>,
     ) -> Result<Option<CumulativeWeight>, CollectionError<B>> {
         self.0
             .entry(height)
-            .or_insert_with(RoundCollector::default)
+            .or_insert_with(Drawer::default)
             .insert(round, data)
     }
 
-    pub fn pop(&mut self, height: Height) -> Option<Vec<Collector<B>>> {
+    pub fn pop(&mut self, height: Height) -> Option<Vec<Grid<B>>> {
         self.0.remove(&height).map_or_else(
             || None,
-            |round_collector| Some(round_collector.collectors.values().cloned().collect()),
+            |drawer| Some(drawer.collectors.values().cloned().collect()),
         )
     }
 
     pub fn remove_below(&mut self, height: Height) {
-        self.0.split_off(&height);
+        self.0 = self.0.split_off(&height);
     }
 
     pub fn get_signed_proposal(&self, height: Height, round: Round) -> Option<SignedProposal<B>> {
         self.0
             .get(&height)
-            .and_then(|round_collector| round_collector.get_signed_proposal(round))
+            .and_then(|drawer| drawer.get_signed_proposal(round))
     }
 
     pub fn get_signed_pre_votes_by_hash(
@@ -96,9 +96,9 @@ impl<B: Blk> HeightCollector<B> {
         round: Round,
         block_hash: &Hash,
     ) -> Option<Vec<SignedPreVote>> {
-        self.0.get(&height).and_then(|round_collector| {
-            round_collector.get_signed_pre_votes_by_hash(round, block_hash)
-        })
+        self.0
+            .get(&height)
+            .and_then(|drawer| drawer.get_signed_pre_votes_by_hash(round, block_hash))
     }
 
     pub fn get_signed_pre_commits_by_hash(
@@ -107,54 +107,54 @@ impl<B: Blk> HeightCollector<B> {
         round: Round,
         block_hash: &Hash,
     ) -> Option<Vec<SignedPreCommit>> {
-        self.0.get(&height).and_then(|round_collector| {
-            round_collector.get_signed_pre_commits_by_hash(round, block_hash)
-        })
+        self.0
+            .get(&height)
+            .and_then(|drawer| drawer.get_signed_pre_commits_by_hash(round, block_hash))
     }
 
     pub fn get_signed_chokes(&self, height: Height, round: Round) -> Option<Vec<SignedChoke>> {
         self.0
             .get(&height)
-            .and_then(|round_collector| round_collector.get_signed_chokes(round))
+            .and_then(|drawer| drawer.get_signed_chokes(round))
     }
 
     pub fn get_pre_vote_qc(&self, height: Height, round: Round) -> Option<PreVoteQC> {
         self.0
             .get(&height)
-            .and_then(|round_collector| round_collector.get_pre_vote_qc(round))
+            .and_then(|drawer| drawer.get_pre_vote_qc(round))
     }
 
     pub fn get_pre_commit_qc(&self, height: Height, round: Round) -> Option<PreCommitQC> {
         self.0
             .get(&height)
-            .and_then(|round_collector| round_collector.get_pre_commit_qc(round))
+            .and_then(|drawer| drawer.get_pre_commit_qc(round))
     }
 
     pub fn get_choke_qc(&self, height: Height, round: Round) -> Option<ChokeQC> {
         self.0
             .get(&height)
-            .and_then(|round_collector| round_collector.get_choke_qc(round))
+            .and_then(|drawer| drawer.get_choke_qc(round))
     }
 }
 
 #[derive(Default)]
-struct RoundCollector<B: Blk> {
-    collectors:                 HashMap<Round, Collector<B>>,
+struct Drawer<B: Blk> {
+    collectors:                 HashMap<Round, Grid<B>>,
     pre_vote_max_vote_weight:   CumulativeWeight,
     pre_commit_max_vote_weight: CumulativeWeight,
     choke_max_vote_weight:      CumulativeWeight,
 }
 
-impl<B: Blk> RoundCollector<B> {
+impl<B: Blk> Drawer<B> {
     fn insert(
         &mut self,
         round: Round,
-        data: CollectData<B>,
+        data: Capsule<B>,
     ) -> Result<Option<CumulativeWeight>, CollectionError<B>> {
         let opt = self
             .collectors
             .entry(round)
-            .or_insert_with(Collector::default)
+            .or_insert_with(Grid::default)
             .insert(data)?;
         if let Some(cumulative_weight) = opt {
             return match cumulative_weight.vote_type {
@@ -178,7 +178,7 @@ impl<B: Blk> RoundCollector<B> {
     fn get_signed_proposal(&self, round: Round) -> Option<SignedProposal<B>> {
         self.collectors
             .get(&round)
-            .and_then(|collector| collector.get_signed_proposal())
+            .and_then(|grid| grid.get_signed_proposal())
     }
 
     fn get_signed_pre_votes_by_hash(
@@ -188,7 +188,7 @@ impl<B: Blk> RoundCollector<B> {
     ) -> Option<Vec<SignedPreVote>> {
         self.collectors
             .get(&round)
-            .and_then(|collector| collector.get_signed_pre_votes_by_hash(block_hash))
+            .and_then(|grid| grid.get_signed_pre_votes_by_hash(block_hash))
     }
 
     fn get_signed_pre_commits_by_hash(
@@ -198,73 +198,36 @@ impl<B: Blk> RoundCollector<B> {
     ) -> Option<Vec<SignedPreCommit>> {
         self.collectors
             .get(&round)
-            .and_then(|collector| collector.get_signed_pre_commits_by_hash(block_hash))
+            .and_then(|grid| grid.get_signed_pre_commits_by_hash(block_hash))
     }
 
     fn get_signed_chokes(&self, round: Round) -> Option<Vec<SignedChoke>> {
         self.collectors
             .get(&round)
-            .map(|collector| collector.get_signed_chokes())
+            .map(|grid| grid.get_signed_chokes())
     }
 
     fn get_pre_vote_qc(&self, round: Round) -> Option<PreVoteQC> {
         self.collectors
             .get(&round)
-            .and_then(|collector| collector.get_pre_vote_qc())
+            .and_then(|grid| grid.get_pre_vote_qc())
     }
 
     fn get_pre_commit_qc(&self, round: Round) -> Option<PreCommitQC> {
         self.collectors
             .get(&round)
-            .and_then(|collector| collector.get_pre_commit_qc())
+            .and_then(|grid| grid.get_pre_commit_qc())
     }
 
     fn get_choke_qc(&self, round: Round) -> Option<ChokeQC> {
         self.collectors
             .get(&round)
-            .and_then(|collector| collector.get_choke_qc())
-    }
-}
-
-#[derive(Clone)]
-pub enum VoteType {
-    PreVote,
-    PreCommit,
-    Choke,
-}
-
-impl Default for VoteType {
-    fn default() -> Self {
-        VoteType::PreVote
+            .and_then(|grid| grid.get_choke_qc())
     }
 }
 
 #[derive(Clone, Default)]
-pub struct CumulativeWeight {
-    cumulative_weight: Weight,
-    vote_type:         VoteType,
-    round:             Round,
-    block_hash:        Option<Hash>,
-}
-
-impl CumulativeWeight {
-    fn new(
-        cumulative_weight: Weight,
-        vote_type: VoteType,
-        round: Round,
-        block_hash: Option<Hash>,
-    ) -> Self {
-        CumulativeWeight {
-            cumulative_weight,
-            vote_type,
-            round,
-            block_hash,
-        }
-    }
-}
-
-#[derive(Clone, Default)]
-pub struct Collector<B: Blk> {
+pub struct Grid<B: Blk> {
     signed_proposal: Option<SignedProposal<B>>,
 
     signed_pre_votes:         HashMap<Address, SignedPreVote>,
@@ -285,7 +248,7 @@ pub struct Collector<B: Blk> {
     choke_qc:      Option<ChokeQC>,
 }
 
-impl<B: Blk> Collector<B> {
+impl<B: Blk> Grid<B> {
     pub fn get_signed_proposal(&self) -> Option<SignedProposal<B>> {
         self.signed_proposal.clone()
     }
@@ -331,24 +294,19 @@ impl<B: Blk> Collector<B> {
         self.pre_commit_sets.get(block_hash).cloned()
     }
 
-    fn insert(
-        &mut self,
-        data: CollectData<B>,
-    ) -> Result<Option<CumulativeWeight>, CollectionError<B>> {
+    fn insert(&mut self, data: Capsule<B>) -> Result<Option<CumulativeWeight>, CollectionError<B>> {
         match data {
-            CollectData::SignedProposal(signed_proposal) => {
+            Capsule::SignedProposal(signed_proposal) => {
                 self.insert_signed_proposal(signed_proposal)
             }
-            CollectData::SignedPreVote(signed_pre_vote) => {
-                self.insert_signed_pre_vote(signed_pre_vote)
-            }
-            CollectData::SignedPreCommit(signed_pre_commit) => {
+            Capsule::SignedPreVote(signed_pre_vote) => self.insert_signed_pre_vote(signed_pre_vote),
+            Capsule::SignedPreCommit(signed_pre_commit) => {
                 self.insert_signed_pre_commit(signed_pre_commit)
             }
-            CollectData::SignedChoke(signed_choke) => self.insert_signed_choke(signed_choke),
-            CollectData::PreVoteQC(pre_vote_qc) => self.insert_pre_vote_qc(pre_vote_qc),
-            CollectData::PreCommitQC(pre_commit_qc) => self.insert_pre_commit_qc(pre_commit_qc),
-            CollectData::ChokeQC(choke_qc) => self.insert_choke_qc(choke_qc),
+            Capsule::SignedChoke(signed_choke) => self.insert_signed_choke(signed_choke),
+            Capsule::PreVoteQC(pre_vote_qc) => self.insert_pre_vote_qc(pre_vote_qc),
+            Capsule::PreCommitQC(pre_commit_qc) => self.insert_pre_commit_qc(pre_commit_qc),
+            Capsule::ChokeQC(choke_qc) => self.insert_choke_qc(choke_qc),
         }
     }
 
@@ -427,8 +385,8 @@ impl<B: Blk> Collector<B> {
         &mut self,
         signed_choke: SignedChoke,
     ) -> Result<Option<CumulativeWeight>, CollectionError<B>> {
-        let signer = signed_choke.signer.clone();
-        check_exist(self.signed_chokes.get(&signer), &signed_choke)?;
+        let voter = signed_choke.voter.clone();
+        check_exist(self.signed_chokes.get(&voter), &signed_choke)?;
 
         let vote_weight = signed_choke.vote_weight;
         let cumulative_weight = self.choke_vote_weight.cumulative_weight + vote_weight;
@@ -440,7 +398,7 @@ impl<B: Blk> Collector<B> {
         );
         update_max_vote_weight(&mut self.choke_vote_weight, cumulative_weight);
 
-        self.signed_chokes.insert(signer, signed_choke);
+        self.signed_chokes.insert(voter, signed_choke);
 
         Ok(Some(self.choke_vote_weight.clone()))
     }
@@ -473,7 +431,7 @@ impl<B: Blk> Collector<B> {
     }
 }
 
-fn check_exist<T: Into<CollectData<B>> + Clone + PartialEq + Eq, B: Blk>(
+fn check_exist<T: Into<Capsule<B>> + Clone + PartialEq + Eq, B: Blk>(
     opt: Option<&T>,
     check_data: &T,
 ) -> Result<(), CollectionError<B>> {
@@ -508,17 +466,201 @@ fn update_max_vote_weight(max_weight: &mut CumulativeWeight, cumulative_weight: 
     }
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Display)]
 pub enum CollectionError<B: Blk> {
     #[display(fmt = "collect_data: {} already exists", _0)]
-    AlreadyExists(CollectData<B>),
+    AlreadyExists(Capsule<B>),
     #[display(
         fmt = "try to insert a different collect_data: {}, while exist {}",
         _0,
         _1
     )]
-    InsertDiff(CollectData<B>, CollectData<B>),
+    InsertDiff(Capsule<B>, Capsule<B>),
 }
 
 impl<B: Blk> Error for CollectionError<B> {}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::types::Proof;
+    use crate::{Crypto, DefaultCrypto};
+    use bytes::Bytes;
+    use serde::{Deserialize, Serialize};
+
+    #[test]
+    fn test_cabinet() {
+        let mut cabinet = Cabinet::<Block>::default();
+
+        let mut signed_pre_vote = SignedPreVote::default();
+        check_vote(
+            &mut cabinet,
+            &mut signed_pre_vote,
+            VoteType::PreVote,
+            Some(Hash::default()),
+        );
+
+        let mut signed_pre_commit = SignedPreCommit::default();
+        check_vote(
+            &mut cabinet,
+            &mut signed_pre_commit,
+            VoteType::PreCommit,
+            Some(Hash::default()),
+        );
+
+        let mut signed_choke = SignedChoke::default();
+        check_vote(&mut cabinet, &mut signed_choke, VoteType::Choke, None);
+
+        let signed_proposal = SignedProposal::default();
+        check_insert(&mut cabinet, &signed_proposal);
+        assert_eq!(cabinet.get_signed_proposal(0, 0).unwrap(), signed_proposal);
+
+        let pre_vote_qc = PreVoteQC::default();
+        check_insert(&mut cabinet, &pre_vote_qc);
+        assert_eq!(cabinet.get_pre_vote_qc(0, 0).unwrap(), pre_vote_qc);
+
+        let pre_commit_qc = PreCommitQC::default();
+        check_insert(&mut cabinet, &pre_commit_qc);
+        assert_eq!(cabinet.get_pre_commit_qc(0, 0).unwrap(), pre_commit_qc);
+
+        let choke_qc = ChokeQC::default();
+        check_insert(&mut cabinet, &choke_qc);
+        assert_eq!(cabinet.get_choke_qc(0, 0).unwrap(), choke_qc);
+
+        // test pop
+        assert!(!cabinet.0.is_empty());
+        let grids = cabinet.pop(0).unwrap();
+        assert!(cabinet.0.is_empty());
+        assert_eq!(grids.len(), 2);
+
+        // test remove
+        cabinet.insert(98, 0, choke_qc.clone().into()).unwrap();
+        cabinet.insert(99, 0, choke_qc.clone().into()).unwrap();
+        cabinet.insert(100, 0, choke_qc.into()).unwrap();
+        cabinet.remove_below(100);
+        assert_eq!(cabinet.0.len(), 1);
+    }
+
+    fn check_insert<T: Clone + Into<Capsule<Block>>>(grid: &mut Cabinet<Block>, data: &T) {
+        assert_eq!(grid.insert(0, 0, data.clone().into()).unwrap(), None);
+    }
+
+    fn check_vote<V: Vote>(
+        grid: &mut Cabinet<Block>,
+        vote: &mut V,
+        vote_type: VoteType,
+        opt_hash: Option<Hash>,
+    ) {
+        vote.set(0, 10, Bytes::from("wcc"));
+        assert_eq!(
+            grid.insert(0, 0, vote.clone().into()).unwrap(),
+            Some(CumulativeWeight::new(
+                10,
+                vote_type.clone(),
+                0,
+                opt_hash.clone()
+            ))
+        );
+
+        assert!(grid.insert(0, 0, vote.clone().into()).is_err());
+        vote.set(0, 12, Bytes::from("wcc"));
+        assert!(grid.insert(0, 0, vote.clone().into()).is_err());
+        vote.set(0, 4, Bytes::from("zyc"));
+        assert_eq!(
+            grid.insert(0, 0, vote.clone().into()).unwrap(),
+            Some(CumulativeWeight::new(
+                14,
+                vote_type.clone(),
+                0,
+                opt_hash.clone()
+            ))
+        );
+        vote.set(1, 21, Bytes::from("yjy"));
+        assert_eq!(
+            grid.insert(0, 1, vote.clone().into()).unwrap(),
+            Some(CumulativeWeight::new(
+                21,
+                vote_type.clone(),
+                1,
+                opt_hash.clone()
+            ))
+        );
+        vote.set(0, 5, Bytes::from("zy"));
+        assert_eq!(
+            grid.insert(0, 0, vote.clone().into()).unwrap(),
+            Some(CumulativeWeight::new(21, vote_type, 1, opt_hash))
+        );
+    }
+
+    trait Vote: Sized + Clone + Default + Into<Capsule<Block>> {
+        fn set(&mut self, round: Round, weight: Weight, voter: Address);
+    }
+
+    impl Vote for SignedPreVote {
+        fn set(&mut self, round: Round, weight: Weight, voter: Address) {
+            self.vote.round = round;
+            self.vote_weight = weight;
+            self.voter = voter;
+        }
+    }
+
+    impl Vote for SignedPreCommit {
+        fn set(&mut self, round: Round, weight: Weight, voter: Address) {
+            self.vote.round = round;
+            self.vote_weight = weight;
+            self.voter = voter;
+        }
+    }
+
+    impl Vote for SignedChoke {
+        fn set(&mut self, round: Round, weight: Weight, voter: Address) {
+            self.choke.round = round;
+            self.vote_weight = weight;
+            self.voter = voter;
+        }
+    }
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+    struct Block {
+        pub pre_hash:    Hash,
+        pub height:      Height,
+        pub exec_height: Height,
+        pub pre_proof:   Proof,
+    }
+
+    impl Block {
+        fn genesis_block() -> Self {
+            Block::default()
+        }
+    }
+
+    impl Blk for Block {
+        fn encode(&self) -> Result<Bytes, Box<dyn Error + Send>> {
+            Ok(bincode::serialize(self).map(Bytes::from).unwrap())
+        }
+
+        fn decode(data: &Bytes) -> Result<Self, Box<dyn Error + Send>> {
+            Ok(bincode::deserialize(data.as_ref()).unwrap())
+        }
+
+        fn get_block_hash(&self) -> Hash {
+            DefaultCrypto::hash(&self.encode().unwrap())
+        }
+
+        fn get_pre_hash(&self) -> Hash {
+            self.pre_hash.clone()
+        }
+
+        fn get_height(&self) -> Height {
+            self.height
+        }
+
+        fn get_exec_height(&self) -> Height {
+            self.exec_height
+        }
+
+        fn get_proof(&self) -> Proof {
+            self.pre_proof.clone()
+        }
+    }
+}

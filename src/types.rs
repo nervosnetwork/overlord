@@ -158,19 +158,19 @@ pub struct AggregatedSignature {
 
 #[derive(Clone, Debug, Default, Display, PartialEq, Eq, Hash)]
 #[display(
-    fmt = "{{ signature: {}, choke: {}, vote_weight: {}, from: {}, signer: {} }}",
+    fmt = "{{ signature: {}, choke: {}, vote_weight: {}, from: {}, voter: {} }}",
     "hex::encode(signature)",
     choke,
     vote_weight,
     from,
-    "hex::encode(signer)"
+    "hex::encode(voter)"
 )]
 pub struct SignedChoke {
     pub signature:   Signature,
     pub choke:       Choke,
     pub vote_weight: Weight,
     pub from:        UpdateFrom,
-    pub signer:      Address,
+    pub voter:       Address,
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -356,6 +356,53 @@ impl Node {
             address,
             propose_weight: 1,
             vote_weight: 1,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Display, PartialEq, Eq, Serialize, Deserialize)]
+pub enum VoteType {
+    #[display(fmt = "PreVote")]
+    PreVote,
+    #[display(fmt = "PreCommit")]
+    PreCommit,
+    #[display(fmt = "Choke")]
+    Choke,
+}
+
+impl Default for VoteType {
+    fn default() -> Self {
+        VoteType::PreVote
+    }
+}
+
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq)]
+#[display(
+    fmt = "{{ cumulative_weight: {}, vote_type: {}, round: {}, block_hash: {} }}",
+    cumulative_weight,
+    vote_type,
+    round,
+    "block_hash.clone().map_or(\"None\".to_owned(), hex::encode)"
+)]
+pub struct CumulativeWeight {
+    pub cumulative_weight: Weight,
+    pub vote_type:         VoteType,
+    pub round:             Round,
+    pub block_hash:        Option<Hash>,
+}
+
+impl CumulativeWeight {
+    pub fn new(
+        cumulative_weight: Weight,
+        vote_type: VoteType,
+        round: Round,
+        block_hash: Option<Hash>,
+    ) -> Self {
+        CumulativeWeight {
+            cumulative_weight,
+            vote_type,
+            round,
+            block_hash,
         }
     }
 }
