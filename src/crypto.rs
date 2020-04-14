@@ -1,10 +1,13 @@
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::error::Error;
+use std::str::Utf8Error;
 
+use bit_vec::BitVec;
 use bytes::{Bytes, BytesMut};
 use derive_more::Display;
 use hasher::{Hasher, HasherKeccak};
+use hex::FromHexError;
 use lazy_static::lazy_static;
 use ophelia::{
     BlsSignatureVerify, Error as SigError, HashValue, PrivateKey, PublicKey, Signature,
@@ -18,7 +21,7 @@ use rand::{rngs::OsRng, RngCore};
 use serde::Serialize;
 use tentacle_secio::SecioKeyPair;
 
-use crate::types::{Address, Hash, Signature as SigBytes};
+use crate::types::{Address, Aggregates, Hash, Signature as SigBytes};
 use crate::Crypto;
 
 lazy_static! {
@@ -36,7 +39,8 @@ const ADDRESS_LEN: usize = 20;
 
 pub struct DefaultCrypto {
     pri_key:    BlsPrivateKey,
-    auth_list:  RwLock<HashMap<Address, BlsPublicKey>>,
+    auth_list:  RwLock<Vec<(Address, BlsPublicKey)>>,
+    auth_map:   RwLock<HashMap<Address, BlsPublicKey>>,
     common_ref: BlsCommonReference,
 }
 
@@ -45,6 +49,27 @@ impl Crypto for DefaultCrypto {
         let mut out = [0u8; HASH_LEN];
         out.copy_from_slice(&HASHER_INST.digest(msg));
         BytesMut::from(out.as_ref()).freeze()
+    }
+
+    fn update_auth_list(
+        &self,
+        new_auth_list: Vec<(Address, BlsPubKeyHex)>,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        let mut auth_list = self.auth_list.write();
+        let mut auth_map = self.auth_map.write();
+
+        let mut new_auth_list = new_auth_list;
+        new_auth_list.sort();
+
+        let mut list = vec![];
+        for (address, pub_key_str) in new_auth_list {
+            list.push((address, hex_str_to_bls_pub_key(&pub_key_str)?));
+        }
+
+        *auth_list = list.clone();
+        *auth_map = list.into_iter().collect();
+
+        Ok(())
     }
 
     fn sign(&self, hash: &Hash) -> Result<SigBytes, Box<dyn Error + Send>> {
@@ -60,10 +85,10 @@ impl Crypto for DefaultCrypto {
         hash: &Hash,
         signer: &Address,
     ) -> Result<(), Box<dyn Error + Send>> {
-        let auth_list = self.auth_list.read();
+        let auth_map = self.auth_map.read();
         let hash =
             HashValue::try_from(hash.as_ref()).map_err(|_| CryptoError::TryInfoHashValueFailed)?;
-        let pub_key = auth_list
+        let pub_key = auth_map
             .get(signer)
             .ok_or_else(|| CryptoError::UnauthorizedAddress(hex::encode(signer)))?;
         let signature = BlsSignature::try_from(signature.as_ref())
@@ -75,43 +100,51 @@ impl Crypto for DefaultCrypto {
         Ok(())
     }
 
-    fn aggregate_sign(
+    fn aggregate(
         &self,
-        signature_map: HashMap<&Address, &SigBytes>,
-    ) -> Result<SigBytes, Box<dyn Error + Send>> {
+        signatures: HashMap<&Address, &SigBytes>,
+    ) -> Result<Aggregates, Box<dyn Error + Send>> {
         let auth_list = self.auth_list.read();
-        let mut combine = Vec::with_capacity(signature_map.len());
-        for (signer, signature) in signature_map.into_iter() {
-            let pub_key = auth_list
-                .get(signer)
-                .ok_or_else(|| CryptoError::UnauthorizedAddress(hex::encode(signer)))?;
-            let signature = BlsSignature::try_from(signature.as_ref())
-                .map_err(CryptoError::TryInfoBlsSignatureFailed)?;
+        let mut combine = Vec::with_capacity(signatures.len());
+        let mut bit_map = BitVec::from_elem(auth_list.len(), false);
 
-            combine.push((signature, pub_key.to_owned()));
+        for i in 0..auth_list.len() {
+            if let Some(signature) = signatures.get(&auth_list[i].0) {
+                let signature = BlsSignature::try_from(signature.as_ref())
+                    .map_err(CryptoError::TryInfoBlsSignatureFailed)?;
+                combine.push((signature, auth_list[i].1.clone()));
+                bit_map.set(i, true);
+            }
         }
 
-        let sig = BlsSignature::combine(combine);
-        Ok(sig.to_bytes())
+        let aggregates = Aggregates {
+            signature:      BlsSignature::combine(combine).to_bytes(),
+            address_bitmap: Bytes::from(bit_map.to_bytes()),
+        };
+
+        Ok(aggregates)
     }
 
-    fn verify_aggregated_signature(
+    fn verify_aggregates(
         &self,
-        aggregated_signature: &SigBytes,
+        aggregates: &Aggregates,
         hash: &Hash,
-        signers: Vec<&Address>,
     ) -> Result<(), Box<dyn Error + Send>> {
-        let auth_list = self.auth_list.read();
+        let signature = aggregates.signature.clone();
+        let bitmap = aggregates.address_bitmap.clone();
+        let signers = self.get_voters(&bitmap);
+
+        let auth_map = self.auth_map.read();
         let mut pub_keys = Vec::new();
-        for signer in signers.into_iter() {
-            let pub_key = auth_list
+        for signer in signers.iter() {
+            let pub_key = auth_map
                 .get(signer)
                 .ok_or_else(|| CryptoError::UnauthorizedAddress(hex::encode(signer)))?;
             pub_keys.push(pub_key);
         }
 
         let aggregate_key = BlsPublicKey::aggregate(pub_keys);
-        let aggregated_signature = BlsSignature::try_from(aggregated_signature.as_ref())
+        let aggregated_signature = BlsSignature::try_from(signature.as_ref())
             .map_err(CryptoError::TryInfoBlsSignatureFailed)?;
         let hash =
             HashValue::try_from(hash.as_ref()).map_err(|_| CryptoError::TryInfoHashValueFailed)?;
@@ -129,30 +162,40 @@ impl DefaultCrypto {
         auth_list_hex_str: HashMap<AddressHex, BlsPubKeyHex>,
         common_ref_hex_str: CommonRefHex,
     ) -> Self {
-        let common_ref = hex_str_to_common_ref(&common_ref_hex_str);
-        let pri_key = hex_str_to_bls_pri_key(&pri_key_hex_str);
+        let common_ref =
+            hex_str_to_common_ref(&common_ref_hex_str).expect("decode common_ref failed");
+        let pri_key = hex_str_to_bls_pri_key(&pri_key_hex_str).expect("decode pri_key failed");
 
-        let auth_list: HashMap<Address, BlsPublicKey> = auth_list_hex_str
+        let list: Vec<(Address, BlsPublicKey)> = auth_list_hex_str
             .iter()
             .map(|(address, pub_key_hex_str)| {
-                let address = Bytes::from(hex_decode(address));
-                let pub_key = hex_str_to_bls_pub_key(pub_key_hex_str);
+                let address = Bytes::from(hex_decode(address).expect("decode address failed"));
+                let pub_key =
+                    hex_str_to_bls_pub_key(pub_key_hex_str).expect("decode bls_pub_key failed");
                 (address, pub_key)
             })
             .collect();
+        let map: HashMap<Address, BlsPublicKey> = list.clone().into_iter().collect();
 
-        let auth_list = RwLock::new(auth_list);
+        let auth_list = RwLock::new(list);
+        let auth_map = RwLock::new(map);
 
         DefaultCrypto {
             pri_key,
             auth_list,
+            auth_map,
             common_ref,
         }
     }
 
-    pub fn update(&self, new_auth_list: HashMap<Address, BlsPublicKey>) {
-        let mut auth_list = self.auth_list.write();
-        *auth_list = new_auth_list;
+    pub fn get_voters(&self, bitmap: &[u8]) -> Vec<Address> {
+        let bitmap = BitVec::from_bytes(bitmap);
+        bitmap
+            .iter()
+            .zip(self.auth_list.read().iter())
+            .filter(|node| node.0)
+            .map(|node| (node.1).0.clone())
+            .collect()
     }
 }
 
@@ -174,7 +217,7 @@ impl KeyPairs {
     pub fn get_address_list(&self) -> Vec<Address> {
         self.key_pairs
             .iter()
-            .map(|key_pair| Bytes::from(hex_decode(&key_pair.address)))
+            .map(|key_pair| Bytes::from(hex_decode(&key_pair.address).unwrap()))
             .collect()
     }
 }
@@ -189,7 +232,7 @@ pub fn gen_key_pairs(
     }
 
     let common_ref_str: CommonRefHex = if let Some(common_ref) = common_ref {
-        CommonRefHex::from_utf8(hex_decode(&common_ref))
+        CommonRefHex::from_utf8(hex_decode(&common_ref).expect("hex decode error"))
             .expect("common_ref should be a valid utf8 string")
     } else {
         gen_random_common_ref()
@@ -226,8 +269,8 @@ fn gen_random_pri_key() -> Bytes {
     DefaultCrypto::hash(&BytesMut::from(seed.as_ref()).freeze())
 }
 
-fn hex_decode(hex_str: &str) -> Vec<u8> {
-    hex::decode(ensure_trim0x(hex_str)).expect("hex decode failed")
+fn hex_decode(hex_str: &str) -> Result<Vec<u8>, CryptoError> {
+    hex::decode(ensure_trim0x(hex_str)).map_err(CryptoError::HexDecodeFailed)
 }
 
 fn ensure_trim0x(str: &str) -> &str {
@@ -238,23 +281,23 @@ fn ensure_trim0x(str: &str) -> &str {
     }
 }
 
-fn hex_str_to_bls_pri_key(hex_str: &str) -> BlsPrivateKey {
+fn hex_str_to_bls_pri_key(hex_str: &str) -> Result<BlsPrivateKey, CryptoError> {
     let mut pri_key = Vec::new();
     pri_key.extend_from_slice(&[0u8; 16]);
-    pri_key.append(&mut hex_decode(hex_str));
-    BlsPrivateKey::try_from(pri_key.as_ref()).expect("build private key failed")
+    pri_key.append(&mut hex_decode(hex_str)?);
+    BlsPrivateKey::try_from(pri_key.as_ref()).map_err(CryptoError::TryInfoBlsPriKeyFailed)
 }
 
-fn hex_str_to_bls_pub_key(hex_str: &str) -> BlsPublicKey {
-    let pub_key = hex_decode(hex_str);
-    BlsPublicKey::try_from(pub_key.as_ref()).expect("build public key failed")
+fn hex_str_to_bls_pub_key(hex_str: &str) -> Result<BlsPublicKey, CryptoError> {
+    let pub_key = hex_decode(hex_str)?;
+    BlsPublicKey::try_from(pub_key.as_ref()).map_err(CryptoError::TryInfoBlsPubKeyFailed)
 }
 
-fn hex_str_to_common_ref(hex_str: &str) -> BlsCommonReference {
-    let common_ref = hex_decode(hex_str);
+fn hex_str_to_common_ref(hex_str: &str) -> Result<BlsCommonReference, CryptoError> {
+    let common_ref = hex_decode(hex_str)?;
     std::str::from_utf8(common_ref.as_ref())
-        .expect("common_ref should be a valid utf8 string")
-        .into()
+        .map(|str| str.into())
+        .map_err(CryptoError::TryInfoCommonRefFailed)
 }
 
 fn pub_key_to_address(pub_key: Bytes) -> Bytes {
@@ -266,7 +309,7 @@ fn pub_key_to_address(pub_key: Bytes) -> Bytes {
 fn gen_keypair(pri_key: Option<&PriKeyHex>, common_ref_str: BlsCommonReference) -> KeyPair {
     let mut key_pair = KeyPair::default();
     let pri_key = if let Some(pri_key) = pri_key {
-        Bytes::from(hex_decode(pri_key))
+        Bytes::from(hex_decode(pri_key).expect("decode pri_key failed"))
     } else {
         gen_random_pri_key()
     };
@@ -291,8 +334,20 @@ pub enum CryptoError {
     #[display(fmt = "Try into HashValue failed")]
     TryInfoHashValueFailed,
 
+    #[display(fmt = "Try into CommonRef failed, {:?}", _0)]
+    TryInfoCommonRefFailed(Utf8Error),
+
     #[display(fmt = "Try into BlsSignature failed, {:?}", _0)]
     TryInfoBlsSignatureFailed(SigError),
+
+    #[display(fmt = "Try into BlsPriKey failed, {:?}", _0)]
+    TryInfoBlsPriKeyFailed(SigError),
+
+    #[display(fmt = "Try into BlsPubKey failed, {:?}", _0)]
+    TryInfoBlsPubKeyFailed(SigError),
+
+    #[display(fmt = "Decode Hex failed, {:?}", _0)]
+    HexDecodeFailed(FromHexError),
 
     #[display(fmt = "Unauthorized address {}", _0)]
     UnauthorizedAddress(AddressHex),
@@ -383,7 +438,7 @@ mod test {
             "0xfd6d62572ec57829485c78f9febe2cb18438332c".to_owned(),
         ]
         .iter()
-        .map(|address| Bytes::from(hex_decode(address)))
+        .map(|address| Bytes::from(hex_decode(address).unwrap()))
         .collect();
 
         let auth_list: HashMap<AddressHex, BlsPubKeyHex> = vec![
@@ -430,9 +485,7 @@ mod test {
         let mut signers = Vec::new();
         signers.push(&addresses[1]);
         signers.push(&addresses[0]);
-        let agg_sig = crypto_3.aggregate_sign(map).unwrap();
-        crypto_0
-            .verify_aggregated_signature(&agg_sig, &hash, signers)
-            .unwrap();
+        let agg_sig = crypto_3.aggregate(map).unwrap();
+        crypto_0.verify_aggregates(&agg_sig, &hash).unwrap();
     }
 }

@@ -86,14 +86,20 @@ fn run_nodes(
         .for_each(|(address, key_pair)| {
             storage.register(address.clone());
 
-            let adapter = OverlordAdapter::new(address.clone(), network, mem_pool, storage);
-            let crypto = DefaultCrypto::new(
+            let adapter = Arc::new(OverlordAdapter::new(
+                address.clone(),
+                network,
+                mem_pool,
+                storage,
+            ));
+            let crypto = Arc::new(DefaultCrypto::new(
                 key_pair.private_key,
                 auth_list_hex.clone(),
                 common_ref_hex.clone(),
-            );
+            ));
 
-            let overlord_server = OverlordServer::new(address, adapter, crypto, &key_pair.address);
+            let overlord_server =
+                OverlordServer::new(address, &adapter, &crypto, &key_pair.address);
             overlord_server.run()
         });
 }

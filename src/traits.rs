@@ -10,7 +10,8 @@ use futures::channel::mpsc::UnboundedSender;
 
 use crate::error::ConsensusError;
 use crate::types::{
-    Address, BlockState, ExecResult, Hash, Height, HeightRange, OverlordMsg, Proof, Signature,
+    Address, Aggregates, BlockState, ExecResult, Hash, Height, HeightRange, OverlordMsg, Proof,
+    Signature,
 };
 
 #[async_trait]
@@ -97,6 +98,11 @@ pub trait Blk: Clone + Debug + Default + Send + PartialEq + Eq {
 pub trait Crypto: Send {
     fn hash(msg: &Bytes) -> Hash;
 
+    fn update_auth_list(
+        &self,
+        new_auth_list: Vec<(Address, String)>,
+    ) -> Result<(), Box<dyn Error + Send>>;
+
     fn sign(&self, hash: &Hash) -> Result<Signature, Box<dyn Error + Send>>;
 
     fn verify_signature(
@@ -106,15 +112,14 @@ pub trait Crypto: Send {
         signer: &Address,
     ) -> Result<(), Box<dyn Error + Send>>;
 
-    fn aggregate_sign(
+    fn aggregate(
         &self,
-        signature_map: HashMap<&Address, &Signature>,
-    ) -> Result<Signature, Box<dyn Error + Send>>;
+        signatures: HashMap<&Address, &Signature>,
+    ) -> Result<Aggregates, Box<dyn Error + Send>>;
 
-    fn verify_aggregated_signature(
+    fn verify_aggregates(
         &self,
-        aggregate_signature: &Signature,
-        msg_hash: &Hash,
-        signers: Vec<&Address>,
+        aggregates: &Aggregates,
+        hash: &Hash,
     ) -> Result<(), Box<dyn Error + Send>>;
 }

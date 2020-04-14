@@ -2,6 +2,7 @@
 
 pub mod crypto;
 pub mod error;
+pub mod proof;
 pub mod traits;
 pub mod types;
 
@@ -18,6 +19,7 @@ pub use types::{
 
 use std::fmt::Debug;
 use std::marker::PhantomData;
+use std::sync::Arc;
 
 use creep::Context;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver};
@@ -25,8 +27,8 @@ use futures::channel::mpsc::{unbounded, UnboundedReceiver};
 use crate::wal::Wal;
 
 pub struct OverlordServer<A, B: Blk, C, S> {
-    adapter: A,
-    crypto:  C,
+    adapter: Arc<A>,
+    crypto:  Arc<C>,
     network: UnboundedReceiver<(Context, OverlordMsg<B>)>,
     wal:     Wal,
 
@@ -42,16 +44,16 @@ where
     C: Crypto,
     S: Clone + Debug + Default,
 {
-    pub fn new(address: Address, adapter: A, crypto: C, wal_path: &str) -> Self {
+    pub fn new(my_address: Address, adapter: &Arc<A>, crypto: &Arc<C>, wal_path: &str) -> Self {
         let (sender, receiver) = unbounded();
         adapter.register_network(Context::default(), sender);
 
         OverlordServer {
-            adapter,
-            crypto,
-            network: receiver,
-            wal: Wal::new(wal_path),
-            address,
+            adapter:      Arc::<A>::clone(adapter),
+            crypto:       Arc::<C>::clone(crypto),
+            network:      receiver,
+            wal:          Wal::new(wal_path),
+            address:      my_address,
             phantom_data: PhantomData,
         }
     }

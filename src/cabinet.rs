@@ -66,7 +66,7 @@ impl<B: Blk> Cabinet<B> {
         height: Height,
         round: Round,
         data: Capsule<B>,
-    ) -> Result<Option<CumWeight>, CollectionError<B>> {
+    ) -> Result<Option<CumWeight>, CabinetError<B>> {
         self.0
             .entry(height)
             .or_insert_with(Drawer::default)
@@ -150,7 +150,7 @@ impl<B: Blk> Drawer<B> {
         &mut self,
         round: Round,
         data: Capsule<B>,
-    ) -> Result<Option<CumWeight>, CollectionError<B>> {
+    ) -> Result<Option<CumWeight>, CabinetError<B>> {
         let opt = self
             .collectors
             .entry(round)
@@ -294,7 +294,7 @@ impl<B: Blk> Grid<B> {
         self.pre_commit_sets.get(block_hash).cloned()
     }
 
-    fn insert(&mut self, data: Capsule<B>) -> Result<Option<CumWeight>, CollectionError<B>> {
+    fn insert(&mut self, data: Capsule<B>) -> Result<Option<CumWeight>, CabinetError<B>> {
         match data {
             Capsule::SignedProposal(signed_proposal) => {
                 self.insert_signed_proposal(signed_proposal)
@@ -313,7 +313,7 @@ impl<B: Blk> Grid<B> {
     fn insert_signed_proposal(
         &mut self,
         signed_proposal: SignedProposal<B>,
-    ) -> Result<Option<CumWeight>, CollectionError<B>> {
+    ) -> Result<Option<CumWeight>, CabinetError<B>> {
         check_exist(self.signed_proposal.as_ref(), &signed_proposal)?;
 
         self.signed_proposal = Some(signed_proposal);
@@ -323,7 +323,7 @@ impl<B: Blk> Grid<B> {
     fn insert_signed_pre_vote(
         &mut self,
         signed_pre_vote: SignedPreVote,
-    ) -> Result<Option<CumWeight>, CollectionError<B>> {
+    ) -> Result<Option<CumWeight>, CabinetError<B>> {
         let voter = signed_pre_vote.voter.clone();
         check_exist(self.signed_pre_votes.get(&voter), &signed_pre_vote)?;
 
@@ -353,7 +353,7 @@ impl<B: Blk> Grid<B> {
     fn insert_signed_pre_commit(
         &mut self,
         signed_pre_commit: SignedPreCommit,
-    ) -> Result<Option<CumWeight>, CollectionError<B>> {
+    ) -> Result<Option<CumWeight>, CabinetError<B>> {
         let voter = signed_pre_commit.voter.clone();
         check_exist(self.signed_pre_commits.get(&voter), &signed_pre_commit)?;
 
@@ -384,7 +384,7 @@ impl<B: Blk> Grid<B> {
     fn insert_signed_choke(
         &mut self,
         signed_choke: SignedChoke,
-    ) -> Result<Option<CumWeight>, CollectionError<B>> {
+    ) -> Result<Option<CumWeight>, CabinetError<B>> {
         let voter = signed_choke.voter.clone();
         check_exist(self.signed_chokes.get(&voter), &signed_choke)?;
 
@@ -402,7 +402,7 @@ impl<B: Blk> Grid<B> {
     fn insert_pre_vote_qc(
         &mut self,
         pre_vote_qc: PreVoteQC,
-    ) -> Result<Option<CumWeight>, CollectionError<B>> {
+    ) -> Result<Option<CumWeight>, CabinetError<B>> {
         check_exist(self.pre_vote_qc.as_ref(), &pre_vote_qc)?;
         self.pre_vote_qc = Some(pre_vote_qc);
         Ok(None)
@@ -411,16 +411,13 @@ impl<B: Blk> Grid<B> {
     fn insert_pre_commit_qc(
         &mut self,
         pre_commit_qc: PreCommitQC,
-    ) -> Result<Option<CumWeight>, CollectionError<B>> {
+    ) -> Result<Option<CumWeight>, CabinetError<B>> {
         check_exist(self.pre_commit_qc.as_ref(), &pre_commit_qc)?;
         self.pre_commit_qc = Some(pre_commit_qc);
         Ok(None)
     }
 
-    fn insert_choke_qc(
-        &mut self,
-        choke_qc: ChokeQC,
-    ) -> Result<Option<CumWeight>, CollectionError<B>> {
+    fn insert_choke_qc(&mut self, choke_qc: ChokeQC) -> Result<Option<CumWeight>, CabinetError<B>> {
         check_exist(self.choke_qc.as_ref(), &choke_qc)?;
         self.choke_qc = Some(choke_qc);
         Ok(None)
@@ -430,12 +427,12 @@ impl<B: Blk> Grid<B> {
 fn check_exist<T: Into<Capsule<B>> + Clone + PartialEq + Eq, B: Blk>(
     opt: Option<&T>,
     check_data: &T,
-) -> Result<(), CollectionError<B>> {
+) -> Result<(), CabinetError<B>> {
     if let Some(exist_data) = opt {
         if exist_data == check_data {
-            return Err(CollectionError::AlreadyExists(check_data.clone().into()));
+            return Err(CabinetError::AlreadyExists(check_data.clone().into()));
         }
-        return Err(CollectionError::InsertDiff(
+        return Err(CabinetError::InsertDiff(
             exist_data.clone().into(),
             check_data.clone().into(),
         ));
@@ -463,7 +460,7 @@ fn update_max_vote_weight(max_weight: &mut CumWeight, cum_weight: CumWeight) {
 }
 
 #[derive(Debug, Display)]
-pub enum CollectionError<B: Blk> {
+pub enum CabinetError<B: Blk> {
     #[display(fmt = "collect_data: {} already exists", _0)]
     AlreadyExists(Capsule<B>),
     #[display(
@@ -474,7 +471,7 @@ pub enum CollectionError<B: Blk> {
     InsertDiff(Capsule<B>, Capsule<B>),
 }
 
-impl<B: Blk> Error for CollectionError<B> {}
+impl<B: Blk> Error for CabinetError<B> {}
 
 #[cfg(test)]
 mod test {
