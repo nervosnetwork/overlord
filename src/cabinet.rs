@@ -613,16 +613,16 @@ mod test {
     }
 
     impl Blk for Block {
-        fn encode(&self) -> Result<Bytes, Box<dyn Error + Send>> {
+        fn fixed_encode(&self) -> Result<Bytes, Box<dyn Error + Send>> {
             Ok(bincode::serialize(self).map(Bytes::from).unwrap())
         }
 
-        fn decode(data: &Bytes) -> Result<Self, Box<dyn Error + Send>> {
+        fn fixed_decode(data: &Bytes) -> Result<Self, Box<dyn Error + Send>> {
             Ok(bincode::deserialize(data.as_ref()).unwrap())
         }
 
         fn get_block_hash(&self) -> Hash {
-            DefaultCrypto::hash(&self.encode().unwrap())
+            DefaultCrypto::hash(&self.fixed_encode().unwrap())
         }
 
         fn get_pre_hash(&self) -> Hash {

@@ -46,13 +46,13 @@ pub enum OverlordMsg<B: Blk> {
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq)]
 #[display(
-    fmt = "{{ signature: {}, proposal: {} }}",
-    "hex::encode(signature)",
-    proposal
+    fmt = "{{ proposal: {}， signature: {} }}",
+    proposal,
+    "hex::encode(signature)"
 )]
 pub struct SignedProposal<B: Blk> {
-    pub signature: Signature,
     pub proposal:  Proposal<B>,
+    pub signature: Signature,
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -95,32 +95,32 @@ pub struct Vote {
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash)]
 #[display(
-    fmt = "{{ signature: {}, vote: {}, vote_weight: {}, voter: {} }}",
-    "hex::encode(signature)",
+    fmt = "{{ vote: {}, vote_weight: {}, voter: {}, signature: {},  }}",
     vote,
     vote_weight,
-    "hex::encode(voter)"
+    "hex::encode(voter)",
+    "hex::encode(signature)"
 )]
 pub struct SignedPreVote {
-    pub signature:   Signature,
     pub vote:        Vote,
     pub vote_weight: Weight,
     pub voter:       Address,
+    pub signature:   Signature,
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash)]
 #[display(
-    fmt = "{{ signature: {}, vote: {}, vote_weight: {}, voter: {} }}",
-    "hex::encode(signature)",
+    fmt = "{{ vote: {}, vote_weight: {}, voter: {}, signature: {} }}",
     vote,
     vote_weight,
-    "hex::encode(voter)"
+    "hex::encode(voter)",
+    "hex::encode(signature)"
 )]
 pub struct SignedPreCommit {
-    pub signature:   Signature,
     pub vote:        Vote,
     pub vote_weight: Weight,
     pub voter:       Address,
+    pub signature:   Signature,
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -151,30 +151,30 @@ pub struct PreCommitQC {
 
 #[derive(Clone, Debug, Default, Display, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[display(
-    fmt = "{{ signature: {}, address_bitmap: {} }}",
-    "hex::encode(signature)",
-    "hex::encode(address_bitmap)"
+    fmt = "{{ address_bitmap: {}, signature: {} }}",
+    "hex::encode(address_bitmap)",
+    "hex::encode(signature)"
 )]
 pub struct Aggregates {
-    pub signature:      Signature,
     pub address_bitmap: Bytes,
+    pub signature:      Signature,
 }
 
 #[derive(Clone, Debug, Default, Display, PartialEq, Eq, Hash)]
 #[display(
-    fmt = "{{ signature: {}, choke: {}, vote_weight: {}, from: {}, voter: {} }}",
-    "hex::encode(signature)",
+    fmt = "{{ choke: {}, vote_weight: {}, from: {}, voter: {}, signature: {} }}",
     choke,
     vote_weight,
     from,
-    "hex::encode(voter)"
+    "hex::encode(voter)",
+    "hex::encode(signature)"
 )]
 pub struct SignedChoke {
-    pub signature:   Signature,
     pub choke:       Choke,
     pub vote_weight: Weight,
     pub from:        UpdateFrom,
     pub voter:       Address,
+    pub signature:   Signature,
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -257,10 +257,10 @@ pub struct HeightRange {
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[display(fmt = "{{ vote: {}, agg_signature: {} }}", vote, agg_signature)]
+#[display(fmt = "{{ vote: {}, aggregates: {} }}", vote, aggregates)]
 pub struct Proof {
-    pub vote:          Vote,
-    pub agg_signature: Aggregates,
+    pub vote:       Vote,
+    pub aggregates: Aggregates,
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq)]
@@ -396,6 +396,27 @@ pub enum VoteType {
 impl Default for VoteType {
     fn default() -> Self {
         VoteType::PreVote
+    }
+}
+
+impl Into<u8> for VoteType {
+    fn into(self) -> u8 {
+        match self {
+            VoteType::PreVote => 0,
+            VoteType::PreCommit => 1,
+            VoteType::Choke => 2,
+        }
+    }
+}
+
+impl From<u8> for VoteType {
+    fn from(s: u8) -> Self {
+        match s {
+            0 => VoteType::PreVote,
+            1 => VoteType::PreCommit,
+            2 => VoteType::Choke,
+            _ => panic!("Invalid vote type!"),
+        }
     }
 }
 

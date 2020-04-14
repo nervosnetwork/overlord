@@ -83,9 +83,9 @@ pub trait Adapter<B: Blk, S: St>: Send + Sync {
 
 /// should ensure the same serialization results in different environments
 pub trait Blk: Clone + Debug + Default + Send + PartialEq + Eq {
-    fn encode(&self) -> Result<Bytes, Box<dyn Error + Send>>;
+    fn fixed_encode(&self) -> Result<Bytes, Box<dyn Error + Send>>;
 
-    fn decode(data: &Bytes) -> Result<Self, Box<dyn Error + Send>>;
+    fn fixed_decode(data: &Bytes) -> Result<Self, Box<dyn Error + Send>>;
 
     fn get_block_hash(&self) -> Hash;
 

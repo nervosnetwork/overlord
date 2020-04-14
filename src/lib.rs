@@ -7,7 +7,7 @@ pub mod types;
 
 // mod auth_manage;
 mod cabinet;
-// mod fixed_encode;
+mod codec;
 mod wal;
 
 pub use crypto::{gen_key_pairs, AddressHex, BlsPubKeyHex, DefaultCrypto, PriKeyHex};
