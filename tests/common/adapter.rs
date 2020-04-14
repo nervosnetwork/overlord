@@ -6,8 +6,8 @@ use bytes::Bytes;
 use creep::Context;
 use futures::channel::mpsc::UnboundedSender;
 use overlord::{
-    Adapter, Address, BlockState, ConsensusError, ExecResult, Hash, Height, HeightRange,
-    OverlordMsg, Proof,
+    Adapter, Address, BlockState, ConsensusError, DefaultCrypto, ExecResult, Hash, Height,
+    HeightRange, OverlordMsg, Proof,
 };
 
 use crate::common::block::{Block, ExecState, FullBlock};
@@ -49,6 +49,8 @@ impl OverlordAdapter {
 
 #[async_trait]
 impl Adapter<Block, ExecState> for OverlordAdapter {
+    type CryptoImpl = DefaultCrypto;
+
     async fn create_block(
         &self,
         _ctx: Context,

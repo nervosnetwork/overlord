@@ -8,14 +8,18 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use futures::channel::mpsc::UnboundedSender;
 
+use crate::crypto::PubKeyHex;
 use crate::error::ConsensusError;
 use crate::types::{
-    Address, Aggregates, BlockState, ExecResult, Hash, Height, HeightRange, OverlordMsg, Proof,
-    Signature,
+    Address, Aggregates, BlockState, CommonHex, ExecResult, Hash, Height, HeightRange, OverlordMsg,
+    Proof, Signature,
 };
+use crate::PriKeyHex;
 
 #[async_trait]
 pub trait Adapter<B: Blk, S: Clone + Debug + Default>: Send + Sync {
+    type CryptoImpl: Crypto;
+
     async fn create_block(
         &self,
         ctx: Context,
@@ -98,28 +102,24 @@ pub trait Blk: Clone + Debug + Default + Send + PartialEq + Eq {
 pub trait Crypto: Send {
     fn hash(msg: &Bytes) -> Hash;
 
-    fn update_auth_list(
-        &self,
-        new_auth_list: Vec<(Address, String)>,
-    ) -> Result<(), Box<dyn Error + Send>>;
-
-    fn sign(&self, hash: &Hash) -> Result<Signature, Box<dyn Error + Send>>;
+    fn sign(pri_key: PriKeyHex, hash: &Hash) -> Result<Signature, Box<dyn Error + Send>>;
 
     fn verify_signature(
-        &self,
-        signature: &Signature,
+        common_ref: CommonHex,
+        pub_key: PubKeyHex,
         hash: &Hash,
-        signer: &Address,
+        signature: &Signature,
     ) -> Result<(), Box<dyn Error + Send>>;
 
     fn aggregate(
-        &self,
+        auth_list: &[(Address, String)],
         signatures: HashMap<&Address, &Signature>,
     ) -> Result<Aggregates, Box<dyn Error + Send>>;
 
     fn verify_aggregates(
-        &self,
-        aggregates: &Aggregates,
+        common_ref: CommonHex,
         hash: &Hash,
+        auth_list: &[(Address, PubKeyHex)],
+        aggregates: &Aggregates,
     ) -> Result<(), Box<dyn Error + Send>>;
 }

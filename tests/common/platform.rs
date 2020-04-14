@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::common::adapter::OverlordAdapter;
@@ -8,10 +7,9 @@ use crate::common::block::Transaction;
 use crate::common::mem_pool::MemPool;
 use crate::common::network::Network;
 use crate::common::storage::Storage;
-use overlord::crypto::{CommonRefHex, KeyPairs};
+use overlord::crypto::KeyPairs;
 use overlord::{
-    gen_key_pairs, Address, AddressHex, BlsPubKeyHex, DefaultCrypto, DurationConfig, Node,
-    OverlordConfig, OverlordServer,
+    gen_key_pairs, Address, CommonHex, DurationConfig, Node, OverlordConfig, OverlordServer,
 };
 
 pub struct Platform {
@@ -20,7 +18,7 @@ pub struct Platform {
     storage:  Arc<Storage>,
 
     addresses:      Vec<Address>,
-    common_ref_hex: CommonRefHex,
+    common_ref_hex: CommonHex,
 }
 
 impl Platform {
@@ -72,13 +70,13 @@ fn run_nodes(
     mem_pool: &Arc<MemPool>,
     storage: &Arc<Storage>,
 ) {
-    let common_ref_hex = key_pairs.common_ref.clone();
+    // let common_ref_hex = key_pairs.common_ref.clone();
     let address_list = key_pairs.get_address_list();
-    let auth_list_hex: HashMap<AddressHex, BlsPubKeyHex> = key_pairs
-        .key_pairs
-        .iter()
-        .map(|key_pair| (key_pair.address.clone(), key_pair.bls_public_key.clone()))
-        .collect();
+    // let auth_list_hex: HashMap<AddressHex, BlsPubKeyHex> = key_pairs
+    //     .key_pairs
+    //     .iter()
+    //     .map(|key_pair| (key_pair.address.clone(), key_pair.bls_public_key.clone()))
+    //     .collect();
 
     address_list
         .into_iter()
@@ -92,14 +90,8 @@ fn run_nodes(
                 mem_pool,
                 storage,
             ));
-            let crypto = Arc::new(DefaultCrypto::new(
-                key_pair.private_key,
-                auth_list_hex.clone(),
-                common_ref_hex.clone(),
-            ));
 
-            let overlord_server =
-                OverlordServer::new(address, &adapter, &crypto, &key_pair.address);
+            let overlord_server = OverlordServer::new(address, &adapter, &key_pair.address);
             overlord_server.run()
         });
 }

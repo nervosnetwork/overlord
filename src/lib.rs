@@ -13,7 +13,7 @@ pub use crypto::{gen_key_pairs, AddressHex, BlsPubKeyHex, DefaultCrypto, PriKeyH
 pub use error::{ConsensusError, ConsensusResult};
 pub use traits::{Adapter, Blk, Crypto};
 pub use types::{
-    Address, BlockState, DurationConfig, ExecResult, Hash, Height, HeightRange, Node,
+    Address, BlockState, CommonHex, DurationConfig, ExecResult, Hash, Height, HeightRange, Node,
     OverlordConfig, OverlordMsg, Proof, Round, Signature,
 };
 
@@ -26,35 +26,32 @@ use futures::channel::mpsc::{unbounded, UnboundedReceiver};
 
 use crate::wal::Wal;
 
-pub struct OverlordServer<A, B: Blk, C, S> {
+pub struct OverlordServer<A, B: Blk, S> {
     adapter: Arc<A>,
-    crypto:  Arc<C>,
     network: UnboundedReceiver<(Context, OverlordMsg<B>)>,
     wal:     Wal,
 
     address: Address,
 
-    phantom_data: PhantomData<S>,
+    phantom_s: PhantomData<S>,
 }
 
-impl<A, B, C, S> OverlordServer<A, B, C, S>
+impl<A, B, S> OverlordServer<A, B, S>
 where
     A: Adapter<B, S>,
     B: Blk,
-    C: Crypto,
     S: Clone + Debug + Default,
 {
-    pub fn new(my_address: Address, adapter: &Arc<A>, crypto: &Arc<C>, wal_path: &str) -> Self {
+    pub fn new(my_address: Address, adapter: &Arc<A>, wal_path: &str) -> Self {
         let (sender, receiver) = unbounded();
         adapter.register_network(Context::default(), sender);
 
         OverlordServer {
-            adapter:      Arc::<A>::clone(adapter),
-            crypto:       Arc::<C>::clone(crypto),
-            network:      receiver,
-            wal:          Wal::new(wal_path),
-            address:      my_address,
-            phantom_data: PhantomData,
+            adapter:   Arc::<A>::clone(adapter),
+            network:   receiver,
+            wal:       Wal::new(wal_path),
+            address:   my_address,
+            phantom_s: PhantomData,
         }
     }
 

@@ -10,6 +10,10 @@ pub type Hash = Bytes;
 pub type Address = Bytes;
 pub type Signature = Bytes;
 
+pub type PriKeyHex = String;
+pub type PubKeyHex = String;
+pub type CommonHex = String;
+
 pub type Height = u64;
 pub type Round = u64;
 
