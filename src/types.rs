@@ -356,21 +356,15 @@ pub struct BlockState<S: Clone + Debug + Default> {
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
-    fmt = "{{ common_ref: {}, interval: {}, max_exec_behind: {}, mode: {}, timer_config: {}, auth_list: {} }}",
-    common_ref,
-    interval,
+    fmt = "{{ max_exec_behind: {}, auth_config: {}, timer_config: {} }}",
     max_exec_behind,
-    mode,
-    timer_config,
-    "DisplayVec(auth_list.clone())"
+    auth_config,
+    time_config
 )]
 pub struct OverlordConfig {
-    pub common_ref:      CommonHex,
-    pub interval:        u64,
     pub max_exec_behind: u64,
-    pub mode:            SelectMode,
-    pub timer_config:    DurationConfig,
-    pub auth_list:       Vec<Node>,
+    pub auth_config:     AuthConfig,
+    pub time_config:     TimeConfig,
 }
 
 #[derive(Clone, Debug, Display, PartialEq, Eq, Serialize, Deserialize)]
@@ -387,24 +381,40 @@ impl Default for SelectMode {
     }
 }
 
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[display(
+    fmt = "{{ common_ref: {}, mode: {}, auth_list: {} }}",
+    common_ref,
+    mode,
+    "DisplayVec(auth_list.clone())"
+)]
+pub struct AuthConfig {
+    pub common_ref: CommonHex,
+    pub mode:       SelectMode,
+    pub auth_list:  Vec<Node>,
+}
+
 #[derive(Clone, Debug, Display, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
-    fmt = "{{ propose_ratio: {}, pre_vote_ratio: {}, pre_commit_ratio: {}, brake_ratio: {} }}",
+    fmt = "{{ interval: {}, propose_ratio: {}, pre_vote_ratio: {}, pre_commit_ratio: {}, brake_ratio: {} }}",
+    interval,
     propose_ratio,
     pre_vote_ratio,
     pre_commit_ratio,
     brake_ratio
 )]
-pub struct DurationConfig {
+pub struct TimeConfig {
+    pub interval:         u64,
     pub propose_ratio:    u64,
     pub pre_vote_ratio:   u64,
     pub pre_commit_ratio: u64,
     pub brake_ratio:      u64,
 }
 
-impl Default for DurationConfig {
-    fn default() -> DurationConfig {
-        DurationConfig {
+impl Default for TimeConfig {
+    fn default() -> TimeConfig {
+        TimeConfig {
+            interval:         3000,
             propose_ratio:    15,
             pre_vote_ratio:   10,
             pre_commit_ratio: 7,

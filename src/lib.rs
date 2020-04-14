@@ -8,31 +8,30 @@ pub mod types;
 mod auth_manage;
 mod cabinet;
 mod codec;
+mod state_machine;
+mod timer;
 mod wal;
 
 pub use crypto::{gen_key_pairs, AddressHex, BlsPubKeyHex, DefaultCrypto, PriKeyHex};
 pub use error::{ConsensusError, ConsensusResult};
 pub use traits::{Adapter, Blk, Crypto, St};
 pub use types::{
-    Address, BlockState, CommonHex, DurationConfig, ExecResult, Hash, Height, HeightRange, Node,
-    OverlordConfig, OverlordMsg, Proof, Round, Signature,
+    Address, AuthConfig, BlockState, CommonHex, ExecResult, Hash, Height, HeightRange, Node,
+    OverlordConfig, OverlordMsg, Proof, Round, Signature, TimeConfig,
 };
 
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 use creep::Context;
-use futures::channel::mpsc::{unbounded, UnboundedReceiver};
+use futures::channel::mpsc::unbounded;
 
+use crate::state_machine::StateMachine;
 use crate::wal::Wal;
+use serde::export::PhantomData;
 
-pub struct OverlordServer<A, B: Blk, S> {
-    adapter: Arc<A>,
-    network: UnboundedReceiver<(Context, OverlordMsg<B>)>,
-    wal:     Wal,
-
-    address: Address,
-
+pub struct OverlordServer<A: Adapter<B, S>, B: Blk, S: St> {
+    phantom_a: PhantomData<A>,
+    phantom_b: PhantomData<B>,
     phantom_s: PhantomData<S>,
 }
 
@@ -42,19 +41,18 @@ where
     B: Blk,
     S: St,
 {
-    pub fn new(my_address: Address, adapter: &Arc<A>, wal_path: &str) -> Self {
+    pub fn run(
+        common_ref: CommonHex,
+        pri_key: PriKeyHex,
+        address: Address,
+        adapter: &Arc<A>,
+        wal_path: &str,
+    ) {
         let (sender, receiver) = unbounded();
         adapter.register_network(Context::default(), sender);
+        let state_machine =
+            StateMachine::new(common_ref, pri_key, address, adapter, receiver, wal_path);
 
-        OverlordServer {
-            adapter:   Arc::<A>::clone(adapter),
-            network:   receiver,
-            wal:       Wal::new(wal_path),
-            address:   my_address,
-            phantom_s: PhantomData,
-        }
+        state_machine.run();
     }
-
-    // Todo: run overlord
-    pub fn run(&self) {}
 }

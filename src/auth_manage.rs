@@ -16,15 +16,14 @@ use crate::{Adapter, Address, Blk, CommonHex, Crypto, Hash, Signature, St};
 
 pub struct AuthManage<A: Adapter<B, S>, B: Blk, S: St> {
     common_ref: CommonHex,
+    pri_key:    PriKeyHex,
+    address:    Address,
 
-    pri_key:        PriKeyHex,
-    address:        Address,
     propose_weight: Weight,
     vote_weight:    Weight,
-
-    mode:         SelectMode,
-    current_auth: AuthCell,
-    last_auth:    Option<AuthCell>,
+    mode:           SelectMode,
+    current_auth:   AuthCell,
+    last_auth:      Option<AuthCell>,
 
     phantom_a: PhantomData<A>,
     phantom_b: PhantomData<B>,
@@ -32,6 +31,22 @@ pub struct AuthManage<A: Adapter<B, S>, B: Blk, S: St> {
 }
 
 impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
+    pub fn new(common_ref: CommonHex, pri_key: PriKeyHex, address: Address) -> Self {
+        AuthManage {
+            common_ref,
+            pri_key,
+            address,
+            propose_weight: 0,
+            vote_weight: 0,
+            mode: SelectMode::default(),
+            current_auth: AuthCell::default(),
+            last_auth: None,
+            phantom_a: PhantomData,
+            phantom_b: PhantomData,
+            phantom_s: PhantomData,
+        }
+    }
+
     pub fn update(&mut self, mode: SelectMode, new_auth_list: Vec<Node>) {
         self.mode = mode;
         self.last_auth = Some(self.current_auth.clone());
@@ -228,7 +243,7 @@ fn hash_vote<A: Adapter<B, S>, B: Blk, E: Encodable, S: St>(data: &E, vote_type:
     A::CryptoImpl::hash(&Bytes::from(encode))
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 struct AuthCell {
     list:               AuthList,
     map:                HashMap<Address, PubKeyHex>,

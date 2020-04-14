@@ -6,11 +6,10 @@ use bytes::Bytes;
 use overlord::crypto::{KeyPair, KeyPairs};
 use overlord::types::SelectMode;
 use overlord::{
-    gen_key_pairs, Address, CommonHex, DurationConfig, Node, OverlordConfig, OverlordServer,
+    gen_key_pairs, Address, AuthConfig, CommonHex, Node, OverlordConfig, OverlordServer, TimeConfig,
 };
 
 use crate::common::adapter::OverlordAdapter;
-use crate::common::block::Transaction;
 use crate::common::mem_pool::MemPool;
 use crate::common::network::Network;
 use crate::common::storage::Storage;
@@ -47,25 +46,8 @@ impl Platform {
         }
     }
 
-    // pub fn add_nodes(&self, node_number: usize) -> Vec<Node> {
-    //     let key_pairs = gen_key_pairs(node_number, vec![], Some(self.common_ref_hex.clone()));
-    //     let address_list = key_pairs.get_address_list();
-    //     run_nodes(key_pairs, &self.network, &self.mem_pool, &self.storage);
-    //     to_auth_list(address_list)
-    // }
-
-    pub fn set_auth_list(&self, address_list: Vec<Node>) {
-        let old_tx = self.mem_pool.get_tx();
-
-        let tx = Transaction {
-            interval:        old_tx.interval,
-            max_exec_behind: old_tx.max_exec_behind,
-            common_ref:      old_tx.common_ref,
-            mode:            old_tx.mode,
-            timer_config:    old_tx.timer_config,
-            auth_list:       address_list,
-        };
-        self.mem_pool.send_tx(tx)
+    pub fn set_consensus_config(&self, overlord_config: OverlordConfig) {
+        self.mem_pool.send_tx(overlord_config)
     }
 }
 
@@ -75,13 +57,8 @@ fn run_nodes(
     mem_pool: &Arc<MemPool>,
     storage: &Arc<Storage>,
 ) {
-    // let common_ref_hex = key_pairs.common_ref.clone();
+    let common_ref = key_pairs.common_ref.clone();
     let address_list = key_pairs.get_address_list();
-    // let auth_list_hex: HashMap<AddressHex, BlsPubKeyHex> = key_pairs
-    //     .key_pairs
-    //     .iter()
-    //     .map(|key_pair| (key_pair.address.clone(), key_pair.bls_public_key.clone()))
-    //     .collect();
 
     address_list
         .into_iter()
@@ -96,19 +73,26 @@ fn run_nodes(
                 storage,
             ));
 
-            let overlord_server = OverlordServer::new(address, &adapter, &key_pair.address);
-            overlord_server.run()
+            OverlordServer::run(
+                common_ref.clone(),
+                key_pair.private_key.clone(),
+                address,
+                &adapter,
+                &key_pair.address,
+            );
         });
 }
 
 fn init_config(key_pairs: &KeyPairs) -> OverlordConfig {
+    let auth_config = AuthConfig {
+        common_ref: key_pairs.common_ref.clone(),
+        mode:       SelectMode::InTurn,
+        auth_list:  into_auth_list(&key_pairs.key_pairs),
+    };
     OverlordConfig {
-        interval:        3000,
         max_exec_behind: 5,
-        common_ref:      key_pairs.common_ref.clone(),
-        mode:            SelectMode::InTurn,
-        timer_config:    DurationConfig::default(),
-        auth_list:       into_auth_list(&key_pairs.key_pairs),
+        time_config: TimeConfig::default(),
+        auth_config,
     }
 }
 
