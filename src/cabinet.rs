@@ -6,7 +6,7 @@ use std::error::Error;
 use derive_more::Display;
 
 use crate::types::{
-    ChokeQC, CumulativeWeight, PreCommitQC, PreVoteQC, SignedChoke, SignedPreCommit, SignedPreVote,
+    ChokeQC, CumWeight, PreCommitQC, PreVoteQC, SignedChoke, SignedPreCommit, SignedPreVote,
     SignedProposal, VoteType, Weight,
 };
 use crate::{Address, Blk, Hash, Height, Round};
@@ -66,7 +66,7 @@ impl<B: Blk> Cabinet<B> {
         height: Height,
         round: Round,
         data: Capsule<B>,
-    ) -> Result<Option<CumulativeWeight>, CollectionError<B>> {
+    ) -> Result<Option<CumWeight>, CollectionError<B>> {
         self.0
             .entry(height)
             .or_insert_with(Drawer::default)
@@ -140,9 +140,9 @@ impl<B: Blk> Cabinet<B> {
 #[derive(Default)]
 struct Drawer<B: Blk> {
     collectors:                 HashMap<Round, Grid<B>>,
-    pre_vote_max_vote_weight:   CumulativeWeight,
-    pre_commit_max_vote_weight: CumulativeWeight,
-    choke_max_vote_weight:      CumulativeWeight,
+    pre_vote_max_vote_weight:   CumWeight,
+    pre_commit_max_vote_weight: CumWeight,
+    choke_max_vote_weight:      CumWeight,
 }
 
 impl<B: Blk> Drawer<B> {
@@ -150,24 +150,24 @@ impl<B: Blk> Drawer<B> {
         &mut self,
         round: Round,
         data: Capsule<B>,
-    ) -> Result<Option<CumulativeWeight>, CollectionError<B>> {
+    ) -> Result<Option<CumWeight>, CollectionError<B>> {
         let opt = self
             .collectors
             .entry(round)
             .or_insert_with(Grid::default)
             .insert(data)?;
-        if let Some(cumulative_weight) = opt {
-            return match cumulative_weight.vote_type {
+        if let Some(cum_weight) = opt {
+            return match cum_weight.vote_type {
                 VoteType::PreVote => {
-                    update_max_vote_weight(&mut self.pre_vote_max_vote_weight, cumulative_weight);
+                    update_max_vote_weight(&mut self.pre_vote_max_vote_weight, cum_weight);
                     Ok(Some(self.pre_vote_max_vote_weight.clone()))
                 }
                 VoteType::PreCommit => {
-                    update_max_vote_weight(&mut self.pre_commit_max_vote_weight, cumulative_weight);
+                    update_max_vote_weight(&mut self.pre_commit_max_vote_weight, cum_weight);
                     Ok(Some(self.pre_commit_max_vote_weight.clone()))
                 }
                 VoteType::Choke => {
-                    update_max_vote_weight(&mut self.choke_max_vote_weight, cumulative_weight);
+                    update_max_vote_weight(&mut self.choke_max_vote_weight, cum_weight);
                     Ok(Some(self.choke_max_vote_weight.clone()))
                 }
             };
@@ -233,15 +233,15 @@ pub struct Grid<B: Blk> {
     signed_pre_votes:         HashMap<Address, SignedPreVote>,
     pre_vote_sets:            HashMap<Hash, Vec<SignedPreVote>>,
     pre_vote_vote_weights:    HashMap<Hash, Weight>,
-    pre_vote_max_vote_weight: CumulativeWeight,
+    pre_vote_max_vote_weight: CumWeight,
 
     signed_pre_commits:         HashMap<Address, SignedPreCommit>,
     pre_commit_sets:            HashMap<Hash, Vec<SignedPreCommit>>,
     pre_commit_vote_weights:    HashMap<Hash, Weight>,
-    pre_commit_max_vote_weight: CumulativeWeight,
+    pre_commit_max_vote_weight: CumWeight,
 
     signed_chokes:     HashMap<Address, SignedChoke>,
-    choke_vote_weight: CumulativeWeight,
+    choke_vote_weight: CumWeight,
 
     pre_vote_qc:   Option<PreVoteQC>,
     pre_commit_qc: Option<PreCommitQC>,
@@ -294,7 +294,7 @@ impl<B: Blk> Grid<B> {
         self.pre_commit_sets.get(block_hash).cloned()
     }
 
-    fn insert(&mut self, data: Capsule<B>) -> Result<Option<CumulativeWeight>, CollectionError<B>> {
+    fn insert(&mut self, data: Capsule<B>) -> Result<Option<CumWeight>, CollectionError<B>> {
         match data {
             Capsule::SignedProposal(signed_proposal) => {
                 self.insert_signed_proposal(signed_proposal)
@@ -313,7 +313,7 @@ impl<B: Blk> Grid<B> {
     fn insert_signed_proposal(
         &mut self,
         signed_proposal: SignedProposal<B>,
-    ) -> Result<Option<CumulativeWeight>, CollectionError<B>> {
+    ) -> Result<Option<CumWeight>, CollectionError<B>> {
         check_exist(self.signed_proposal.as_ref(), &signed_proposal)?;
 
         self.signed_proposal = Some(signed_proposal);
@@ -323,23 +323,23 @@ impl<B: Blk> Grid<B> {
     fn insert_signed_pre_vote(
         &mut self,
         signed_pre_vote: SignedPreVote,
-    ) -> Result<Option<CumulativeWeight>, CollectionError<B>> {
+    ) -> Result<Option<CumWeight>, CollectionError<B>> {
         let voter = signed_pre_vote.voter.clone();
         check_exist(self.signed_pre_votes.get(&voter), &signed_pre_vote)?;
 
         let hash = signed_pre_vote.vote.block_hash.clone();
-        let cumulative_weight = update_vote_weight_map(
+        let cum_weight = update_vote_weight_map(
             &mut self.pre_vote_vote_weights,
             &hash,
             signed_pre_vote.vote_weight,
         );
-        let cumulative_weight = CumulativeWeight::new(
-            cumulative_weight,
+        let cum_weight = CumWeight::new(
+            cum_weight,
             VoteType::PreVote,
             signed_pre_vote.vote.round,
             Some(hash.clone()),
         );
-        update_max_vote_weight(&mut self.pre_vote_max_vote_weight, cumulative_weight);
+        update_max_vote_weight(&mut self.pre_vote_max_vote_weight, cum_weight);
 
         self.signed_pre_votes.insert(voter, signed_pre_vote.clone());
         self.pre_vote_sets
@@ -353,23 +353,23 @@ impl<B: Blk> Grid<B> {
     fn insert_signed_pre_commit(
         &mut self,
         signed_pre_commit: SignedPreCommit,
-    ) -> Result<Option<CumulativeWeight>, CollectionError<B>> {
+    ) -> Result<Option<CumWeight>, CollectionError<B>> {
         let voter = signed_pre_commit.voter.clone();
         check_exist(self.signed_pre_commits.get(&voter), &signed_pre_commit)?;
 
         let hash = signed_pre_commit.vote.block_hash.clone();
-        let cumulative_weight = update_vote_weight_map(
+        let cum_weight = update_vote_weight_map(
             &mut self.pre_commit_vote_weights,
             &hash,
             signed_pre_commit.vote_weight,
         );
-        let cumulative_weight = CumulativeWeight::new(
-            cumulative_weight,
+        let cum_weight = CumWeight::new(
+            cum_weight,
             VoteType::PreCommit,
             signed_pre_commit.vote.round,
             Some(hash.clone()),
         );
-        update_max_vote_weight(&mut self.pre_commit_max_vote_weight, cumulative_weight);
+        update_max_vote_weight(&mut self.pre_commit_max_vote_weight, cum_weight);
 
         self.signed_pre_commits
             .insert(voter, signed_pre_commit.clone());
@@ -384,19 +384,15 @@ impl<B: Blk> Grid<B> {
     fn insert_signed_choke(
         &mut self,
         signed_choke: SignedChoke,
-    ) -> Result<Option<CumulativeWeight>, CollectionError<B>> {
+    ) -> Result<Option<CumWeight>, CollectionError<B>> {
         let voter = signed_choke.voter.clone();
         check_exist(self.signed_chokes.get(&voter), &signed_choke)?;
 
         let vote_weight = signed_choke.vote_weight;
-        let cumulative_weight = self.choke_vote_weight.cumulative_weight + vote_weight;
-        let cumulative_weight = CumulativeWeight::new(
-            cumulative_weight,
-            VoteType::Choke,
-            signed_choke.choke.round,
-            None,
-        );
-        update_max_vote_weight(&mut self.choke_vote_weight, cumulative_weight);
+        let cum_weight = self.choke_vote_weight.cum_weight + vote_weight;
+        let cum_weight =
+            CumWeight::new(cum_weight, VoteType::Choke, signed_choke.choke.round, None);
+        update_max_vote_weight(&mut self.choke_vote_weight, cum_weight);
 
         self.signed_chokes.insert(voter, signed_choke);
 
@@ -406,7 +402,7 @@ impl<B: Blk> Grid<B> {
     fn insert_pre_vote_qc(
         &mut self,
         pre_vote_qc: PreVoteQC,
-    ) -> Result<Option<CumulativeWeight>, CollectionError<B>> {
+    ) -> Result<Option<CumWeight>, CollectionError<B>> {
         check_exist(self.pre_vote_qc.as_ref(), &pre_vote_qc)?;
         self.pre_vote_qc = Some(pre_vote_qc);
         Ok(None)
@@ -415,7 +411,7 @@ impl<B: Blk> Grid<B> {
     fn insert_pre_commit_qc(
         &mut self,
         pre_commit_qc: PreCommitQC,
-    ) -> Result<Option<CumulativeWeight>, CollectionError<B>> {
+    ) -> Result<Option<CumWeight>, CollectionError<B>> {
         check_exist(self.pre_commit_qc.as_ref(), &pre_commit_qc)?;
         self.pre_commit_qc = Some(pre_commit_qc);
         Ok(None)
@@ -424,7 +420,7 @@ impl<B: Blk> Grid<B> {
     fn insert_choke_qc(
         &mut self,
         choke_qc: ChokeQC,
-    ) -> Result<Option<CumulativeWeight>, CollectionError<B>> {
+    ) -> Result<Option<CumWeight>, CollectionError<B>> {
         check_exist(self.choke_qc.as_ref(), &choke_qc)?;
         self.choke_qc = Some(choke_qc);
         Ok(None)
@@ -452,17 +448,17 @@ fn update_vote_weight_map(
     hash: &Hash,
     vote_weight: Weight,
 ) -> Weight {
-    let mut cumulative_weight = vote_weight;
+    let mut cum_weight = vote_weight;
     if let Some(vote_weight) = vote_weight_map.get(hash) {
-        cumulative_weight += *vote_weight;
+        cum_weight += *vote_weight;
     }
-    vote_weight_map.insert(hash.clone(), cumulative_weight);
-    cumulative_weight
+    vote_weight_map.insert(hash.clone(), cum_weight);
+    cum_weight
 }
 
-fn update_max_vote_weight(max_weight: &mut CumulativeWeight, cumulative_weight: CumulativeWeight) {
-    if max_weight.cumulative_weight < cumulative_weight.cumulative_weight {
-        *max_weight = cumulative_weight;
+fn update_max_vote_weight(max_weight: &mut CumWeight, cum_weight: CumWeight) {
+    if max_weight.cum_weight < cum_weight.cum_weight {
+        *max_weight = cum_weight;
     }
 }
 
@@ -554,12 +550,7 @@ mod test {
         vote.set(0, 10, Bytes::from("wcc"));
         assert_eq!(
             grid.insert(0, 0, vote.clone().into()).unwrap(),
-            Some(CumulativeWeight::new(
-                10,
-                vote_type.clone(),
-                0,
-                opt_hash.clone()
-            ))
+            Some(CumWeight::new(10, vote_type.clone(), 0, opt_hash.clone()))
         );
 
         assert!(grid.insert(0, 0, vote.clone().into()).is_err());
@@ -568,27 +559,17 @@ mod test {
         vote.set(0, 4, Bytes::from("zyc"));
         assert_eq!(
             grid.insert(0, 0, vote.clone().into()).unwrap(),
-            Some(CumulativeWeight::new(
-                14,
-                vote_type.clone(),
-                0,
-                opt_hash.clone()
-            ))
+            Some(CumWeight::new(14, vote_type.clone(), 0, opt_hash.clone()))
         );
         vote.set(1, 21, Bytes::from("yjy"));
         assert_eq!(
             grid.insert(0, 1, vote.clone().into()).unwrap(),
-            Some(CumulativeWeight::new(
-                21,
-                vote_type.clone(),
-                1,
-                opt_hash.clone()
-            ))
+            Some(CumWeight::new(21, vote_type.clone(), 1, opt_hash.clone()))
         );
         vote.set(0, 5, Bytes::from("zy"));
         assert_eq!(
             grid.insert(0, 0, vote.clone().into()).unwrap(),
-            Some(CumulativeWeight::new(21, vote_type, 1, opt_hash))
+            Some(CumWeight::new(21, vote_type, 1, opt_hash))
         );
     }
 

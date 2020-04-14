@@ -12,8 +12,8 @@ pub use crypto::{gen_key_pairs, AddressHex, BlsPubKeyHex, DefaultCrypto, PriKeyH
 pub use error::{ConsensusError, ConsensusResult};
 pub use traits::{Adapter, Blk, Crypto};
 pub use types::{
-    Address, BlockState, ConsensusConfig, DurationConfig, ExecResult, Hash, Height, HeightRange,
-    Node, OverlordMsg, Proof, Round, Signature,
+    Address, BlockState, DurationConfig, ExecResult, Hash, Height, HeightRange, Node,
+    OverlordConfig, OverlordMsg, Proof, Round, Signature,
 };
 
 use std::fmt::Debug;

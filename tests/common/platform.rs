@@ -10,8 +10,8 @@ use crate::common::network::Network;
 use crate::common::storage::Storage;
 use overlord::crypto::{CommonRefHex, KeyPairs};
 use overlord::{
-    gen_key_pairs, Address, AddressHex, BlsPubKeyHex, ConsensusConfig, DefaultCrypto,
-    DurationConfig, Node, OverlordServer,
+    gen_key_pairs, Address, AddressHex, BlsPubKeyHex, DefaultCrypto, DurationConfig, Node,
+    OverlordConfig, OverlordServer,
 };
 
 pub struct Platform {
@@ -98,8 +98,8 @@ fn run_nodes(
         });
 }
 
-fn init_config(address_list: Vec<Address>) -> ConsensusConfig {
-    ConsensusConfig {
+fn init_config(address_list: Vec<Address>) -> OverlordConfig {
+    OverlordConfig {
         interval:        3000,
         max_exec_behind: 5,
         timer_config:    DurationConfig::default(),

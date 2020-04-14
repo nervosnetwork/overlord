@@ -287,7 +287,7 @@ pub(crate) struct VerifyResp {
     block_states
 )]
 pub struct ExecResult<S: Clone + Debug + Default> {
-    pub consensus_config: ConsensusConfig,
+    pub consensus_config: OverlordConfig,
     pub block_states:     BlockState<S>,
 }
 
@@ -306,7 +306,7 @@ pub struct BlockState<S: Clone + Debug + Default> {
     timer_config,
     "DisplayVec(authority_list.clone())"
 )]
-pub struct ConsensusConfig {
+pub struct OverlordConfig {
     pub interval:        u64,
     pub max_exec_behind: u64,
     pub timer_config:    DurationConfig,
@@ -380,28 +380,28 @@ impl Default for VoteType {
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq)]
 #[display(
-    fmt = "{{ cumulative_weight: {}, vote_type: {}, round: {}, block_hash: {} }}",
-    cumulative_weight,
+    fmt = "{{ cum_weight: {}, vote_type: {}, round: {}, block_hash: {} }}",
+    cum_weight,
     vote_type,
     round,
     "block_hash.clone().map_or(\"None\".to_owned(), hex::encode)"
 )]
-pub struct CumulativeWeight {
-    pub cumulative_weight: Weight,
-    pub vote_type:         VoteType,
-    pub round:             Round,
-    pub block_hash:        Option<Hash>,
+pub struct CumWeight {
+    pub cum_weight: Weight,
+    pub vote_type:  VoteType,
+    pub round:      Round,
+    pub block_hash: Option<Hash>,
 }
 
-impl CumulativeWeight {
+impl CumWeight {
     pub fn new(
-        cumulative_weight: Weight,
+        cum_weight: Weight,
         vote_type: VoteType,
         round: Round,
         block_hash: Option<Hash>,
     ) -> Self {
-        CumulativeWeight {
-            cumulative_weight,
+        CumWeight {
+            cum_weight,
             vote_type,
             round,
             block_hash,

@@ -2,7 +2,7 @@ use std::error::Error;
 
 use bytes::Bytes;
 use derive_more::Display;
-use overlord::{Blk, ConsensusConfig, Crypto, DefaultCrypto, Hash, Height, Proof};
+use overlord::{Blk, Crypto, DefaultCrypto, Hash, Height, OverlordConfig, Proof};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, Display, PartialEq, Eq, Serialize, Deserialize)]
@@ -61,7 +61,7 @@ impl Blk for Block {
     }
 }
 
-pub type Transaction = ConsensusConfig;
+pub type Transaction = OverlordConfig;
 
 #[derive(Clone, Debug, Default)]
 pub struct ExecState {
