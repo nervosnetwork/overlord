@@ -5,7 +5,7 @@ pub mod error;
 pub mod traits;
 pub mod types;
 
-// mod auth_manage;
+mod auth_manage;
 mod cabinet;
 mod codec;
 mod wal;

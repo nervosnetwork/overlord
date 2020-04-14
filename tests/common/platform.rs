@@ -33,7 +33,7 @@ impl Platform {
         let common_ref_hex = key_pairs.common_ref.clone();
 
         let addresses = key_pairs.get_address_list();
-        let init_config = init_config(&key_pairs.key_pairs);
+        let init_config = init_config(&key_pairs);
         let mem_pool = Arc::new(MemPool::new(init_config));
 
         run_nodes(key_pairs, &network, &mem_pool, &storage);
@@ -60,6 +60,7 @@ impl Platform {
         let tx = Transaction {
             interval:        old_tx.interval,
             max_exec_behind: old_tx.max_exec_behind,
+            common_ref:      old_tx.common_ref,
             mode:            old_tx.mode,
             timer_config:    old_tx.timer_config,
             auth_list:       address_list,
@@ -100,13 +101,14 @@ fn run_nodes(
         });
 }
 
-fn init_config(key_pairs: &[KeyPair]) -> OverlordConfig {
+fn init_config(key_pairs: &KeyPairs) -> OverlordConfig {
     OverlordConfig {
         interval:        3000,
         max_exec_behind: 5,
+        common_ref:      key_pairs.common_ref.clone(),
         mode:            SelectMode::InTurn,
         timer_config:    DurationConfig::default(),
-        auth_list:       into_auth_list(key_pairs),
+        auth_list:       into_auth_list(&key_pairs.key_pairs),
     }
 }
 

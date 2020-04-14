@@ -132,26 +132,17 @@ impl Decodable for SignedPreCommit {
 // impl Encodable and Decodable trait for PreVoteQC
 impl Encodable for PreVoteQC {
     fn rlp_append(&self, s: &mut RlpStream) {
-        s.begin_list(3)
-            .append(&self.aggregates)
-            .append(&self.vote)
-            .append(&self.leader.to_vec());
+        s.begin_list(2).append(&self.aggregates).append(&self.vote);
     }
 }
 
 impl Decodable for PreVoteQC {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         match r.prototype()? {
-            Prototype::List(3) => {
+            Prototype::List(2) => {
                 let aggregates: Aggregates = r.val_at(0)?;
                 let vote: Vote = r.val_at(1)?;
-                let tmp: Vec<u8> = r.val_at(2)?;
-                let leader = Address::from(tmp);
-                Ok(PreVoteQC {
-                    aggregates,
-                    vote,
-                    leader,
-                })
+                Ok(PreVoteQC { aggregates, vote })
             }
             _ => Err(DecoderError::RlpInconsistentLengthAndData),
         }
@@ -161,26 +152,17 @@ impl Decodable for PreVoteQC {
 // impl Encodable and Decodable trait for PreCommitQC
 impl Encodable for PreCommitQC {
     fn rlp_append(&self, s: &mut RlpStream) {
-        s.begin_list(3)
-            .append(&self.aggregates)
-            .append(&self.vote)
-            .append(&self.leader.to_vec());
+        s.begin_list(2).append(&self.aggregates).append(&self.vote);
     }
 }
 
 impl Decodable for PreCommitQC {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         match r.prototype()? {
-            Prototype::List(3) => {
+            Prototype::List(2) => {
                 let aggregates: Aggregates = r.val_at(0)?;
                 let vote: Vote = r.val_at(1)?;
-                let tmp: Vec<u8> = r.val_at(2)?;
-                let leader = Address::from(tmp);
-                Ok(PreCommitQC {
-                    aggregates,
-                    vote,
-                    leader,
-                })
+                Ok(PreCommitQC { aggregates, vote })
             }
             _ => Err(DecoderError::RlpInconsistentLengthAndData),
         }

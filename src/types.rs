@@ -55,6 +55,15 @@ pub struct SignedProposal<B: Blk> {
     pub signature: Signature,
 }
 
+impl<B: Blk> SignedProposal<B> {
+    pub fn new(proposal: Proposal<B>, signature: Signature) -> Self {
+        SignedProposal {
+            proposal,
+            signature,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
     fmt = "{{ height: {}, round: {}, block_hash: {}, lock: {}, proposer: {} }}",
@@ -108,6 +117,17 @@ pub struct SignedPreVote {
     pub signature:   Signature,
 }
 
+impl SignedPreVote {
+    pub fn new(vote: Vote, vote_weight: Weight, voter: Address, signature: Signature) -> Self {
+        SignedPreVote {
+            vote,
+            vote_weight,
+            voter,
+            signature,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash)]
 #[display(
     fmt = "{{ vote: {}, vote_weight: {}, voter: {}, signature: {} }}",
@@ -123,30 +143,41 @@ pub struct SignedPreCommit {
     pub signature:   Signature,
 }
 
-#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[display(
-    fmt = "{{ aggregates: {}, vote: {}, leader: {} }}",
-    aggregates,
-    vote,
-    "hex::encode(leader)"
-)]
-pub struct PreVoteQC {
-    pub aggregates: Aggregates,
-    pub vote:       Vote,
-    pub leader:     Address,
+impl SignedPreCommit {
+    pub fn new(vote: Vote, vote_weight: Weight, voter: Address, signature: Signature) -> Self {
+        SignedPreCommit {
+            vote,
+            vote_weight,
+            voter,
+            signature,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[display(
-    fmt = "{{ aggregates: {}, vote: {}, leader: {} }}",
-    aggregates,
-    vote,
-    "hex::encode(leader)"
-)]
-pub struct PreCommitQC {
-    pub aggregates: Aggregates,
+#[display(fmt = "{{ vote: {}, aggregates: {} }}", vote, aggregates)]
+pub struct PreVoteQC {
     pub vote:       Vote,
-    pub leader:     Address,
+    pub aggregates: Aggregates,
+}
+
+impl PreVoteQC {
+    pub fn new(vote: Vote, aggregates: Aggregates) -> Self {
+        PreVoteQC { vote, aggregates }
+    }
+}
+
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[display(fmt = "{{ vote: {}, aggregates: {} }}", vote, aggregates)]
+pub struct PreCommitQC {
+    pub vote:       Vote,
+    pub aggregates: Aggregates,
+}
+
+impl PreCommitQC {
+    pub fn new(vote: Vote, aggregates: Aggregates) -> Self {
+        PreCommitQC { vote, aggregates }
+    }
 }
 
 #[derive(Clone, Debug, Default, Display, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -298,7 +329,8 @@ pub struct BlockState<S: Clone + Debug + Default> {
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
-    fmt = "{{ interval: {}, max_exec_behind: {}, mode: {}, timer_config: {}, auth_list: {} }}",
+    fmt = "{{ common_ref: {}, interval: {}, max_exec_behind: {}, mode: {}, timer_config: {}, auth_list: {} }}",
+    common_ref,
     interval,
     max_exec_behind,
     mode,
@@ -306,6 +338,7 @@ pub struct BlockState<S: Clone + Debug + Default> {
     "DisplayVec(auth_list.clone())"
 )]
 pub struct OverlordConfig {
+    pub common_ref:      CommonHex,
     pub interval:        u64,
     pub max_exec_behind: u64,
     pub mode:            SelectMode,
