@@ -34,10 +34,6 @@ impl MemPool {
         state_root: Hash,
         receipt_roots: Vec<Hash>,
     ) -> Block {
-        if height == 0 {
-            return Block::genesis_block();
-        }
-
         let tx = self.tx.read().clone();
         Block {
             pre_hash,

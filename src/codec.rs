@@ -1,11 +1,12 @@
 use bytes::Bytes;
 use rlp::{Decodable, DecoderError, Encodable, Prototype, Rlp, RlpStream};
 
+use crate::state::{Stage, StateInfo, Step};
 use crate::types::{
     Aggregates, Choke, ChokeQC, PoLC, PreCommitQC, PreVoteQC, Proposal, SignedChoke,
-    SignedPreCommit, SignedPreVote, SignedProposal, UpdateFrom, Vote, Weight,
+    SignedPreCommit, SignedPreVote, SignedProposal, TimeConfig, UpdateFrom, Vote, Weight,
 };
-use crate::{Address, Blk, Hash, Height, Round, Signature};
+use crate::{Address, Blk, Hash, Height, Proof, Round, Signature};
 
 // impl Encodable and Decodable trait for Aggregates
 impl Encodable for Aggregates {
@@ -376,6 +377,142 @@ impl<B: Blk> Decodable for SignedProposal<B> {
                 Ok(SignedProposal {
                     signature,
                     proposal,
+                })
+            }
+            _ => Err(DecoderError::RlpInconsistentLengthAndData),
+        }
+    }
+}
+
+// impl Encodable and Decodable trait for StateInfo
+impl Encodable for Stage {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        let step: u8 = self.step.clone().into();
+        s.begin_list(3)
+            .append(&self.height)
+            .append(&self.round)
+            .append(&step);
+    }
+}
+
+impl Decodable for Stage {
+    fn decode(r: &Rlp) -> Result<Self, DecoderError> {
+        match r.prototype()? {
+            Prototype::List(3) => {
+                let height: Height = r.val_at(0)?;
+                let round: Round = r.val_at(1)?;
+                let tmp: u8 = r.val_at(2)?;
+                let step = Step::from(tmp);
+                Ok(Stage {
+                    height,
+                    round,
+                    step,
+                })
+            }
+            _ => Err(DecoderError::RlpInconsistentLengthAndData),
+        }
+    }
+}
+
+// impl Encodable and Decodable trait for StateInfo
+impl<B: Blk> Encodable for StateInfo<B> {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        let block = self
+            .block
+            .as_ref()
+            .map(|block| block.fixed_encode().unwrap().to_vec());
+        s.begin_list(7)
+            .append(&self.stage)
+            .append(&self.polc)
+            .append(&self.pre_commit_qc)
+            .append(&self.pre_proof)
+            .append(&self.from)
+            .append(&self.time_config)
+            .append(&block);
+    }
+}
+
+impl<B: Blk> Decodable for StateInfo<B> {
+    fn decode(r: &Rlp) -> Result<Self, DecoderError> {
+        match r.prototype()? {
+            Prototype::List(7) => {
+                let stage: Stage = r.val_at(0)?;
+                let polc: Option<PoLC> = r.val_at(1)?;
+                let pre_commit_qc: Option<PreCommitQC> = r.val_at(2)?;
+                let pre_proof: Proof = r.val_at(3)?;
+                let from: Option<UpdateFrom> = r.val_at(4)?;
+                let time_config: TimeConfig = r.val_at(5)?;
+                let tmp: Option<Vec<u8>> = r.val_at(6)?;
+                let block = if let Some(v) = tmp {
+                    Some(
+                        B::fixed_decode(&Bytes::from(v))
+                            .map_err(|_| DecoderError::Custom("Codec decode error."))?,
+                    )
+                } else {
+                    None
+                };
+                Ok(StateInfo {
+                    stage,
+                    time_config,
+                    polc,
+                    pre_commit_qc,
+                    pre_proof,
+                    from,
+                    block,
+                })
+            }
+            _ => Err(DecoderError::RlpInconsistentLengthAndData),
+        }
+    }
+}
+
+// impl Encodable and Decodable trait for Proof
+impl Encodable for Proof {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        s.begin_list(2).append(&self.vote).append(&self.aggregates);
+    }
+}
+
+impl Decodable for Proof {
+    fn decode(r: &Rlp) -> Result<Self, DecoderError> {
+        match r.prototype()? {
+            Prototype::List(2) => {
+                let vote: Vote = r.val_at(0)?;
+                let aggregates: Aggregates = r.val_at(1)?;
+                Ok(Proof { vote, aggregates })
+            }
+            _ => Err(DecoderError::RlpInconsistentLengthAndData),
+        }
+    }
+}
+
+// impl Encodable and Decodable trait for TimeConfig
+impl Encodable for TimeConfig {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        s.begin_list(5)
+            .append(&self.interval)
+            .append(&self.propose_ratio)
+            .append(&self.pre_vote_ratio)
+            .append(&self.pre_commit_ratio)
+            .append(&self.brake_ratio);
+    }
+}
+
+impl Decodable for TimeConfig {
+    fn decode(r: &Rlp) -> Result<Self, DecoderError> {
+        match r.prototype()? {
+            Prototype::List(5) => {
+                let interval: u64 = r.val_at(0)?;
+                let propose_ratio: u64 = r.val_at(1)?;
+                let pre_vote_ratio: u64 = r.val_at(2)?;
+                let pre_commit_ratio: u64 = r.val_at(3)?;
+                let brake_ratio: u64 = r.val_at(4)?;
+                Ok(TimeConfig {
+                    interval,
+                    propose_ratio,
+                    pre_vote_ratio,
+                    pre_commit_ratio,
+                    brake_ratio,
                 })
             }
             _ => Err(DecoderError::RlpInconsistentLengthAndData),

@@ -48,7 +48,7 @@ impl Storage {
         let height_end = if range.to < latest_height {
             range.to
         } else {
-            latest_height
+            latest_height + 1
         };
 
         let block_map = self.block_map.read();

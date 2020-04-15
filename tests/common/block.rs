@@ -2,7 +2,12 @@ use std::error::Error;
 
 use bytes::Bytes;
 use derive_more::Display;
-use overlord::{Blk, Crypto, DefaultCrypto, Hash, Height, OverlordConfig, Proof, St};
+use overlord::crypto::{hex_to_address, KeyPairs};
+use overlord::types::SelectMode;
+use overlord::{
+    AuthConfig, Blk, Crypto, DefaultCrypto, Hash, Height, Node, OverlordConfig, Proof, St,
+    TimeConfig,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, Display, PartialEq, Eq, Serialize, Deserialize)]
@@ -26,8 +31,39 @@ pub struct Block {
 }
 
 impl Block {
-    pub fn genesis_block() -> Self {
-        Block::default()
+    pub fn new(
+        key_pairs: &KeyPairs,
+        mode: SelectMode,
+        max_exec_behind: u64,
+        time_config: TimeConfig,
+    ) -> Self {
+        let common_ref = key_pairs.common_ref.clone();
+
+        let auth_list = key_pairs
+            .key_pairs
+            .iter()
+            .map(|key_pair| {
+                Node::new(
+                    hex_to_address(&key_pair.address).unwrap(),
+                    key_pair.bls_public_key.clone(),
+                    1,
+                    1,
+                )
+            })
+            .collect();
+        let auth_config = AuthConfig {
+            common_ref,
+            mode,
+            auth_list,
+        };
+        let overlord_config = OverlordConfig {
+            max_exec_behind,
+            auth_config,
+            time_config,
+        };
+        let mut block = Block::default();
+        block.tx = overlord_config;
+        block
     }
 }
 

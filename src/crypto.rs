@@ -186,6 +186,10 @@ pub fn hex_to_common_ref(hex_str: &str) -> Result<BlsCommonReference, CryptoErro
         .map_err(CryptoError::TryInfoCommonRefFailed)
 }
 
+pub fn hex_to_address(hex_str: &str) -> Result<Address, CryptoError> {
+    Ok(Address::from(hex_decode(hex_str)?))
+}
+
 fn add_0x(s: String) -> String {
     "0x".to_owned() + &s
 }

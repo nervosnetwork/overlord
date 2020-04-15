@@ -31,8 +31,8 @@ use crate::auth::AuthFixedConfig;
 use crate::smr::StateMachine;
 use crate::wal::Wal;
 
-const INIT_HEIGHT: Height = 0;
-const INIT_ROUND: Round = 0;
+pub const INIT_HEIGHT: Height = 0;
+pub const INIT_ROUND: Round = 0;
 
 pub struct OverlordServer<A: Adapter<B, S>, B: Blk, S: St> {
     phantom_a: PhantomData<A>,

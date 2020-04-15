@@ -5,7 +5,7 @@ use std::error::Error;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::task::{Context as TaskCx, Poll};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{future::Future, pin::Pin};
 
 use creep::Context;
@@ -31,8 +31,8 @@ const MULTIPLIER_CAP: u32 = 5;
 pub type WrappedOverlordMsg<B> = (Context, OverlordMsg<B>);
 
 pub struct StateMachine<A: Adapter<B, S>, B: Blk, S: St> {
-    state:       StateInfo,
-    time_config: TimeConfig,
+    state:        StateInfo<B>,
+    height_start: Instant,
 
     adapter: Arc<A>,
     wal:     Wal,
@@ -64,19 +64,18 @@ where
         let (to_timeout, from_timeout) = unbounded();
         // check wal
         let wal = Wal::new(wal_path);
-        if let Err(err) = StateInfo::from_wal(&wal) {
-            error!("Load state from wal failed: {}", err);
-            let latest_height = adapter.get_latest_height(Context::default()).await.expect(
-                "Nothing can get from both wal and adapter! It's meaningless to continue running",
-            );
-            let block = adapter.get_block_with_proofs(Context::default(), HeightRange::new(latest_height, 1)).await.expect("Nothing can get from both wal and adapter! It's meaningless to continue running");
-        }
-        // if wal has nothing, get latest_height
 
-        //
+        let v = StateInfo::<B>::from_wal(&wal);
+        let state = if let Err(e) = v {
+            error!("Load wal failed! Try to recover state from the adapter, which face a little security risk for auth nodes");
+            get_state_from_adapter(adapter).await
+        } else {
+            v.unwrap()
+        };
+
         StateMachine {
             state: StateInfo::default(),
-            time_config: TimeConfig::default(),
+            height_start: Instant::now(),
             adapter: Arc::<A>::clone(adapter),
             wal: Wal::new(wal_path),
             cabinet: Cabinet::default(),
@@ -132,6 +131,33 @@ where
         Ok(())
     }
 }
+
+async fn get_state_from_adapter<A: Adapter<B, S>, B: Blk, S: St>(adapter: &Arc<A>) -> StateInfo<B> {
+    let expect_str =
+        "Nothing can get from both wal and adapter! It's meaningless to continue running";
+    let ctx = Context::default();
+    let latest_height = adapter
+        .get_latest_height(ctx.clone())
+        .await
+        .expect(expect_str);
+    let vec = adapter
+        .get_block_with_proofs(ctx.clone(), HeightRange::new(latest_height, 1))
+        .await
+        .expect(expect_str);
+    println!("{}", vec.len());
+    let (block, proof) = vec[0].clone();
+    let full_block = adapter
+        .fetch_full_block(ctx.clone(), &block)
+        .await
+        .expect(expect_str);
+    let exec_result = adapter
+        .save_and_exec_block_with_proof(ctx, latest_height, full_block, proof.clone())
+        .await
+        .expect(expect_str);
+    let time_config = exec_result.consensus_config.time_config;
+    StateInfo::new(latest_height, time_config, proof)
+}
+
 impl<A, B, S> Stream for StateMachine<A, B, S>
 where
     A: Adapter<B, S>,

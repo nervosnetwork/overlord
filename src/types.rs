@@ -4,7 +4,7 @@ use bytes::Bytes;
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
 
-use crate::Blk;
+use crate::{Blk, St};
 
 pub type Hash = Bytes;
 pub type Address = Bytes;
@@ -357,14 +357,14 @@ pub(crate) struct FetchedFullBlock {
     consensus_config,
     block_states
 )]
-pub struct ExecResult<S: Clone + Debug + Default> {
+pub struct ExecResult<S: St> {
     pub consensus_config: OverlordConfig,
     pub block_states:     BlockState<S>,
 }
 
 #[derive(Clone, Debug, Display, Default)]
 #[display(fmt = "{{ height: {}, state: {:?} }}", height, state)]
-pub struct BlockState<S: Clone + Debug + Default> {
+pub struct BlockState<S: St> {
     pub height: Height,
     pub state:  S,
 }

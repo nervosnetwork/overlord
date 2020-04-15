@@ -6,10 +6,12 @@ use bytes::Bytes;
 use overlord::crypto::{KeyPair, KeyPairs};
 use overlord::types::SelectMode;
 use overlord::{
-    gen_key_pairs, Address, AuthConfig, CommonHex, Node, OverlordConfig, OverlordServer, TimeConfig,
+    gen_key_pairs, Address, AuthConfig, CommonHex, Node, OverlordConfig, OverlordServer, Proof,
+    TimeConfig,
 };
 
 use crate::common::adapter::OverlordAdapter;
+use crate::common::block::Block;
 use crate::common::mem_pool::MemPool;
 use crate::common::network::Network;
 use crate::common::storage::Storage;
@@ -58,10 +60,11 @@ async fn run_nodes(
     storage: &Arc<Storage>,
 ) {
     let common_ref = key_pairs.common_ref.clone();
-
+    let genesis_block = Block::new(&key_pairs, SelectMode::InTurn, 5, TimeConfig::default());
     for key_pair in key_pairs.key_pairs {
         let address = hex_to_address(&key_pair.address);
         storage.register(address.clone());
+        storage.save_block_with_proof(address.clone(), 0, genesis_block.clone(), Proof::default());
         let adapter = Arc::new(OverlordAdapter::new(
             address.clone(),
             network,

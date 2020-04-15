@@ -5,51 +5,102 @@ use std::error::Error;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use bincode::{deserialize, serialize, ErrorKind};
 use bytes::Bytes;
 use creep::Context;
 use derive_more::Display;
 use futures::channel::mpsc::UnboundedReceiver;
-use serde::{Deserialize, Serialize};
+use rlp::{decode, encode, DecoderError};
 
 use crate::auth::AuthManage;
 use crate::cabinet::Cabinet;
-use crate::types::{Proposal, UpdateFrom};
+use crate::types::{PoLC, PreCommitQC, Proposal, UpdateFrom};
 use crate::wal::WalError;
-use crate::{Adapter, Address, Blk, CommonHex, Height, OverlordMsg, PriKeyHex, Round, St, Wal};
+use crate::{
+    Adapter, Address, Blk, CommonHex, Height, OverlordConfig, OverlordMsg, PriKeyHex, Proof, Round,
+    St, TimeConfig, Wal, INIT_ROUND,
+};
 
-#[derive(Clone, Debug, Display, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, Default, Eq, PartialEq)]
 #[display(
-    fmt = "stage: {}, lock_round: {}, from: {}",
+    fmt = "stage: {}, polc: {}, pre_commit_qc: {}, from: {}, pre_proof: {}",
     stage,
-    "lock_round.clone().map_or(\"None\".to_owned(), |lock_round| format!(\"{}\", lock_round))",
-    "from.clone().map_or(\"None\".to_owned(), |from| format!(\"{}\", from))"
+    "polc.clone().map_or(\"None\".to_owned(), |polc| format!(\"{}\", polc))",
+    "pre_commit_qc.clone().map_or(\"None\".to_owned(), |qc| format!(\"{}\", qc))",
+    "from.clone().map_or(\"None\".to_owned(), |from| format!(\"{}\", from))",
+    pre_proof
 )]
-pub struct StateInfo {
-    pub stage:      Stage,
-    pub lock_round: Option<Round>,
-    pub from:       Option<UpdateFrom>,
+pub struct StateInfo<B: Blk> {
+    pub stage:         Stage,
+    pub time_config:   TimeConfig,
+    pub polc:          Option<PoLC>,
+    pub pre_commit_qc: Option<PreCommitQC>,
+    pub block:         Option<B>,
+    pub from:          Option<UpdateFrom>,
+    pub pre_proof:     Proof,
 }
 
-impl StateInfo {
+impl<B: Blk> StateInfo<B> {
+    pub fn new(height: Height, time_config: TimeConfig, pre_proof: Proof) -> Self {
+        StateInfo {
+            stage: Stage::new(height),
+            time_config,
+            pre_proof,
+            polc: None,
+            pre_commit_qc: None,
+            block: None,
+            from: None,
+        }
+    }
+
     pub fn from_wal(wal: &Wal) -> Result<Self, StateError> {
         let encode = wal.load_state().map_err(StateError::Wal)?;
-        deserialize(&encode).map_err(StateError::BinCode)
+        decode(&encode).map_err(StateError::Decode)
     }
 
     pub fn save_wal(&self, wal: &Wal) -> Result<(), StateError> {
-        let encode = serialize(self).map_err(StateError::BinCode)?;
+        let encode = encode(self);
         wal.save_state(&Bytes::from(encode))
             .map_err(StateError::Wal)
     }
 }
 
-#[derive(Clone, Debug, Display, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, Default, Eq, PartialEq)]
 #[display(fmt = "height: {}, round: {}, step: {}", height, round, step)]
 pub struct Stage {
     pub height: Height,
     pub round:  Round,
     pub step:   Step,
+}
+
+impl Stage {
+    pub fn new(height: Height) -> Self {
+        Stage {
+            height,
+            round: INIT_ROUND,
+            step: Step::Propose,
+        }
+    }
+
+    pub fn next_height(&mut self) {
+        self.height += 1;
+        self.round = INIT_ROUND;
+        self.step = Step::Propose;
+    }
+
+    pub fn next_round(&mut self) {
+        self.round += 1;
+        self.step = Step::Propose;
+    }
+
+    pub fn goto_step(&mut self, step: Step) {
+        assert!(self.step >= step);
+        self.step = step;
+    }
+
+    pub fn update_stage(&mut self, stage: Stage) {
+        assert!(*self >= stage);
+        *self = stage;
+    }
 }
 
 impl PartialOrd for Stage {
@@ -72,7 +123,7 @@ impl Ord for Stage {
     }
 }
 
-#[derive(Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Step {
     #[display(fmt = "Propose step")]
     Propose,
@@ -122,7 +173,7 @@ pub enum StateError {
     #[display(fmt = "{}", _0)]
     Wal(WalError),
     #[display(fmt = "{:?}", _0)]
-    BinCode(Box<ErrorKind>),
+    Decode(DecoderError),
 }
 
 impl Error for StateError {}
