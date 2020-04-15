@@ -1,7 +1,8 @@
 use crate::state::Stage;
+use crate::TimeConfig;
 
 pub enum SMREvent {
-    NewHeight(Stage),
+    NewHeight(Stage, TimeConfig),
     NewRound(Stage),
     PreVote(Stage),
     PreCommit(Stage),

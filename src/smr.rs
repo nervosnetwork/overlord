@@ -9,12 +9,12 @@ use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use crate::auth::{AuthFixedConfig, AuthManage};
 use crate::cabinet::Cabinet;
 use crate::event::{SMREvent, TimerEvent};
-use crate::state::Stage;
+use crate::state::{Stage, StateInfo};
 use crate::types::{Proposal, UpdateFrom};
 use crate::{Adapter, Address, Blk, CommonHex, OverlordMsg, PriKeyHex, Round, St, Wal};
 
 pub struct StateMachine<A: Adapter<B, S>, B: Blk, S: St> {
-    stage: Stage,
+    state: StateInfo,
 
     adapter: Arc<A>,
     wal:     Wal,
@@ -43,7 +43,7 @@ where
         wal_path: &str,
     ) -> Self {
         StateMachine {
-            stage:      Stage::default(),
+            state:      StateInfo::default(),
             adapter:    Arc::<A>::clone(adapter),
             wal:        Wal::new(wal_path),
             cabinet:    Cabinet::default(),

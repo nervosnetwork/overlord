@@ -14,18 +14,16 @@ use crate::cabinet::Cabinet;
 use crate::types::{Proposal, UpdateFrom};
 use crate::{Adapter, Address, Blk, CommonHex, Height, OverlordMsg, PriKeyHex, Round, St, Wal};
 
-#[derive(Serialize, Deserialize, Clone, Debug, Display, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Display, Default, Eq, PartialEq)]
 #[display(
-    fmt = "stage: {}, lock_round: {}, proposal: {}, from: {}",
+    fmt = "stage: {}, lock_round: {}, from: {}",
     stage,
     "lock_round.clone().map_or(\"None\".to_owned(), |lock_round| format!(\"{}\", lock_round))",
-    "proposal.clone().map_or(\"None\".to_owned(), |proposal| format!(\"{}\", proposal))",
     "from.clone().map_or(\"None\".to_owned(), |from| format!(\"{}\", from))"
 )]
-pub struct StateInfo<B: Blk> {
+pub struct StateInfo {
     pub stage:      Stage,
     pub lock_round: Option<Round>,
-    pub proposal:   Option<Proposal<B>>,
     pub from:       Option<UpdateFrom>,
 }
 
