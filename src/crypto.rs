@@ -1,9 +1,10 @@
+#![allow(unused_imports)]
+
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::error::Error;
 use std::str::Utf8Error;
 
-use bit_vec::BitVec;
 use bytes::{Bytes, BytesMut};
 use derive_more::Display;
 use hasher::{Hasher, HasherKeccak};
@@ -73,51 +74,33 @@ impl Crypto for DefaultCrypto {
     }
 
     fn aggregate(
-        auth_list: &[(Address, PubKeyHex)],
-        signatures: HashMap<&Address, &SigBytes>,
-    ) -> Result<Aggregates, Box<dyn Error + Send>> {
+        signatures: HashMap<&BlsPubKeyHex, &SigBytes>,
+    ) -> Result<SigBytes, Box<dyn Error + Send>> {
         let mut combine = Vec::with_capacity(signatures.len());
-        let mut bit_map = BitVec::from_elem(auth_list.len(), false);
 
-        for (index, (address, pub_key_hex)) in auth_list.iter().enumerate() {
-            if let Some(signature) = signatures.get(address) {
-                let signature = BlsSignature::try_from(signature.as_ref())
-                    .map_err(CryptoError::TryInfoBlsSignatureFailed)?;
-                let pub_key = hex_to_bls_pub_key(pub_key_hex)?;
-                combine.push((signature, pub_key));
-                bit_map.set(index, true);
-            }
+        for (pub_key, signature) in signatures.into_iter() {
+            let signature = BlsSignature::try_from(signature.as_ref())
+                .map_err(CryptoError::TryInfoBlsSignatureFailed)?;
+            let pub_key = hex_to_bls_pub_key(pub_key)?;
+            combine.push((signature, pub_key));
         }
 
-        let aggregates = Aggregates {
-            signature:      BlsSignature::combine(combine).to_bytes(),
-            address_bitmap: Bytes::from(bit_map.to_bytes()),
-        };
-
-        Ok(aggregates)
+        Ok(BlsSignature::combine(combine).to_bytes())
     }
 
     fn verify_aggregates(
         common_ref: CommonHex,
         hash: &Hash,
-        auth_list: &[(Address, PubKeyHex)],
-        aggregates: &Aggregates,
+        pub_keys: &[BlsPubKeyHex],
+        signature: &SigBytes,
     ) -> Result<(), Box<dyn Error + Send>> {
-        let signature = aggregates.signature.clone();
-        let bitmap = aggregates.address_bitmap.clone();
-        let signers = get_signers(auth_list, &bitmap);
-
-        let auth_map: HashMap<Address, PubKeyHex> = auth_list.to_vec().into_iter().collect();
-        let mut pub_keys = Vec::new();
-        for signer in signers.iter() {
-            let pub_key = auth_map
-                .get(signer)
-                .ok_or_else(|| CryptoError::UnauthorizedAddress(hex::encode(signer)))?;
+        let mut list = Vec::new();
+        for pub_key in pub_keys.iter() {
             let pub_key = hex_to_bls_pub_key(pub_key)?;
-            pub_keys.push(pub_key);
+            list.push(pub_key);
         }
 
-        let aggregate_key = BlsPublicKey::aggregate(pub_keys.iter().collect());
+        let aggregate_key = BlsPublicKey::aggregate(list.iter().collect());
         let aggregated_signature = BlsSignature::try_from(signature.as_ref())
             .map_err(CryptoError::TryInfoBlsSignatureFailed)?;
         let hash =
@@ -129,16 +112,6 @@ impl Crypto for DefaultCrypto {
             .map_err(CryptoError::VerifyAggregateFailed)?;
         Ok(())
     }
-}
-
-pub fn get_signers(auth_list: &[(Address, PubKeyHex)], bitmap: &[u8]) -> Vec<Address> {
-    let bitmap = BitVec::from_bytes(bitmap);
-    bitmap
-        .iter()
-        .zip(auth_list.iter())
-        .filter(|node| node.0)
-        .map(|node| (node.1).0.clone())
-        .collect()
 }
 
 #[derive(Default, Serialize, Debug, PartialEq, Eq)]
@@ -291,9 +264,6 @@ pub enum CryptoError {
     #[display(fmt = "Decode Hex failed, {:?}", _0)]
     HexDecodeFailed(FromHexError),
 
-    #[display(fmt = "Unauthorized address {}", _0)]
-    UnauthorizedAddress(AddressHex),
-
     #[display(fmt = "Verify signature failed, {:?}", _0)]
     VerifyFailed(SigError),
 
@@ -416,13 +386,18 @@ mod test {
 
         // test aggregate_sign and verify_aggregated_signature
         let mut map = HashMap::new();
-        map.insert(&addresses[0], &sig_0);
-        map.insert(&addresses[1], &sig_1);
+        map.insert(&auth_list[0].1, &sig_0);
+        map.insert(&auth_list[1].1, &sig_1);
         let mut signers = Vec::new();
         signers.push(&addresses[1]);
         signers.push(&addresses[0]);
-        let agg_sig = DefaultCrypto::aggregate(auth_list.as_slice(), map).unwrap();
-        DefaultCrypto::verify_aggregates(common_ref, &hash, auth_list.as_slice(), &agg_sig)
-            .unwrap();
+        let agg_sig = DefaultCrypto::aggregate(map).unwrap();
+        DefaultCrypto::verify_aggregates(
+            common_ref,
+            &hash,
+            vec![auth_list[0].1.clone(), auth_list[1].1.clone()].as_slice(),
+            &agg_sig,
+        )
+        .unwrap();
     }
 }

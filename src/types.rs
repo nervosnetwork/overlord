@@ -191,6 +191,15 @@ pub struct Aggregates {
     pub signature:      Signature,
 }
 
+impl Aggregates {
+    pub fn new(address_bitmap: Bytes, signature: Signature) -> Self {
+        Aggregates {
+            address_bitmap,
+            signature,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, Display, PartialEq, Eq, Hash)]
 #[display(
     fmt = "{{ choke: {}, vote_weight: {}, from: {}, voter: {}, signature: {} }}",

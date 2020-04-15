@@ -1,3 +1,5 @@
+#![allow(unused_imports)]
+
 pub use creep::Context;
 
 use std::collections::HashMap;
@@ -114,14 +116,13 @@ pub trait Crypto: Send {
     ) -> Result<(), Box<dyn Error + Send>>;
 
     fn aggregate(
-        auth_list: &[(Address, String)],
-        signatures: HashMap<&Address, &Signature>,
-    ) -> Result<Aggregates, Box<dyn Error + Send>>;
+        signatures: HashMap<&PubKeyHex, &Signature>,
+    ) -> Result<Signature, Box<dyn Error + Send>>;
 
     fn verify_aggregates(
         common_ref: CommonHex,
         hash: &Hash,
-        auth_list: &[(Address, PubKeyHex)],
-        aggregates: &Aggregates,
+        pub_keys: &[PubKeyHex],
+        signature: &Signature,
     ) -> Result<(), Box<dyn Error + Send>>;
 }
