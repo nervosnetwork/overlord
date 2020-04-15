@@ -1,9 +1,12 @@
 #![allow(unused_imports)]
 
 use std::cmp::{Ord, Ordering, PartialOrd};
+use std::error::Error;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+use bincode::{deserialize, serialize, ErrorKind};
+use bytes::Bytes;
 use creep::Context;
 use derive_more::Display;
 use futures::channel::mpsc::UnboundedReceiver;
@@ -12,9 +15,10 @@ use serde::{Deserialize, Serialize};
 use crate::auth::AuthManage;
 use crate::cabinet::Cabinet;
 use crate::types::{Proposal, UpdateFrom};
+use crate::wal::WalError;
 use crate::{Adapter, Address, Blk, CommonHex, Height, OverlordMsg, PriKeyHex, Round, St, Wal};
 
-#[derive(Serialize, Deserialize, Clone, Debug, Display, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Display, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[display(
     fmt = "stage: {}, lock_round: {}, from: {}",
     stage,
@@ -27,7 +31,20 @@ pub struct StateInfo {
     pub from:       Option<UpdateFrom>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Display, Default, Eq, PartialEq)]
+impl StateInfo {
+    pub fn from_wal(wal: &Wal) -> Result<Self, StateError> {
+        let encode = wal.load_state().map_err(StateError::Wal)?;
+        deserialize(&encode).map_err(StateError::BinCode)
+    }
+
+    pub fn save_wal(&self, wal: &Wal) -> Result<(), StateError> {
+        let encode = serialize(self).map_err(StateError::BinCode)?;
+        wal.save_state(&Bytes::from(encode))
+            .map_err(StateError::Wal)
+    }
+}
+
+#[derive(Clone, Debug, Display, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[display(fmt = "height: {}, round: {}, step: {}", height, round, step)]
 pub struct Stage {
     pub height: Height,
@@ -99,3 +116,13 @@ impl From<u8> for Step {
         }
     }
 }
+
+#[derive(Debug, Display)]
+pub enum StateError {
+    #[display(fmt = "{}", _0)]
+    Wal(WalError),
+    #[display(fmt = "{:?}", _0)]
+    BinCode(Box<ErrorKind>),
+}
+
+impl Error for StateError {}

@@ -24,7 +24,7 @@ pub struct Platform {
 }
 
 impl Platform {
-    pub fn new(node_number: usize) -> Self {
+    pub async fn new(node_number: usize) -> Self {
         let network = Arc::new(Network::default());
         let storage = Arc::new(Storage::default());
 
@@ -35,7 +35,7 @@ impl Platform {
         let init_config = init_config(&key_pairs);
         let mem_pool = Arc::new(MemPool::new(init_config));
 
-        run_nodes(key_pairs, &network, &mem_pool, &storage);
+        run_nodes(key_pairs, &network, &mem_pool, &storage).await;
 
         Platform {
             network,
@@ -51,36 +51,32 @@ impl Platform {
     }
 }
 
-fn run_nodes(
+async fn run_nodes(
     key_pairs: KeyPairs,
     network: &Arc<Network>,
     mem_pool: &Arc<MemPool>,
     storage: &Arc<Storage>,
 ) {
     let common_ref = key_pairs.common_ref.clone();
-    let address_list = key_pairs.get_address_list();
 
-    address_list
-        .into_iter()
-        .zip(key_pairs.key_pairs)
-        .for_each(|(address, key_pair)| {
-            storage.register(address.clone());
-
-            let adapter = Arc::new(OverlordAdapter::new(
-                address.clone(),
-                network,
-                mem_pool,
-                storage,
-            ));
-
-            OverlordServer::run(
-                common_ref.clone(),
-                key_pair.private_key.clone(),
-                address,
-                &adapter,
-                &key_pair.address,
-            );
-        });
+    for key_pair in key_pairs.key_pairs {
+        let address = hex_to_address(&key_pair.address);
+        storage.register(address.clone());
+        let adapter = Arc::new(OverlordAdapter::new(
+            address.clone(),
+            network,
+            mem_pool,
+            storage,
+        ));
+        OverlordServer::run(
+            common_ref.clone(),
+            key_pair.private_key.clone(),
+            address,
+            &adapter,
+            &key_pair.address,
+        )
+        .await;
+    }
 }
 
 fn init_config(key_pairs: &KeyPairs) -> OverlordConfig {

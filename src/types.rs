@@ -314,6 +314,15 @@ pub struct HeightRange {
     pub to:   Height,
 }
 
+impl HeightRange {
+    pub fn new(start: Height, number: u64) -> Self {
+        HeightRange {
+            from: start,
+            to:   start + number,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[display(fmt = "{{ vote: {}, aggregates: {} }}", vote, aggregates)]
 pub struct Proof {

@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+#![allow(unused_variables)]
 
 use std::error::Error;
 use std::marker::PhantomData;
@@ -17,10 +18,13 @@ use log::error;
 
 use crate::auth::{AuthFixedConfig, AuthManage};
 use crate::cabinet::Cabinet;
-use crate::state::{Stage, StateInfo};
+use crate::state::{Stage, StateError, StateInfo};
 use crate::timeout::TimeoutEvent;
 use crate::types::{FetchedFullBlock, Proposal, UpdateFrom};
-use crate::{Adapter, Address, Blk, CommonHex, OverlordMsg, PriKeyHex, Round, St, TimeConfig, Wal};
+use crate::{
+    Adapter, Address, Blk, CommonHex, HeightRange, OverlordMsg, PriKeyHex, Round, St, TimeConfig,
+    Wal,
+};
 
 const MULTIPLIER_CAP: u32 = 5;
 
@@ -50,7 +54,7 @@ where
     B: Blk,
     S: St,
 {
-    pub fn new(
+    pub async fn new(
         auth_fixed_config: AuthFixedConfig,
         adapter: &Arc<A>,
         net_receiver: UnboundedReceiver<(Context, OverlordMsg<B>)>,
@@ -58,6 +62,18 @@ where
     ) -> Self {
         let (to_fetch, from_fetch) = unbounded();
         let (to_timeout, from_timeout) = unbounded();
+        // check wal
+        let wal = Wal::new(wal_path);
+        if let Err(err) = StateInfo::from_wal(&wal) {
+            error!("Load state from wal failed: {}", err);
+            let latest_height = adapter.get_latest_height(Context::default()).await.expect(
+                "Nothing can get from both wal and adapter! It's meaningless to continue running",
+            );
+            let block = adapter.get_block_with_proofs(Context::default(), HeightRange::new(latest_height, 1)).await.expect("Nothing can get from both wal and adapter! It's meaningless to continue running");
+        }
+        // if wal has nothing, get latest_height
+
+        //
         StateMachine {
             state: StateInfo::default(),
             time_config: TimeConfig::default(),
@@ -83,7 +99,21 @@ where
         });
     }
 
-    fn process_msg(&mut self, _wrapped_msg: WrappedOverlordMsg<B>) -> Result<(), SMRError> {
+    fn process_msg(&mut self, wrapped_msg: WrappedOverlordMsg<B>) -> Result<(), SMRError> {
+        let (context, msg) = wrapped_msg;
+
+        match msg {
+            OverlordMsg::SignedProposal(signed_proposal) => {}
+            OverlordMsg::SignedPreVote(signed_pre_vote) => {}
+            OverlordMsg::SignedPreCommit(signed_pre_commit) => {}
+            OverlordMsg::SignedChoke(signed_choke) => {}
+            OverlordMsg::PreVoteQC(pre_vote_qc) => {}
+            OverlordMsg::PreCommitQC(pre_commit_qc) => {}
+            _ => {
+                // ToDo: synchronization
+            }
+        }
+
         Ok(())
     }
 
@@ -91,7 +121,14 @@ where
         Ok(())
     }
 
-    fn process_timeout(&mut self, _timeout_event: TimeoutEvent) -> Result<(), SMRError> {
+    fn process_timeout(&mut self, timeout_event: TimeoutEvent) -> Result<(), SMRError> {
+        match timeout_event {
+            TimeoutEvent::ProposeTimeout(stage) => {}
+            TimeoutEvent::PreVoteTimeout(stage) => {}
+            TimeoutEvent::PreCommitTimeout(stage) => {}
+            TimeoutEvent::BrakeTimeout(stage) => {}
+            TimeoutEvent::HeightTimeout(height) => {}
+        }
         Ok(())
     }
 }
@@ -154,6 +191,8 @@ where
 
 #[derive(Debug, Display)]
 pub enum SMRError {
+    #[display(fmt = "{}", _0)]
+    State(StateError),
     #[display(fmt = "Other error: {}", _0)]
     Other(String),
 }

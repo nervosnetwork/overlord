@@ -46,7 +46,7 @@ where
     B: Blk,
     S: St,
 {
-    pub fn run(
+    pub async fn run(
         common_ref: CommonHex,
         pri_key: PriKeyHex,
         address: Address,
@@ -56,7 +56,8 @@ where
         let (net_sender, net_receiver) = unbounded();
         adapter.register_network(Context::default(), net_sender);
         let auth_fixed_config = AuthFixedConfig::new(common_ref, pri_key, address);
-        let state_machine = StateMachine::new(auth_fixed_config, adapter, net_receiver, wal_path);
+        let state_machine =
+            StateMachine::new(auth_fixed_config, adapter, net_receiver, wal_path).await;
 
         state_machine.run();
     }

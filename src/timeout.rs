@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+
 use std::task::{Context, Poll};
 use std::time::Duration;
 use std::{future::Future, pin::Pin};
@@ -10,6 +11,7 @@ use futures_timer::Delay;
 
 use crate::state::Stage;
 use crate::types::TimeConfig;
+use crate::Height;
 
 #[derive(Clone, Debug, Display)]
 pub enum TimeoutEvent {
@@ -22,7 +24,7 @@ pub enum TimeoutEvent {
     #[display(fmt = "BrakeTimeout( {} )", _0)]
     BrakeTimeout(Stage),
     #[display(fmt = "HeightTimeout( {} )", _0)]
-    HeightTimeout(Stage),
+    HeightTimeout(Height),
 }
 
 #[derive(Debug, Display)]

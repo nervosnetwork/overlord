@@ -167,6 +167,25 @@ pub fn gen_key_pairs(
     key_pairs
 }
 
+pub fn hex_to_bls_pri_key(hex_str: &str) -> Result<BlsPrivateKey, CryptoError> {
+    let mut pri_key = Vec::new();
+    pri_key.extend_from_slice(&[0u8; 16]);
+    pri_key.append(&mut hex_decode(hex_str)?);
+    BlsPrivateKey::try_from(pri_key.as_ref()).map_err(CryptoError::TryInfoBlsPriKeyFailed)
+}
+
+pub fn hex_to_bls_pub_key(hex_str: &str) -> Result<BlsPublicKey, CryptoError> {
+    let pub_key = hex_decode(hex_str)?;
+    BlsPublicKey::try_from(pub_key.as_ref()).map_err(CryptoError::TryInfoBlsPubKeyFailed)
+}
+
+pub fn hex_to_common_ref(hex_str: &str) -> Result<BlsCommonReference, CryptoError> {
+    let common_ref = hex_decode(hex_str)?;
+    std::str::from_utf8(common_ref.as_ref())
+        .map(|str| str.into())
+        .map_err(CryptoError::TryInfoCommonRefFailed)
+}
+
 fn add_0x(s: String) -> String {
     "0x".to_owned() + &s
 }
@@ -194,25 +213,6 @@ fn ensure_trim0x(str: &str) -> &str {
     } else {
         str
     }
-}
-
-fn hex_to_bls_pri_key(hex_str: &str) -> Result<BlsPrivateKey, CryptoError> {
-    let mut pri_key = Vec::new();
-    pri_key.extend_from_slice(&[0u8; 16]);
-    pri_key.append(&mut hex_decode(hex_str)?);
-    BlsPrivateKey::try_from(pri_key.as_ref()).map_err(CryptoError::TryInfoBlsPriKeyFailed)
-}
-
-fn hex_to_bls_pub_key(hex_str: &str) -> Result<BlsPublicKey, CryptoError> {
-    let pub_key = hex_decode(hex_str)?;
-    BlsPublicKey::try_from(pub_key.as_ref()).map_err(CryptoError::TryInfoBlsPubKeyFailed)
-}
-
-fn hex_to_common_ref(hex_str: &str) -> Result<BlsCommonReference, CryptoError> {
-    let common_ref = hex_decode(hex_str)?;
-    std::str::from_utf8(common_ref.as_ref())
-        .map(|str| str.into())
-        .map_err(CryptoError::TryInfoCommonRefFailed)
 }
 
 fn pub_key_to_address(pub_key: Bytes) -> Bytes {
