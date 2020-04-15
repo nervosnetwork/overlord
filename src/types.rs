@@ -336,7 +336,7 @@ impl From<PreCommitQC> for Proof {
     height,
     "hex::encode(block_hash)"
 )]
-pub(crate) struct FetchFullBlock {
+pub(crate) struct FetchedFullBlock {
     pub(crate) height:     Height,
     pub(crate) block_hash: Hash,
     pub(crate) full_block: Bytes,

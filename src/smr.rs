@@ -1,5 +1,6 @@
 #![allow(unused_imports)]
 
+use std::error::Error;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::task::{Context as TaskCx, Poll};
@@ -7,19 +8,23 @@ use std::time::Duration;
 use std::{future::Future, pin::Pin};
 
 use creep::Context;
+use derive_more::Display;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::{Stream, StreamExt};
 use futures::{FutureExt, SinkExt};
 use futures_timer::Delay;
+use log::error;
 
 use crate::auth::{AuthFixedConfig, AuthManage};
 use crate::cabinet::Cabinet;
 use crate::state::{Stage, StateInfo};
 use crate::timeout::TimeoutEvent;
-use crate::types::{FetchFullBlock, Proposal, UpdateFrom};
+use crate::types::{FetchedFullBlock, Proposal, UpdateFrom};
 use crate::{Adapter, Address, Blk, CommonHex, OverlordMsg, PriKeyHex, Round, St, TimeConfig, Wal};
 
 const MULTIPLIER_CAP: u32 = 5;
+
+pub type WrappedOverlordMsg<B> = (Context, OverlordMsg<B>);
 
 pub struct StateMachine<A: Adapter<B, S>, B: Blk, S: St> {
     state:       StateInfo,
@@ -30,9 +35,9 @@ pub struct StateMachine<A: Adapter<B, S>, B: Blk, S: St> {
     cabinet: Cabinet<B>,
     auth:    AuthManage<A, B, S>,
 
-    from_net:     UnboundedReceiver<(Context, OverlordMsg<B>)>,
-    from_fetch:   UnboundedReceiver<FetchFullBlock>,
-    to_fetch:     UnboundedSender<FetchFullBlock>,
+    from_net:     UnboundedReceiver<WrappedOverlordMsg<B>>,
+    from_fetch:   UnboundedReceiver<FetchedFullBlock>,
+    to_fetch:     UnboundedSender<FetchedFullBlock>,
     from_timeout: UnboundedReceiver<TimeoutEvent>,
     to_timeout:   UnboundedSender<TimeoutEvent>,
 
@@ -69,57 +74,88 @@ where
         }
     }
 
-    pub fn run(&self) {
-        tokio::spawn(async move {});
+    pub fn run(mut self) {
+        tokio::spawn(async move {
+            while let Some(err) = self.next().await {
+                // Todo: Add handle error here
+                error!("smr error {:?}", err);
+            }
+        });
+    }
+
+    fn process_msg(&mut self, _wrapped_msg: WrappedOverlordMsg<B>) -> Result<(), SMRError> {
+        Ok(())
+    }
+
+    fn process_fetch(&mut self, _fetched_full_block: FetchedFullBlock) -> Result<(), SMRError> {
+        Ok(())
+    }
+
+    fn process_timeout(&mut self, _timeout_event: TimeoutEvent) -> Result<(), SMRError> {
+        Ok(())
     }
 }
-// impl Stream for StateMachine {
-//     type Item = ConsensusError;
-//
-//     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-//         let mut event_ready = true;
-//         let mut timer_ready = true;
-//
-//         loop {
-//             match self.event.poll_next_unpin(cx) {
-//                 Poll::Pending => event_ready = false,
-//
-//                 Poll::Ready(event) => {
-//                     if event.is_none() {
-//                         return Poll::Ready(Some(ConsensusError::TimerErr(
-//                             "Channel dropped".to_string(),
-//                         )));
-//                     }
-//
-//                     let event = event.unwrap();
-//                     if event == SMREvent::Stop {
-//                         return Poll::Ready(None);
-//                     }
-//                     if let Err(e) = self.set_timer(event) {
-//                         return Poll::Ready(Some(e));
-//                     }
-//                 }
-//             };
-//
-//             match self.notify.poll_next_unpin(cx) {
-//                 Poll::Pending => timer_ready = false,
-//
-//                 Poll::Ready(event) => {
-//                     if event.is_none() {
-//                         return Poll::Ready(Some(ConsensusError::TimerErr(
-//                             "Channel terminated".to_string(),
-//                         )));
-//                     }
-//
-//                     let event = event.unwrap();
-//                     if let Err(e) = self.trigger(event) {
-//                         return Poll::Ready(Some(e));
-//                     }
-//                 }
-//             }
-//             if !event_ready && !timer_ready {
-//                 return Poll::Pending;
-//             }
-//         }
-//     }
-// }
+impl<A, B, S> Stream for StateMachine<A, B, S>
+where
+    A: Adapter<B, S>,
+    B: Blk,
+    S: St,
+{
+    type Item = SMRError;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut TaskCx) -> Poll<Option<Self::Item>> {
+        let mut net_ready = true;
+        let mut fetch_ready = true;
+        let mut timeout_ready = true;
+
+        loop {
+            match self.from_net.poll_next_unpin(cx) {
+                Poll::Pending => net_ready = false,
+
+                Poll::Ready(opt) => {
+                    let wrapped_msg =
+                        opt.expect("Network is down! It's meaningless to continue running");
+                    if let Err(e) = self.process_msg(wrapped_msg) {
+                        return Poll::Ready(Some(e));
+                    }
+                }
+            };
+
+            match self.from_fetch.poll_next_unpin(cx) {
+                Poll::Pending => fetch_ready = false,
+
+                Poll::Ready(opt) => {
+                    let fetched_full_block =
+                        opt.expect("Fetch Channel is down! It's meaningless to continue running");
+                    if let Err(e) = self.process_fetch(fetched_full_block) {
+                        return Poll::Ready(Some(e));
+                    }
+                }
+            }
+
+            match self.from_timeout.poll_next_unpin(cx) {
+                Poll::Pending => timeout_ready = false,
+
+                Poll::Ready(opt) => {
+                    let timeout_event =
+                        opt.expect("Timeout Channel is down! It's meaningless to continue running");
+                    if let Err(e) = self.process_timeout(timeout_event) {
+                        return Poll::Ready(Some(e));
+                    }
+                }
+            }
+
+            if !net_ready && !fetch_ready && !timeout_ready {
+                return Poll::Pending;
+            }
+        }
+    }
+}
+
+#[derive(Debug, Display)]
+pub enum SMRError {
+    #[display(fmt = "Other error: {}", _0)]
+    Other(String),
+}
+
+impl Error for SMRError {}

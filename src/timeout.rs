@@ -28,9 +28,9 @@ pub enum TimeoutEvent {
 #[derive(Debug, Display)]
 #[display(fmt = "{}", event)]
 struct TimeoutInfo {
-    delay:    Delay,
-    event:    TimeoutEvent,
-    to_timer: UnboundedSender<TimeoutEvent>,
+    delay:  Delay,
+    event:  TimeoutEvent,
+    to_smr: UnboundedSender<TimeoutEvent>,
 }
 
 impl Future for TimeoutInfo {
@@ -38,13 +38,13 @@ impl Future for TimeoutInfo {
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let event = self.event.clone();
-        let mut to_timer = self.to_timer.clone();
+        let mut to_smr = self.to_smr.clone();
 
         match self.delay.poll_unpin(cx) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(_) => {
                 tokio::spawn(async move {
-                    let _ = to_timer.send(event).await;
+                    let _ = to_smr.send(event).await;
                 });
                 Poll::Ready(())
             }
@@ -53,11 +53,11 @@ impl Future for TimeoutInfo {
 }
 
 impl TimeoutInfo {
-    fn new(interval: Duration, event: TimeoutEvent, sender: UnboundedSender<TimeoutEvent>) -> Self {
+    fn new(interval: Duration, event: TimeoutEvent, to_smr: UnboundedSender<TimeoutEvent>) -> Self {
         TimeoutInfo {
             delay: Delay::new(interval),
             event,
-            to_timer: sender,
+            to_smr,
         }
     }
 }
