@@ -1,3 +1,5 @@
+#![allow(unused_imports)]
+
 use std::collections::HashMap;
 use std::error::Error;
 
@@ -12,18 +14,17 @@ use crate::types::{
     SelectMode, SignedChoke, SignedPreCommit, SignedPreVote, SignedProposal, UpdateFrom, Vote,
     VoteType, Weight,
 };
-use crate::{Adapter, Address, Blk, CommonHex, Crypto, Hash, Signature, St};
+use crate::{Adapter, Address, AuthConfig, Blk, CommonHex, Crypto, Hash, Signature, St};
 
 pub struct AuthManage<A: Adapter<B, S>, B: Blk, S: St> {
-    common_ref: CommonHex,
-    pri_key:    PriKeyHex,
-    address:    Address,
+    fixed_config: AuthFixedConfig,
 
-    propose_weight: Weight,
     vote_weight:    Weight,
+    propose_weight: Weight,
     mode:           SelectMode,
-    current_auth:   AuthCell,
-    last_auth:      Option<AuthCell>,
+
+    current_auth: AuthCell,
+    last_auth:    Option<AuthCell>,
 
     phantom_a: PhantomData<A>,
     phantom_b: PhantomData<B>,
@@ -31,11 +32,9 @@ pub struct AuthManage<A: Adapter<B, S>, B: Blk, S: St> {
 }
 
 impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
-    pub fn new(common_ref: CommonHex, pri_key: PriKeyHex, address: Address) -> Self {
+    pub fn new(fixed_config: AuthFixedConfig) -> Self {
         AuthManage {
-            common_ref,
-            pri_key,
-            address,
+            fixed_config,
             propose_weight: 0,
             vote_weight: 0,
             mode: SelectMode::default(),
@@ -47,17 +46,22 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         }
     }
 
-    pub fn update(&mut self, mode: SelectMode, new_auth_list: Vec<Node>) {
-        self.mode = mode;
+    pub fn update(&mut self, config: AuthConfig) {
+        assert_eq!(
+            self.fixed_config.common_ref, config.common_ref,
+            "CommonRef mismatch, run in wrong chain!"
+        );
+        self.mode = config.mode;
         self.last_auth = Some(self.current_auth.clone());
-        if let Some(node) = new_auth_list
+        if let Some(node) = config
+            .auth_list
             .iter()
-            .find(|node| node.address == self.address)
+            .find(|node| node.address == self.fixed_config.address)
         {
             self.propose_weight = node.propose_weight;
             self.vote_weight = node.vote_weight;
         }
-        self.current_auth = AuthCell::new(new_auth_list);
+        self.current_auth = AuthCell::new(config.auth_list);
     }
 
     pub fn sign_proposal(&self, proposal: Proposal<B>) -> Result<SignedProposal<B>, AuthError> {
@@ -84,7 +88,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         Ok(SignedPreVote::new(
             vote,
             self.vote_weight,
-            self.address.clone(),
+            self.fixed_config.address.clone(),
             signature,
         ))
     }
@@ -103,7 +107,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         Ok(SignedPreCommit::new(
             vote,
             self.vote_weight,
-            self.address.clone(),
+            self.fixed_config.address.clone(),
             signature,
         ))
     }
@@ -166,7 +170,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
             choke,
             self.vote_weight,
             from,
-            self.address.clone(),
+            self.fixed_config.address.clone(),
             signature,
         ))
     }
@@ -182,7 +186,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
     }
 
     fn sign(&self, hash: &Hash) -> Result<Signature, AuthError> {
-        A::CryptoImpl::sign(self.pri_key.clone(), hash).map_err(AuthError::CryptoErr)
+        A::CryptoImpl::sign(self.fixed_config.pri_key.clone(), hash).map_err(AuthError::CryptoErr)
     }
 
     fn verify_signature(
@@ -191,7 +195,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         hash: &Hash,
         signature: &Signature,
     ) -> Result<(), AuthError> {
-        let common_ref = self.common_ref.clone();
+        let common_ref = self.fixed_config.common_ref.clone();
         let pub_key = self
             .current_auth
             .map
@@ -214,7 +218,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         aggregates: &Aggregates,
         is_proof: bool,
     ) -> Result<(), AuthError> {
-        let common_ref = self.common_ref.clone();
+        let common_ref = self.fixed_config.common_ref.clone();
 
         let auth_list = if is_proof {
             if let Some(last_auth) = &self.last_auth {
@@ -269,6 +273,22 @@ impl AuthCell {
             map,
             vote_weight_sum,
             propose_weight_sum,
+        }
+    }
+}
+
+pub struct AuthFixedConfig {
+    common_ref: CommonHex,
+    pri_key:    PriKeyHex,
+    address:    Address,
+}
+
+impl AuthFixedConfig {
+    pub fn new(common_ref: CommonHex, pri_key: PriKeyHex, address: Address) -> Self {
+        AuthFixedConfig {
+            common_ref,
+            pri_key,
+            address,
         }
     }
 }

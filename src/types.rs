@@ -485,7 +485,7 @@ impl From<u8> for VoteType {
             0 => VoteType::PreVote,
             1 => VoteType::PreCommit,
             2 => VoteType::Choke,
-            _ => panic!("Invalid vote type!"),
+            _ => panic!("Invalid Vote type!"),
         }
     }
 }
