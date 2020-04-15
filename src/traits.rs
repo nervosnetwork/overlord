@@ -11,7 +11,7 @@ use bytes::Bytes;
 use futures::channel::mpsc::UnboundedSender;
 
 use crate::crypto::PubKeyHex;
-use crate::error::ConsensusError;
+use crate::error::OverlordError;
 use crate::types::{
     Address, Aggregates, BlockState, CommonHex, ExecResult, Hash, Height, HeightRange, OverlordMsg,
     Proof, Signature,
@@ -80,7 +80,7 @@ pub trait Adapter<B: Blk, S: St>: Send + Sync {
 
     async fn get_latest_height(&self, ctx: Context) -> Result<Height, Box<dyn Error + Send>>;
 
-    async fn handle_error(&self, ctx: Context, err: ConsensusError);
+    async fn handle_error(&self, ctx: Context, err: OverlordError);
 }
 
 /// should ensure the same serialization results in different environments

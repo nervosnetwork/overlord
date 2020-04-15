@@ -332,17 +332,14 @@ impl From<PreCommitQC> for Proof {
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq)]
 #[display(
-    fmt = "{{ height: {}, round: {}, block_hash: {}, is_pass: {} }}",
+    fmt = "{{ height: {}, block_hash: {}}}",
     height,
-    round,
-    "hex::encode(block_hash)",
-    is_pass
+    "hex::encode(block_hash)"
 )]
-pub(crate) struct VerifyResp {
+pub(crate) struct FetchFullBlock {
     pub(crate) height:     Height,
-    pub(crate) round:      Round,
     pub(crate) block_hash: Hash,
-    pub(crate) is_pass:    bool,
+    pub(crate) full_block: Bytes,
 }
 
 #[derive(Clone, Debug, Display, Default)]

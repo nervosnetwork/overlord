@@ -6,8 +6,8 @@ use bytes::Bytes;
 use creep::Context;
 use futures::channel::mpsc::UnboundedSender;
 use overlord::{
-    Adapter, Address, BlockState, ConsensusError, DefaultCrypto, ExecResult, Hash, Height,
-    HeightRange, OverlordMsg, Proof,
+    Adapter, Address, BlockState, DefaultCrypto, ExecResult, Hash, Height, HeightRange,
+    OverlordError, OverlordMsg, Proof,
 };
 
 use crate::common::block::{Block, ExecState, FullBlock};
@@ -160,5 +160,5 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         Ok(self.storage.get_latest_height(&self.address))
     }
 
-    async fn handle_error(&self, _ctx: Context, _err: ConsensusError) {}
+    async fn handle_error(&self, _ctx: Context, _err: OverlordError) {}
 }

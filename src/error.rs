@@ -1,14 +1,22 @@
+#![allow(unused_imports)]
+#![allow(dead_code)]
+
 use std::error::Error;
-use std::result::Result;
 
 use derive_more::Display;
 
-pub type ConsensusResult<T> = Result<T, ConsensusError>;
-
-#[derive(Debug, Display)]
-pub enum ConsensusError {
-    #[display(fmt = "Other Error {}", _0)]
-    Other(String),
+#[derive(Clone, Debug)]
+pub enum OverlordErrorKind {
+    Byzantine,
+    RepeatMsg,
+    Other,
 }
 
-impl Error for ConsensusError {}
+#[derive(Debug, Display)]
+#[display(fmt = "[ProtocolError] Kind: {:?} Error: {:?}", kind, error)]
+pub struct OverlordError {
+    kind:  OverlordErrorKind,
+    error: Box<dyn Error + Send>,
+}
+
+impl Error for OverlordError {}

@@ -8,14 +8,13 @@ pub mod types;
 mod auth;
 mod cabinet;
 mod codec;
-mod event;
 mod smr;
 mod state;
-mod timer;
+mod timeout;
 mod wal;
 
 pub use crypto::{gen_key_pairs, AddressHex, BlsPubKeyHex, DefaultCrypto, PriKeyHex};
-pub use error::{ConsensusError, ConsensusResult};
+pub use error::{OverlordError, OverlordErrorKind};
 pub use traits::{Adapter, Blk, Crypto, St};
 pub use types::{
     Address, AuthConfig, BlockState, CommonHex, ExecResult, Hash, Height, HeightRange, Node,
@@ -30,7 +29,6 @@ use futures::channel::mpsc::unbounded;
 
 use crate::auth::AuthFixedConfig;
 use crate::smr::StateMachine;
-use crate::timer::Timer;
 use crate::wal::Wal;
 
 const INIT_HEIGHT: Height = 0;
@@ -56,22 +54,10 @@ where
         wal_path: &str,
     ) {
         let (net_sender, net_receiver) = unbounded();
-        let (smr_sender, smr_receiver) = unbounded();
-        let (timer_sender, timer_receiver) = unbounded();
         adapter.register_network(Context::default(), net_sender);
         let auth_fixed_config = AuthFixedConfig::new(common_ref, pri_key, address);
-        let state_machine = StateMachine::new(
-            auth_fixed_config,
-            adapter,
-            net_receiver,
-            timer_receiver,
-            smr_sender,
-            wal_path,
-        );
+        let state_machine = StateMachine::new(auth_fixed_config, adapter, net_receiver, wal_path);
 
         state_machine.run();
-
-        let timer = Timer::new(smr_receiver, timer_sender);
-        timer.run()
     }
 }
