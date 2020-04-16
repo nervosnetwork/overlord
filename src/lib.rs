@@ -60,7 +60,9 @@ where
         let (smr_sender, smr_receiver) = unbounded();
         let (exec_sender, exec_receiver) = unbounded();
 
-        adapter.register_network(Context::default(), net_sender);
+        adapter
+            .register_network(Context::default(), net_sender)
+            .await;
         let auth_fixed_config = AuthFixedConfig::new(common_ref, pri_key, address);
 
         let exec = Exec::new(adapter, smr_receiver, exec_sender);
