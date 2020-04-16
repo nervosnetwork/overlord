@@ -189,10 +189,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
                 pub_keys.as_slice(),
                 &proof.aggregates.signature,
             )
-            .map_err(|e| OverlordError {
-                kind: ErrorKind::Byzantine,
-                info: ErrorInfo::Crypto(e),
-            })
+            .map_err(OverlordError::byz_crypto)
         } else {
             warn!("verify proof of height 0, which will always pass");
             Ok(())
@@ -200,10 +197,8 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
     }
 
     fn sign(&self, hash: &Hash) -> OverlordResult<Signature> {
-        A::CryptoImpl::sign(self.fixed_config.pri_key.clone(), hash).map_err(|e| OverlordError {
-            kind: ErrorKind::Local,
-            info: ErrorInfo::Crypto(e),
-        })
+        A::CryptoImpl::sign(self.fixed_config.pri_key.clone(), hash)
+            .map_err(OverlordError::local_crypto)
     }
 
     fn verify_signature(
@@ -213,16 +208,13 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         signature: &Signature,
     ) -> OverlordResult<()> {
         let common_ref = self.fixed_config.common_ref.clone();
-        let pub_key = self.current_auth.map.get(signer).ok_or(OverlordError {
-            kind: ErrorKind::Byzantine,
-            info: ErrorInfo::UnAuthorized,
-        })?;
-        A::CryptoImpl::verify_signature(common_ref, pub_key.to_string(), hash, signature).map_err(
-            |e| OverlordError {
-                kind: ErrorKind::Byzantine,
-                info: ErrorInfo::Crypto(e),
-            },
-        )
+        let pub_key = self
+            .current_auth
+            .map
+            .get(signer)
+            .ok_or_else(OverlordError::byz_un_auth)?;
+        A::CryptoImpl::verify_signature(common_ref, pub_key.to_string(), hash, signature)
+            .map_err(OverlordError::byz_crypto)
     }
 
     fn aggregate(&self, signatures: HashMap<&Address, &Signature>) -> OverlordResult<Aggregates> {
@@ -230,11 +222,8 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
             .current_auth
             .gen_bit_map(signatures.keys().cloned().collect());
         let signatures = self.current_auth.replace_pub_keys(signatures);
-        let signature =
-            A::CryptoImpl::aggregate(signatures.iter().collect()).map_err(|e| OverlordError {
-                kind: ErrorKind::Local,
-                info: ErrorInfo::Crypto(e),
-            })?;
+        let signature = A::CryptoImpl::aggregate(signatures.iter().collect())
+            .map_err(OverlordError::local_crypto)?;
         Ok(Aggregates::new(bitmap, signature))
     }
 
@@ -244,10 +233,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         let pub_keys = self.current_auth.get_pub_keys(voters.as_ref());
         self.current_auth.ensure_majority(voters)?;
         A::CryptoImpl::verify_aggregates(common_ref, &hash, &pub_keys, &aggregates.signature)
-            .map_err(|e| OverlordError {
-                kind: ErrorKind::Byzantine,
-                info: ErrorInfo::Crypto(e),
-            })
+            .map_err(OverlordError::byz_crypto)
     }
 }
 
@@ -332,15 +318,12 @@ impl AuthCell {
     }
 
     fn check_vote_weight(&self, address: &Address, vote_weight: Weight) -> OverlordResult<()> {
-        let expect_weight = self.vote_weight_map.get(address).ok_or(OverlordError {
-            kind: ErrorKind::Byzantine,
-            info: ErrorInfo::FakeWeight,
-        })?;
+        let expect_weight = self
+            .vote_weight_map
+            .get(address)
+            .ok_or_else(OverlordError::byz_un_auth)?;
         if expect_weight != &vote_weight {
-            return Err(OverlordError {
-                kind: ErrorKind::Byzantine,
-                info: ErrorInfo::FakeWeight,
-            });
+            return Err(OverlordError::byz_fake());
         }
         Ok(())
     }
@@ -351,11 +334,8 @@ impl AuthCell {
             self.check_vote_weight(address, weight)?;
             weight_sum += weight;
         }
-        if !self.check_majority(weight_sum) {
-            return Err(OverlordError {
-                kind: ErrorKind::Byzantine,
-                info: ErrorInfo::UnderMajority,
-            });
+        if !self.beyond_majority(weight_sum) {
+            return Err(OverlordError::byz_under_maj());
         }
         Ok(())
     }
@@ -363,21 +343,18 @@ impl AuthCell {
     fn ensure_majority(&self, list: Vec<Address>) -> OverlordResult<()> {
         let mut weight_sum = 0;
         for address in list.iter() {
-            weight_sum += *self.vote_weight_map.get(address).ok_or(OverlordError {
-                kind: ErrorKind::Byzantine,
-                info: ErrorInfo::UnderMajority,
-            })?;
+            weight_sum += *self
+                .vote_weight_map
+                .get(address)
+                .ok_or_else(OverlordError::byz_un_auth)?;
         }
-        if !self.check_majority(weight_sum) {
-            return Err(OverlordError {
-                kind: ErrorKind::Byzantine,
-                info: ErrorInfo::UnderMajority,
-            });
+        if !self.beyond_majority(weight_sum) {
+            return Err(OverlordError::byz_under_maj());
         }
         Ok(())
     }
 
-    fn check_majority(&self, weight_sum: Weight) -> bool {
+    fn beyond_majority(&self, weight_sum: Weight) -> bool {
         weight_sum * 3 > self.vote_weight_sum * 2
     }
 

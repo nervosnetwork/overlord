@@ -17,10 +17,9 @@ use crate::types::{
     ChokeQC, PoLC, PreCommitQC, PreVoteQC, Proposal, SignedChoke, SignedPreCommit, SignedPreVote,
     SignedProposal, UpdateFrom,
 };
-use crate::wal::WalError;
 use crate::{
-    Adapter, Address, Blk, BlockState, CommonHex, Hash, Height, OverlordConfig, OverlordMsg,
-    PriKeyHex, Proof, Round, St, TimeConfig, Wal, INIT_ROUND,
+    Adapter, Address, Blk, BlockState, CommonHex, Hash, Height, OverlordConfig, OverlordError,
+    OverlordMsg, OverlordResult, PriKeyHex, Proof, Round, St, TimeConfig, Wal, INIT_ROUND,
 };
 use std::collections::BTreeMap;
 
@@ -53,15 +52,14 @@ impl<B: Blk> StateInfo<B> {
         }
     }
 
-    pub fn from_wal(wal: &Wal) -> Result<Self, StateError> {
-        let encode = wal.load_state().map_err(StateError::Wal)?;
-        decode(&encode).map_err(StateError::Decode)
+    pub fn from_wal(wal: &Wal) -> OverlordResult<Self> {
+        let encode = wal.load_state()?;
+        decode(&encode).map_err(OverlordError::local_decode)
     }
 
-    pub fn save_wal(&self, wal: &Wal) -> Result<(), StateError> {
+    pub fn save_wal(&self, wal: &Wal) -> OverlordResult<()> {
         let encode = encode(self);
         wal.save_state(&Bytes::from(encode))
-            .map_err(StateError::Wal)
     }
 }
 
@@ -125,7 +123,7 @@ impl Ord for Stage {
 }
 
 // impl<B: Blk> SignedProposal<B> {
-//     pub fn filter(&self, stage: &Stage) -> Result((), StateError) {
+//     pub fn filter(&self, stage: &Stage) -> Result(()) {
 //
 //     }
 // }
@@ -222,13 +220,3 @@ impl<S: St> ProposePrepare<S> {
             .collect()
     }
 }
-
-#[derive(Debug, Display)]
-pub enum StateError {
-    #[display(fmt = "{}", _0)]
-    Wal(WalError),
-    #[display(fmt = "{:?}", _0)]
-    Decode(DecoderError),
-}
-
-impl Error for StateError {}

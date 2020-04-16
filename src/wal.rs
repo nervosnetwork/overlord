@@ -11,7 +11,7 @@ use derive_more::Display;
 
 use crate::state::Step;
 use crate::types::UpdateFrom;
-use crate::{Blk, Hash, Height, Round};
+use crate::{Blk, Hash, Height, OverlordError, OverlordResult, Round};
 
 const STATE_SUB_DIR: &str = "state";
 const STATE_FILE_NAME: &str = "state.wal";
@@ -35,7 +35,7 @@ impl Wal {
         }
     }
 
-    pub fn save_state(&self, state: &Bytes) -> Result<(), WalError> {
+    pub fn save_state(&self, state: &Bytes) -> OverlordResult<()> {
         self.safe_save_file(
             self.state_dir_path.clone(),
             STATE_FILE_NAME.to_owned(),
@@ -43,7 +43,7 @@ impl Wal {
         )
     }
 
-    pub fn load_state(&self) -> Result<Bytes, WalError> {
+    pub fn load_state(&self) -> OverlordResult<Bytes> {
         self.safe_load_file(self.state_dir_path.clone(), STATE_FILE_NAME.to_owned())
     }
 
@@ -52,47 +52,50 @@ impl Wal {
         height: Height,
         block_hash: &Hash,
         full_block: &Bytes,
-    ) -> Result<(), WalError> {
+    ) -> OverlordResult<()> {
         let dir = self.assemble_full_block_dir(height);
         let file_name = hex::encode(block_hash) + ".wal";
         self.safe_save_file(dir, file_name, full_block)
     }
 
-    pub fn load_full_block(&self, height: Height, block_hash: &Hash) -> Result<Bytes, WalError> {
+    pub fn load_full_block(&self, height: Height, block_hash: &Hash) -> OverlordResult<Bytes> {
         let dir = self.assemble_full_block_dir(height);
         let file_name = hex::encode(block_hash) + ".wal";
         self.safe_load_file(dir, file_name)
     }
 
-    pub fn remove_full_blocks(&self, height: Height) -> Result<(), WalError> {
+    pub fn remove_full_blocks(&self, height: Height) -> OverlordResult<()> {
         let mut full_block_path = self.wal_dir_path.clone();
         full_block_path.push(FULL_BLOCK_SUB_DIR);
 
         ensure_dir_exists(&full_block_path);
 
-        for entry in fs::read_dir(full_block_path).map_err(WalError::ReadDirFailed)? {
-            let folder = entry.map_err(WalError::ReadDirFailed)?.path();
+        for entry in fs::read_dir(full_block_path).map_err(OverlordError::local_wal)? {
+            let folder = entry.map_err(OverlordError::local_wal)?.path();
             let folder_name = folder
                 .file_stem()
-                .ok_or_else(|| WalError::Other("file stem error".to_string()))?
+                .ok_or_else(|| OverlordError::local_other("file stem error"))?
                 .to_os_string()
                 .clone();
             let folder_name = folder_name.into_string().map_err(|err| {
-                WalError::Other(format!("transfer os string to string error {:?}", err))
+                OverlordError::local_other(&format!("transfer os string to string error {:?}", err))
             })?;
             let height_of_folder = folder_name.parse::<u64>().map_err(|err| {
-                WalError::Other(format!("parse folder name {:?} error {:?}", folder, err))
+                OverlordError::local_other(&format!(
+                    "parse folder name {:?} error {:?}",
+                    folder, err
+                ))
             })?;
 
             if height_of_folder <= height {
-                fs::remove_dir_all(folder).map_err(WalError::RemoveDirFailed)?;
+                fs::remove_dir_all(folder).map_err(OverlordError::local_wal)?;
             }
         }
 
         Ok(())
     }
 
-    fn safe_open_file(&self, dir: PathBuf, file_name: String) -> Result<fs::File, WalError> {
+    fn safe_open_file(&self, dir: PathBuf, file_name: String) -> OverlordResult<fs::File> {
         ensure_dir_exists(&dir);
 
         let mut wal_file_path = dir;
@@ -103,25 +106,23 @@ impl Wal {
             .write(true)
             .create(true)
             .open(&wal_file_path)
-            .map_err(WalError::OpenFileFailed)
+            .map_err(OverlordError::local_wal)
     }
 
-    fn safe_save_file(&self, dir: PathBuf, file_name: String, data: &[u8]) -> Result<(), WalError> {
+    fn safe_save_file(&self, dir: PathBuf, file_name: String, data: &[u8]) -> OverlordResult<()> {
         let mut wal_file = self.safe_open_file(dir, file_name)?;
 
-        wal_file
-            .write_all(data)
-            .map_err(WalError::WriteFileFailed)?;
+        wal_file.write_all(data).map_err(OverlordError::local_wal)?;
         Ok(())
     }
 
-    fn safe_load_file(&self, dir: PathBuf, file_name: String) -> Result<Bytes, WalError> {
+    fn safe_load_file(&self, dir: PathBuf, file_name: String) -> OverlordResult<Bytes> {
         let mut wal_file = self.safe_open_file(dir, file_name)?;
 
         let mut read_buf = Vec::new();
         let _ = wal_file
             .read_to_end(&mut read_buf)
-            .map_err(WalError::ReadFileFailed)?;
+            .map_err(OverlordError::local_wal)?;
         Ok(Bytes::from(read_buf))
     }
 
@@ -138,29 +139,6 @@ fn ensure_dir_exists(dir: &PathBuf) {
         fs::create_dir_all(dir).expect("Create wal directory failed");
     }
 }
-
-#[derive(Debug, Display)]
-pub enum WalError {
-    #[display(fmt = "Open wal file failed, {:?}", _0)]
-    OpenFileFailed(std::io::Error),
-
-    #[display(fmt = "Read wal file failed, {:?}", _0)]
-    ReadFileFailed(std::io::Error),
-
-    #[display(fmt = "Write wal file failed, {:?}", _0)]
-    WriteFileFailed(std::io::Error),
-
-    #[display(fmt = "Read wal dir failed, {:?}", _0)]
-    ReadDirFailed(std::io::Error),
-
-    #[display(fmt = "Remove wal dir failed, {:?}", _0)]
-    RemoveDirFailed(std::io::Error),
-
-    #[display(fmt = "Other error: {}", _0)]
-    Other(String),
-}
-
-impl Error for WalError {}
 
 #[cfg(test)]
 mod test {

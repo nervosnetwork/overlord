@@ -4,6 +4,9 @@
 use std::error::Error;
 
 use derive_more::Display;
+use rlp::DecoderError;
+
+use crate::{Address, Height};
 
 pub type OverlordResult<T> = Result<T, OverlordError>;
 
@@ -23,12 +26,30 @@ pub enum ErrorKind {
 pub enum ErrorInfo {
     #[display(fmt = "crypto error: {}", _0)]
     Crypto(Box<dyn Error + Send>),
-    #[display(fmt = "unauthorized address")]
+    #[display(fmt = "unauthorized")]
     UnAuthorized,
     #[display(fmt = "fake weight")]
     FakeWeight,
     #[display(fmt = "weight sum under majority")]
     UnderMajority,
+    #[display(fmt = "msg already exist")]
+    MsgExist,
+    #[display(fmt = "msg of multi version")]
+    MultiVersion,
+    #[display(fmt = "channel closed")]
+    ClosedChannel,
+    #[display(fmt = "get block failed: {}", _0)]
+    GetBlock(Box<dyn Error + Send>),
+    #[display(fmt = "fetch full block failed {}", _0)]
+    FetchFullBlock(Box<dyn Error + Send>),
+    #[display(fmt = "exec block failed {}", _0)]
+    Exec(Box<dyn Error + Send>),
+    #[display(fmt = "operate wal file failed, {:?}", _0)]
+    WalFile(std::io::Error),
+    #[display(fmt = "other error, {}", _0)]
+    Other(String),
+    #[display(fmt = "decode error, {:?}", _0)]
+    Decode(DecoderError),
 }
 
 #[derive(Debug, Display)]
@@ -36,6 +57,106 @@ pub enum ErrorInfo {
 pub struct OverlordError {
     pub kind: ErrorKind,
     pub info: ErrorInfo,
+}
+
+impl OverlordError {
+    pub fn byz_crypto(e: Box<dyn Error + Send>) -> Self {
+        OverlordError {
+            kind: ErrorKind::Byzantine,
+            info: ErrorInfo::Crypto(e),
+        }
+    }
+
+    pub fn local_crypto(e: Box<dyn Error + Send>) -> Self {
+        OverlordError {
+            kind: ErrorKind::Local,
+            info: ErrorInfo::Crypto(e),
+        }
+    }
+
+    pub fn byz_un_auth() -> Self {
+        OverlordError {
+            kind: ErrorKind::Byzantine,
+            info: ErrorInfo::UnAuthorized,
+        }
+    }
+
+    pub fn byz_fake() -> Self {
+        OverlordError {
+            kind: ErrorKind::Byzantine,
+            info: ErrorInfo::FakeWeight,
+        }
+    }
+
+    pub fn byz_under_maj() -> Self {
+        OverlordError {
+            kind: ErrorKind::Byzantine,
+            info: ErrorInfo::UnderMajority,
+        }
+    }
+
+    pub fn net_msg_exist() -> Self {
+        OverlordError {
+            kind: ErrorKind::Network,
+            info: ErrorInfo::MsgExist,
+        }
+    }
+
+    pub fn byz_mul_version() -> Self {
+        OverlordError {
+            kind: ErrorKind::Byzantine,
+            info: ErrorInfo::MultiVersion,
+        }
+    }
+
+    pub fn net_close() -> Self {
+        OverlordError {
+            kind: ErrorKind::Network,
+            info: ErrorInfo::ClosedChannel,
+        }
+    }
+
+    pub fn local_get_block(e: Box<dyn Error + Send>) -> Self {
+        OverlordError {
+            kind: ErrorKind::Local,
+            info: ErrorInfo::GetBlock(e),
+        }
+    }
+
+    pub fn local_fetch(e: Box<dyn Error + Send>) -> Self {
+        OverlordError {
+            kind: ErrorKind::Local,
+            info: ErrorInfo::FetchFullBlock(e),
+        }
+    }
+
+    pub fn local_exec(e: Box<dyn Error + Send>) -> Self {
+        OverlordError {
+            kind: ErrorKind::Local,
+            info: ErrorInfo::Exec(e),
+        }
+    }
+
+    pub fn local_wal(e: std::io::Error) -> Self {
+        OverlordError {
+            kind: ErrorKind::Local,
+            info: ErrorInfo::WalFile(e),
+        }
+    }
+
+    pub fn local_decode(e: DecoderError) -> Self {
+        OverlordError {
+            kind: ErrorKind::Local,
+            info: ErrorInfo::Decode(e),
+        }
+    }
+
+    pub fn local_other(str: &str) -> Self {
+        OverlordError {
+            kind: ErrorKind::Local,
+            info: ErrorInfo::Other(str.to_owned()),
+        }
+    }
 }
 
 impl Error for OverlordError {}

@@ -19,15 +19,15 @@ use log::{error, warn};
 use crate::auth::{AuthCell, AuthFixedConfig, AuthManage};
 use crate::cabinet::Cabinet;
 use crate::exec::ExecRequest;
-use crate::state::{ProposePrepare, Stage, StateError, StateInfo};
+use crate::state::{ProposePrepare, Stage, StateInfo};
 use crate::timeout::TimeoutEvent;
 use crate::types::{
     ChokeQC, FetchedFullBlock, PreCommitQC, Proposal, SignedChoke, SignedPreCommit, SignedPreVote,
     SignedProposal, UpdateFrom,
 };
 use crate::{
-    Adapter, Address, Blk, CommonHex, ExecResult, Height, HeightRange, OverlordConfig, OverlordMsg,
-    PriKeyHex, Proof, Round, St, TimeConfig, Wal,
+    Adapter, Address, Blk, CommonHex, ExecResult, Height, HeightRange, OverlordConfig,
+    OverlordError, OverlordMsg, OverlordResult, PriKeyHex, Proof, Round, St, TimeConfig, Wal,
 };
 
 const MULTIPLIER_CAP: u32 = 5;
@@ -136,9 +136,9 @@ where
         }
     }
 
-    async fn handle_msg(&mut self, opt: Option<WrappedOverlordMsg<B>>) -> Result<(), SMRError> {
+    async fn handle_msg(&mut self, opt: Option<WrappedOverlordMsg<B>>) -> OverlordResult<()> {
         if opt.is_none() {
-            return Err(SMRError::ChannelClosed("network ".to_owned()));
+            return Err(OverlordError::net_close());
         }
         let (context, msg) = opt.unwrap();
 
@@ -159,18 +159,15 @@ where
         Ok(())
     }
 
-    async fn handle_exec_result(&mut self, exec_result: ExecResult<S>) -> Result<(), SMRError> {
+    async fn handle_exec_result(&mut self, exec_result: ExecResult<S>) -> OverlordResult<()> {
         Ok(())
     }
 
-    async fn handle_fetch(
-        &mut self,
-        _fetched_full_block: FetchedFullBlock,
-    ) -> Result<(), SMRError> {
+    async fn handle_fetch(&mut self, _fetched_full_block: FetchedFullBlock) -> OverlordResult<()> {
         Ok(())
     }
 
-    async fn handle_timeout(&mut self, timeout_event: TimeoutEvent) -> Result<(), SMRError> {
+    async fn handle_timeout(&mut self, timeout_event: TimeoutEvent) -> OverlordResult<()> {
         match timeout_event {
             TimeoutEvent::ProposeTimeout(stage) => {}
             TimeoutEvent::PreVoteTimeout(stage) => {}
@@ -184,7 +181,7 @@ where
     async fn handle_signed_proposal(
         &mut self,
         signed_proposal: SignedProposal<B>,
-    ) -> Result<(), SMRError> {
+    ) -> OverlordResult<()> {
         Ok(())
     }
 }
@@ -227,11 +224,11 @@ async fn recover_propose_prepare_and_config<A: Adapter<B, S>, B: Blk, S: St>(
 async fn get_block_with_proof<A: Adapter<B, S>, B: Blk, S: St>(
     adapter: &Arc<A>,
     height: Height,
-) -> Result<Option<(B, Proof)>, SMRError> {
+) -> OverlordResult<Option<(B, Proof)>> {
     let vec = adapter
         .get_block_with_proofs(Context::default(), HeightRange::new(height, 1))
         .await
-        .map_err(SMRError::GetBlock)?;
+        .map_err(OverlordError::local_get_block)?;
     if vec.is_empty() {
         return Ok(None);
     }
@@ -241,17 +238,17 @@ async fn get_block_with_proof<A: Adapter<B, S>, B: Blk, S: St>(
 async fn get_exec_result<A: Adapter<B, S>, B: Blk, S: St>(
     adapter: &Arc<A>,
     height: Height,
-) -> Result<Option<ExecResult<S>>, SMRError> {
+) -> OverlordResult<Option<ExecResult<S>>> {
     let opt = get_block_with_proof(adapter, height).await?;
     if let Some((block, proof)) = opt {
         let full_block = adapter
             .fetch_full_block(Context::default(), &block)
             .await
-            .map_err(SMRError::FetchFullBlock)?;
+            .map_err(OverlordError::local_fetch)?;
         let rst = adapter
             .save_and_exec_block_with_proof(Context::default(), height, full_block, proof.clone())
             .await
-            .map_err(SMRError::ExecBlock)?;
+            .map_err(OverlordError::local_exec)?;
         Ok(Some(rst))
     } else {
         Ok(None)
@@ -290,21 +287,3 @@ impl<B: Blk, S: St> EventAgent<B, S> {
         }
     }
 }
-
-#[derive(Debug, Display)]
-pub enum SMRError {
-    #[display(fmt = "{}", _0)]
-    State(StateError),
-    #[display(fmt = "get block failed: {}", _0)]
-    GetBlock(Box<dyn Error + Send>),
-    #[display(fmt = "fetch full block failed: {}", _0)]
-    FetchFullBlock(Box<dyn Error + Send>),
-    #[display(fmt = "exec block failed: {}", _0)]
-    ExecBlock(Box<dyn Error + Send>),
-    #[display(fmt = "{} channel closed", _0)]
-    ChannelClosed(String),
-    #[display(fmt = "Other error: {}", _0)]
-    Other(String),
-}
-
-impl Error for SMRError {}

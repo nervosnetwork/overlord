@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 
 use std::collections::{BTreeMap, HashMap};
-use std::error::Error;
 
 use bytes::Bytes;
 use derive_more::Display;
@@ -10,7 +9,7 @@ use crate::types::{
     ChokeQC, CumWeight, PreCommitQC, PreVoteQC, Proposal, SignedChoke, SignedPreCommit,
     SignedPreVote, SignedProposal, VoteType, Weight,
 };
-use crate::{Address, Blk, Hash, Height, Round};
+use crate::{Address, Blk, Hash, Height, OverlordError, OverlordResult, Round};
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Display)]
@@ -78,7 +77,7 @@ impl<B: Blk> Cabinet<B> {
         height: Height,
         round: Round,
         data: Capsule<B>,
-    ) -> Result<Option<CumWeight>, CabinetError<B>> {
+    ) -> OverlordResult<Option<CumWeight>> {
         self.0
             .entry(height)
             .or_insert_with(Drawer::default)
@@ -168,11 +167,7 @@ struct Drawer<B: Blk> {
 }
 
 impl<B: Blk> Drawer<B> {
-    fn insert(
-        &mut self,
-        round: Round,
-        data: Capsule<B>,
-    ) -> Result<Option<CumWeight>, CabinetError<B>> {
+    fn insert(&mut self, round: Round, data: Capsule<B>) -> OverlordResult<Option<CumWeight>> {
         if let Capsule::SignedProposal(signed_proposal) = &data {
             self.insert_block(&signed_proposal.proposal);
         }
@@ -331,7 +326,7 @@ impl<B: Blk> Grid<B> {
         self.pre_commit_sets.get(block_hash).cloned()
     }
 
-    fn insert(&mut self, data: Capsule<B>) -> Result<Option<CumWeight>, CabinetError<B>> {
+    fn insert(&mut self, data: Capsule<B>) -> OverlordResult<Option<CumWeight>> {
         match data {
             Capsule::SignedProposal(signed_proposal) => {
                 self.insert_signed_proposal(signed_proposal)
@@ -350,8 +345,8 @@ impl<B: Blk> Grid<B> {
     fn insert_signed_proposal(
         &mut self,
         signed_proposal: SignedProposal<B>,
-    ) -> Result<Option<CumWeight>, CabinetError<B>> {
-        check_exist(self.signed_proposal.as_ref(), &signed_proposal)?;
+    ) -> OverlordResult<Option<CumWeight>> {
+        check_exist::<SignedProposal<B>>(self.signed_proposal.as_ref(), &signed_proposal)?;
 
         self.signed_proposal = Some(signed_proposal);
         Ok(None)
@@ -360,7 +355,7 @@ impl<B: Blk> Grid<B> {
     fn insert_signed_pre_vote(
         &mut self,
         signed_pre_vote: SignedPreVote,
-    ) -> Result<Option<CumWeight>, CabinetError<B>> {
+    ) -> OverlordResult<Option<CumWeight>> {
         let voter = signed_pre_vote.voter.clone();
         check_exist(self.signed_pre_votes.get(&voter), &signed_pre_vote)?;
 
@@ -390,7 +385,7 @@ impl<B: Blk> Grid<B> {
     fn insert_signed_pre_commit(
         &mut self,
         signed_pre_commit: SignedPreCommit,
-    ) -> Result<Option<CumWeight>, CabinetError<B>> {
+    ) -> OverlordResult<Option<CumWeight>> {
         let voter = signed_pre_commit.voter.clone();
         check_exist(self.signed_pre_commits.get(&voter), &signed_pre_commit)?;
 
@@ -421,7 +416,7 @@ impl<B: Blk> Grid<B> {
     fn insert_signed_choke(
         &mut self,
         signed_choke: SignedChoke,
-    ) -> Result<Option<CumWeight>, CabinetError<B>> {
+    ) -> OverlordResult<Option<CumWeight>> {
         let voter = signed_choke.voter.clone();
         check_exist(self.signed_chokes.get(&voter), &signed_choke)?;
 
@@ -436,10 +431,7 @@ impl<B: Blk> Grid<B> {
         Ok(Some(self.choke_vote_weight.clone()))
     }
 
-    fn insert_pre_vote_qc(
-        &mut self,
-        pre_vote_qc: PreVoteQC,
-    ) -> Result<Option<CumWeight>, CabinetError<B>> {
+    fn insert_pre_vote_qc(&mut self, pre_vote_qc: PreVoteQC) -> OverlordResult<Option<CumWeight>> {
         check_exist(self.pre_vote_qc.as_ref(), &pre_vote_qc)?;
         self.pre_vote_qc = Some(pre_vote_qc);
         Ok(None)
@@ -448,31 +440,25 @@ impl<B: Blk> Grid<B> {
     fn insert_pre_commit_qc(
         &mut self,
         pre_commit_qc: PreCommitQC,
-    ) -> Result<Option<CumWeight>, CabinetError<B>> {
+    ) -> OverlordResult<Option<CumWeight>> {
         check_exist(self.pre_commit_qc.as_ref(), &pre_commit_qc)?;
         self.pre_commit_qc = Some(pre_commit_qc);
         Ok(None)
     }
 
-    fn insert_choke_qc(&mut self, choke_qc: ChokeQC) -> Result<Option<CumWeight>, CabinetError<B>> {
+    fn insert_choke_qc(&mut self, choke_qc: ChokeQC) -> OverlordResult<Option<CumWeight>> {
         check_exist(self.choke_qc.as_ref(), &choke_qc)?;
         self.choke_qc = Some(choke_qc);
         Ok(None)
     }
 }
 
-fn check_exist<T: Into<Capsule<B>> + Clone + PartialEq + Eq, B: Blk>(
-    opt: Option<&T>,
-    check_data: &T,
-) -> Result<(), CabinetError<B>> {
+fn check_exist<T: PartialEq + Eq>(opt: Option<&T>, check_data: &T) -> OverlordResult<()> {
     if let Some(exist_data) = opt {
         if exist_data == check_data {
-            return Err(CabinetError::AlreadyExists(check_data.clone().into()));
+            return Err(OverlordError::net_msg_exist());
         }
-        return Err(CabinetError::InsertDiff(
-            exist_data.clone().into(),
-            check_data.clone().into(),
-        ));
+        return Err(OverlordError::byz_mul_version());
     }
     Ok(())
 }
@@ -496,20 +482,6 @@ fn update_max_vote_weight(max_weight: &mut CumWeight, cum_weight: CumWeight) {
     }
 }
 
-#[derive(Debug, Display)]
-pub enum CabinetError<B: Blk> {
-    #[display(fmt = "collect_data: {} already exists", _0)]
-    AlreadyExists(Capsule<B>),
-    #[display(
-        fmt = "try to insert a different collect_data: {}, while exist {}",
-        _0,
-        _1
-    )]
-    InsertDiff(Capsule<B>, Capsule<B>),
-}
-
-impl<B: Blk> Error for CabinetError<B> {}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -517,6 +489,7 @@ mod test {
     use crate::{Crypto, DefaultCrypto};
     use bytes::Bytes;
     use serde::{Deserialize, Serialize};
+    use std::error::Error;
 
     #[test]
     fn test_cabinet() {
