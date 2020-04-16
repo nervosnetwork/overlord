@@ -14,24 +14,26 @@ use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::{Stream, StreamExt};
 use futures::{FutureExt, SinkExt};
 use futures_timer::Delay;
-use log::error;
+use log::{error, warn};
 
-use crate::auth::{AuthFixedConfig, AuthManage};
+use crate::auth::{AuthCell, AuthFixedConfig, AuthManage};
 use crate::cabinet::Cabinet;
-use crate::state::{Stage, StateError, StateInfo};
+use crate::state::{ProposePrepare, Stage, StateError, StateInfo};
 use crate::timeout::TimeoutEvent;
 use crate::types::{FetchedFullBlock, Proposal, UpdateFrom};
 use crate::{
-    Adapter, Address, Blk, CommonHex, HeightRange, OverlordMsg, PriKeyHex, Round, St, TimeConfig,
-    Wal,
+    Adapter, Address, Blk, CommonHex, ExecResult, Height, HeightRange, OverlordConfig, OverlordMsg,
+    PriKeyHex, Proof, Round, St, TimeConfig, Wal,
 };
 
 const MULTIPLIER_CAP: u32 = 5;
 
 pub type WrappedOverlordMsg<B> = (Context, OverlordMsg<B>);
 
-pub struct StateMachine<A: Adapter<B, S>, B: Blk, S: St> {
+/// State Machine Replica
+pub struct SMR<A: Adapter<B, S>, B: Blk, S: St> {
     state: StateInfo<B>,
+    prepare: ProposePrepare<S>,
     /// start time of current height
     time_start: Instant,
 
@@ -49,7 +51,7 @@ pub struct StateMachine<A: Adapter<B, S>, B: Blk, S: St> {
     phantom_s: PhantomData<S>,
 }
 
-impl<A, B, S> StateMachine<A, B, S>
+impl<A, B, S> SMR<A, B, S>
 where
     A: Adapter<B, S>,
     B: Blk,
@@ -73,13 +75,33 @@ where
             rst.unwrap()
         };
 
-        StateMachine {
+        let height = state.stage.height;
+
+        let (prepare, current_config) = recover_propose_prepare_and_config(adapter, height).await;
+        let last_config = if height > 0 {
+            Some(
+                get_exec_result(adapter, state.stage.height - 1)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .consensus_config,
+            )
+        } else {
+            None
+        };
+
+        let current_auth = AuthCell::new(current_config.auth_config, &auth_fixed_config.address);
+        let last_auth: Option<AuthCell> =
+            last_config.map(|config| AuthCell::new(config.auth_config, &auth_fixed_config.address));
+
+        SMR {
             state,
+            prepare,
             time_start: Instant::now(),
             adapter: Arc::<A>::clone(adapter),
             wal: Wal::new(wal_path),
             cabinet: Cabinet::default(),
-            auth: AuthManage::new(auth_fixed_config),
+            auth: AuthManage::new(auth_fixed_config, current_auth, last_auth),
             from_net: net_receiver,
             from_fetch,
             to_fetch,
@@ -135,37 +157,72 @@ where
 async fn recover_state_by_adapter<A: Adapter<B, S>, B: Blk, S: St>(
     adapter: &Arc<A>,
 ) -> StateInfo<B> {
-    let expect_str =
-        "State can recover from both wal and adapter! It's meaningless to continue running";
-    let ctx = Context::default();
-    let latest_height = adapter
-        .get_latest_height(ctx.clone())
+    let height = adapter.get_latest_height(Context::default()).await.expect(
+        "Cannot get the latest height from the adapter! It's meaningless to continue running",
+    );
+    StateInfo::new(height)
+}
+
+async fn recover_propose_prepare_and_config<A: Adapter<B, S>, B: Blk, S: St>(
+    adapter: &Arc<A>,
+    latest_height: Height,
+) -> (ProposePrepare<S>, OverlordConfig) {
+    let (block, proof) = get_block_with_proof(adapter, latest_height)
         .await
-        .expect(expect_str);
-    let vec = adapter
-        .get_block_with_proofs(ctx.clone(), HeightRange::new(latest_height, 1))
-        .await
-        .expect(expect_str);
-    let (block, proof) = vec[0].clone();
-    let full_block = adapter
-        .fetch_full_block(ctx.clone(), &block)
-        .await
-        .expect(expect_str);
-    let exec_result = adapter
-        .save_and_exec_block_with_proof(ctx, latest_height, full_block, proof.clone())
-        .await
-        .expect(expect_str);
-    let time_config = exec_result.consensus_config.time_config;
-    StateInfo::new(
-        latest_height,
-        time_config,
-        proof,
-        block.get_block_hash(),
-        block.get_exec_height(),
+        .unwrap()
+        .unwrap();
+    let hash = block.get_block_hash();
+    let exec_height = block.get_exec_height();
+    let mut time_config = TimeConfig::default();
+    let mut block_states = vec![];
+    let mut latest_config = OverlordConfig::default();
+    for h in exec_height + 1..=latest_height {
+        let exec_result = get_exec_result(adapter, h).await.unwrap().unwrap();
+        block_states.push(exec_result.block_states);
+        time_config = exec_result.consensus_config.time_config.clone();
+        latest_config = exec_result.consensus_config.clone();
+    }
+    (
+        ProposePrepare::new(time_config, latest_height, block_states, proof, hash),
+        latest_config,
     )
 }
 
-impl<A, B, S> Stream for StateMachine<A, B, S>
+async fn get_block_with_proof<A: Adapter<B, S>, B: Blk, S: St>(
+    adapter: &Arc<A>,
+    height: Height,
+) -> Result<Option<(B, Proof)>, SMRError> {
+    let vec = adapter
+        .get_block_with_proofs(Context::default(), HeightRange::new(height, 1))
+        .await
+        .map_err(SMRError::GetBlock)?;
+    if vec.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(vec[0].clone()))
+}
+
+async fn get_exec_result<A: Adapter<B, S>, B: Blk, S: St>(
+    adapter: &Arc<A>,
+    height: Height,
+) -> Result<Option<ExecResult<S>>, SMRError> {
+    let opt = get_block_with_proof(adapter, height).await?;
+    if let Some((block, proof)) = opt {
+        let full_block = adapter
+            .fetch_full_block(Context::default(), &block)
+            .await
+            .map_err(SMRError::FetchFullBlock)?;
+        let rst = adapter
+            .save_and_exec_block_with_proof(Context::default(), height, full_block, proof.clone())
+            .await
+            .map_err(SMRError::ExecBlock)?;
+        Ok(Some(rst))
+    } else {
+        Ok(None)
+    }
+}
+
+impl<A, B, S> Stream for SMR<A, B, S>
 where
     A: Adapter<B, S>,
     B: Blk,
@@ -226,6 +283,12 @@ where
 pub enum SMRError {
     #[display(fmt = "{}", _0)]
     State(StateError),
+    #[display(fmt = "get block failed: {}", _0)]
+    GetBlock(Box<dyn Error + Send>),
+    #[display(fmt = "fetch full block failed: {}", _0)]
+    FetchFullBlock(Box<dyn Error + Send>),
+    #[display(fmt = "exec block failed: {}", _0)]
+    ExecBlock(Box<dyn Error + Send>),
     #[display(fmt = "Other error: {}", _0)]
     Other(String),
 }

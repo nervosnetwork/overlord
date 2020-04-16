@@ -19,54 +19,34 @@ use crate::{
     Adapter, Address, Blk, BlockState, CommonHex, Hash, Height, OverlordConfig, OverlordMsg,
     PriKeyHex, Proof, Round, St, TimeConfig, Wal, INIT_ROUND,
 };
+use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Display, Default, Eq, PartialEq)]
 #[display(
-    fmt = "stage: {}, time_config: {}, polc: {}, pre_commit_qc: {}, from: {}, pre_proof: {}, pre_hash: {}, pre_exec_height: {}",
+    fmt = "stage: {}, polc: {}, pre_commit_qc: {}, from: {}",
     stage,
-    time_config,
     "polc.clone().map_or(\"None\".to_owned(), |polc| format!(\"{}\", polc))",
     "pre_commit_qc.clone().map_or(\"None\".to_owned(), |qc| format!(\"{}\", qc))",
-    "from.clone().map_or(\"None\".to_owned(), |from| format!(\"{}\", from))",
-    pre_proof,
-    "hex::encode(pre_hash.clone())",
-    pre_exec_height
+    "from.clone().map_or(\"None\".to_owned(), |from| format!(\"{}\", from))"
 )]
 pub struct StateInfo<B: Blk> {
     // current info
-    pub stage:       Stage,
-    pub time_config: TimeConfig,
+    pub stage: Stage,
 
     pub polc:          Option<PoLC>,
     pub pre_commit_qc: Option<PreCommitQC>,
     pub block:         Option<B>,
     pub from:          Option<UpdateFrom>,
-
-    // previous info
-    pub pre_proof: Proof, /* proof for the previous block which will be involved in the
-                           * next block */
-    pub pre_hash:        Hash,
-    pub pre_exec_height: Height,
 }
 
 impl<B: Blk> StateInfo<B> {
-    pub fn new(
-        height: Height,
-        time_config: TimeConfig,
-        pre_proof: Proof,
-        pre_hash: Hash,
-        pre_exec_height: Height,
-    ) -> Self {
+    pub fn new(height: Height) -> Self {
         StateInfo {
-            stage: Stage::new(height),
-            time_config,
-            pre_proof,
-            pre_exec_height,
-            pre_hash,
-            polc: None,
+            stage:         Stage::new(height),
+            polc:          None,
             pre_commit_qc: None,
-            block: None,
-            from: None,
+            block:         None,
+            from:          None,
         }
     }
 
@@ -183,6 +163,54 @@ impl From<u8> for Step {
             4 => Step::Commit,
             _ => panic!("Invalid Step type!"),
         }
+    }
+}
+
+#[derive(Debug, Display)]
+#[display(
+    fmt = "time_config: {}, exec_height: {}, pre_proof: {}, pre_hash: {}",
+    time_config,
+    exec_height,
+    pre_proof,
+    "hex::encode(pre_hash.clone())"
+)]
+pub struct ProposePrepare<S: St> {
+    pub time_config: TimeConfig,
+
+    pub exec_height:  Height,
+    pub block_states: BTreeMap<Height, S>,
+
+    pub pre_proof: Proof, /* proof for the previous block which will be involved in the
+                           * next block */
+    pub pre_hash: Hash,
+}
+
+impl<S: St> ProposePrepare<S> {
+    pub fn new(
+        time_config: TimeConfig,
+        exec_height: Height,
+        block_states: Vec<BlockState<S>>,
+        pre_proof: Proof,
+        pre_hash: Hash,
+    ) -> Self {
+        let block_states = block_states
+            .into_iter()
+            .map(|state| (state.height, state.state))
+            .collect();
+        ProposePrepare {
+            time_config,
+            exec_height,
+            block_states,
+            pre_proof,
+            pre_hash,
+        }
+    }
+
+    pub fn get_block_state_vec(&self) -> Vec<BlockState<S>> {
+        self.block_states
+            .iter()
+            .map(|(height, state)| BlockState::new(*height, state.clone()))
+            .collect()
     }
 }
 

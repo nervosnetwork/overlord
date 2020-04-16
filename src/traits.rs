@@ -72,6 +72,7 @@ pub trait Adapter<B: Blk, S: St>: 'static + Send + Sync + Unpin {
         msg: OverlordMsg<B>,
     ) -> Result<(), Box<dyn Error + Send>>;
 
+    /// should return empty vec if the required blocks are not exist
     async fn get_block_with_proofs(
         &self,
         ctx: Context,

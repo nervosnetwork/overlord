@@ -8,6 +8,7 @@ pub mod types;
 mod auth;
 mod cabinet;
 mod codec;
+mod exec;
 mod smr;
 mod state;
 mod timeout;
@@ -28,7 +29,7 @@ use creep::Context;
 use futures::channel::mpsc::unbounded;
 
 use crate::auth::AuthFixedConfig;
-use crate::smr::StateMachine;
+use crate::smr::SMR;
 use crate::wal::Wal;
 
 pub const INIT_HEIGHT: Height = 0;
@@ -56,9 +57,8 @@ where
         let (net_sender, net_receiver) = unbounded();
         adapter.register_network(Context::default(), net_sender);
         let auth_fixed_config = AuthFixedConfig::new(common_ref, pri_key, address);
-        let state_machine =
-            StateMachine::new(auth_fixed_config, adapter, net_receiver, wal_path).await;
+        let smr = SMR::new(auth_fixed_config, adapter, net_receiver, wal_path).await;
 
-        state_machine.run();
+        smr.run();
     }
 }

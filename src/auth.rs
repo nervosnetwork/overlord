@@ -29,11 +29,15 @@ pub struct AuthManage<A: Adapter<B, S>, B: Blk, S: St> {
 }
 
 impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
-    pub fn new(fixed_config: AuthFixedConfig) -> Self {
+    pub fn new(
+        fixed_config: AuthFixedConfig,
+        current_auth: AuthCell,
+        last_auth: Option<AuthCell>,
+    ) -> Self {
         AuthManage {
             fixed_config,
-            current_auth: AuthCell::default(),
-            last_auth: None,
+            current_auth,
+            last_auth,
 
             phantom_a: PhantomData,
             phantom_b: PhantomData,
@@ -251,7 +255,7 @@ fn hash_vote<A: Adapter<B, S>, B: Blk, E: Encodable, S: St>(data: &E, vote_type:
 }
 
 #[derive(Clone, Debug, Default)]
-struct AuthCell {
+pub struct AuthCell {
     pub mode:               SelectMode,
     pub vote_weight:        Weight,
     pub propose_weight:     Weight,
@@ -264,7 +268,7 @@ struct AuthCell {
 }
 
 impl AuthCell {
-    fn new(config: AuthConfig, my_address: &Address) -> Self {
+    pub fn new(config: AuthConfig, my_address: &Address) -> Self {
         let mut list = vec![];
         let mut vote_weight_map = HashMap::new();
         let mut vote_weight_sum = 0;
@@ -379,9 +383,9 @@ impl AuthCell {
 }
 
 pub struct AuthFixedConfig {
-    common_ref: CommonHex,
-    pri_key:    PriKeyHex,
-    address:    Address,
+    pub common_ref: CommonHex,
+    pub address:    Address,
+    pri_key:        PriKeyHex,
 }
 
 impl AuthFixedConfig {

@@ -76,7 +76,7 @@ async fn run_nodes(
             key_pair.private_key.clone(),
             address,
             &adapter,
-            &key_pair.address,
+            &("wal/tests/".to_owned() + &key_pair.address),
         )
         .await;
     }

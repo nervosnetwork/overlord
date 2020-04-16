@@ -369,6 +369,12 @@ pub struct BlockState<S: St> {
     pub state:  S,
 }
 
+impl<S: St> BlockState<S> {
+    pub fn new(height: Height, state: S) -> Self {
+        BlockState { height, state }
+    }
+}
+
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
     fmt = "{{ max_exec_behind: {}, auth_config: {}, timer_config: {} }}",

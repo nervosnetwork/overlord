@@ -4,7 +4,7 @@ use rlp::{Decodable, DecoderError, Encodable, Prototype, Rlp, RlpStream};
 use crate::state::{Stage, StateInfo, Step};
 use crate::types::{
     Aggregates, Choke, ChokeQC, PoLC, PreCommitQC, PreVoteQC, Proposal, SignedChoke,
-    SignedPreCommit, SignedPreVote, SignedProposal, TimeConfig, UpdateFrom, Vote, Weight,
+    SignedPreCommit, SignedPreVote, SignedProposal, UpdateFrom, Vote, Weight,
 };
 use crate::{Address, Blk, Hash, Height, Proof, Round, Signature};
 
@@ -421,15 +421,11 @@ impl<B: Blk> Encodable for StateInfo<B> {
             .block
             .as_ref()
             .map(|block| block.fixed_encode().unwrap().to_vec());
-        s.begin_list(9)
+        s.begin_list(5)
             .append(&self.stage)
             .append(&self.polc)
             .append(&self.pre_commit_qc)
-            .append(&self.pre_proof)
             .append(&self.from)
-            .append(&self.time_config)
-            .append(&self.pre_hash.to_vec())
-            .append(&self.pre_exec_height)
             .append(&block);
     }
 }
@@ -437,17 +433,12 @@ impl<B: Blk> Encodable for StateInfo<B> {
 impl<B: Blk> Decodable for StateInfo<B> {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         match r.prototype()? {
-            Prototype::List(9) => {
+            Prototype::List(5) => {
                 let stage: Stage = r.val_at(0)?;
                 let polc: Option<PoLC> = r.val_at(1)?;
                 let pre_commit_qc: Option<PreCommitQC> = r.val_at(2)?;
-                let pre_proof: Proof = r.val_at(3)?;
-                let from: Option<UpdateFrom> = r.val_at(4)?;
-                let time_config: TimeConfig = r.val_at(5)?;
-                let tmp: Vec<u8> = r.val_at(6)?;
-                let pre_hash = Hash::from(tmp);
-                let pre_exec_height: Height = r.val_at(7)?;
-                let tmp: Option<Vec<u8>> = r.val_at(8)?;
+                let from: Option<UpdateFrom> = r.val_at(3)?;
+                let tmp: Option<Vec<u8>> = r.val_at(4)?;
                 let block = if let Some(v) = tmp {
                     Some(
                         B::fixed_decode(&Bytes::from(v))
@@ -458,12 +449,8 @@ impl<B: Blk> Decodable for StateInfo<B> {
                 };
                 Ok(StateInfo {
                     stage,
-                    time_config,
                     polc,
                     pre_commit_qc,
-                    pre_proof,
-                    pre_hash,
-                    pre_exec_height,
                     from,
                     block,
                 })
@@ -487,40 +474,6 @@ impl Decodable for Proof {
                 let vote: Vote = r.val_at(0)?;
                 let aggregates: Aggregates = r.val_at(1)?;
                 Ok(Proof { vote, aggregates })
-            }
-            _ => Err(DecoderError::RlpInconsistentLengthAndData),
-        }
-    }
-}
-
-// impl Encodable and Decodable trait for TimeConfig
-impl Encodable for TimeConfig {
-    fn rlp_append(&self, s: &mut RlpStream) {
-        s.begin_list(5)
-            .append(&self.interval)
-            .append(&self.propose_ratio)
-            .append(&self.pre_vote_ratio)
-            .append(&self.pre_commit_ratio)
-            .append(&self.brake_ratio);
-    }
-}
-
-impl Decodable for TimeConfig {
-    fn decode(r: &Rlp) -> Result<Self, DecoderError> {
-        match r.prototype()? {
-            Prototype::List(5) => {
-                let interval: u64 = r.val_at(0)?;
-                let propose_ratio: u64 = r.val_at(1)?;
-                let pre_vote_ratio: u64 = r.val_at(2)?;
-                let pre_commit_ratio: u64 = r.val_at(3)?;
-                let brake_ratio: u64 = r.val_at(4)?;
-                Ok(TimeConfig {
-                    interval,
-                    propose_ratio,
-                    pre_vote_ratio,
-                    pre_commit_ratio,
-                    brake_ratio,
-                })
             }
             _ => Err(DecoderError::RlpInconsistentLengthAndData),
         }
