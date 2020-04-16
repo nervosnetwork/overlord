@@ -31,8 +31,9 @@ const MULTIPLIER_CAP: u32 = 5;
 pub type WrappedOverlordMsg<B> = (Context, OverlordMsg<B>);
 
 pub struct StateMachine<A: Adapter<B, S>, B: Blk, S: St> {
-    state:        StateInfo<B>,
-    height_start: Instant,
+    state: StateInfo<B>,
+    /// start time of current height
+    time_start: Instant,
 
     adapter: Arc<A>,
     wal:     Wal,
@@ -62,20 +63,19 @@ where
     ) -> Self {
         let (to_fetch, from_fetch) = unbounded();
         let (to_timeout, from_timeout) = unbounded();
-        // check wal
-        let wal = Wal::new(wal_path);
 
-        let v = StateInfo::<B>::from_wal(&wal);
-        let state = if let Err(e) = v {
-            error!("Load wal failed! Try to recover state from the adapter, which face a little security risk for auth nodes");
-            get_state_from_adapter(adapter).await
+        let wal = Wal::new(wal_path);
+        let rst = StateInfo::<B>::from_wal(&wal);
+        let state = if let Err(e) = rst {
+            error!("Load wal failed! Try to recover state by the adapter, which face security risk if majority auth nodes lost their wal file at the same time");
+            recover_state_by_adapter(adapter).await
         } else {
-            v.unwrap()
+            rst.unwrap()
         };
 
         StateMachine {
-            state: StateInfo::default(),
-            height_start: Instant::now(),
+            state,
+            time_start: Instant::now(),
             adapter: Arc::<A>::clone(adapter),
             wal: Wal::new(wal_path),
             cabinet: Cabinet::default(),
@@ -132,9 +132,11 @@ where
     }
 }
 
-async fn get_state_from_adapter<A: Adapter<B, S>, B: Blk, S: St>(adapter: &Arc<A>) -> StateInfo<B> {
+async fn recover_state_by_adapter<A: Adapter<B, S>, B: Blk, S: St>(
+    adapter: &Arc<A>,
+) -> StateInfo<B> {
     let expect_str =
-        "Nothing can get from both wal and adapter! It's meaningless to continue running";
+        "State can recover from both wal and adapter! It's meaningless to continue running";
     let ctx = Context::default();
     let latest_height = adapter
         .get_latest_height(ctx.clone())
@@ -144,7 +146,6 @@ async fn get_state_from_adapter<A: Adapter<B, S>, B: Blk, S: St>(adapter: &Arc<A
         .get_block_with_proofs(ctx.clone(), HeightRange::new(latest_height, 1))
         .await
         .expect(expect_str);
-    println!("{}", vec.len());
     let (block, proof) = vec[0].clone();
     let full_block = adapter
         .fetch_full_block(ctx.clone(), &block)
@@ -155,7 +156,13 @@ async fn get_state_from_adapter<A: Adapter<B, S>, B: Blk, S: St>(adapter: &Arc<A
         .await
         .expect(expect_str);
     let time_config = exec_result.consensus_config.time_config;
-    StateInfo::new(latest_height, time_config, proof)
+    StateInfo::new(
+        latest_height,
+        time_config,
+        proof,
+        block.get_block_hash(),
+        block.get_exec_height(),
+    )
 }
 
 impl<A, B, S> Stream for StateMachine<A, B, S>

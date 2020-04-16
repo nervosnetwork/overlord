@@ -16,35 +16,53 @@ use crate::cabinet::Cabinet;
 use crate::types::{PoLC, PreCommitQC, Proposal, UpdateFrom};
 use crate::wal::WalError;
 use crate::{
-    Adapter, Address, Blk, CommonHex, Height, OverlordConfig, OverlordMsg, PriKeyHex, Proof, Round,
-    St, TimeConfig, Wal, INIT_ROUND,
+    Adapter, Address, Blk, BlockState, CommonHex, Hash, Height, OverlordConfig, OverlordMsg,
+    PriKeyHex, Proof, Round, St, TimeConfig, Wal, INIT_ROUND,
 };
 
 #[derive(Clone, Debug, Display, Default, Eq, PartialEq)]
 #[display(
-    fmt = "stage: {}, polc: {}, pre_commit_qc: {}, from: {}, pre_proof: {}",
+    fmt = "stage: {}, time_config: {}, polc: {}, pre_commit_qc: {}, from: {}, pre_proof: {}, pre_hash: {}, pre_exec_height: {}",
     stage,
+    time_config,
     "polc.clone().map_or(\"None\".to_owned(), |polc| format!(\"{}\", polc))",
     "pre_commit_qc.clone().map_or(\"None\".to_owned(), |qc| format!(\"{}\", qc))",
     "from.clone().map_or(\"None\".to_owned(), |from| format!(\"{}\", from))",
-    pre_proof
+    pre_proof,
+    "hex::encode(pre_hash.clone())",
+    pre_exec_height
 )]
 pub struct StateInfo<B: Blk> {
-    pub stage:         Stage,
-    pub time_config:   TimeConfig,
+    // current info
+    pub stage:       Stage,
+    pub time_config: TimeConfig,
+
     pub polc:          Option<PoLC>,
     pub pre_commit_qc: Option<PreCommitQC>,
     pub block:         Option<B>,
     pub from:          Option<UpdateFrom>,
-    pub pre_proof:     Proof,
+
+    // previous info
+    pub pre_proof: Proof, /* proof for the previous block which will be involved in the
+                           * next block */
+    pub pre_hash:        Hash,
+    pub pre_exec_height: Height,
 }
 
 impl<B: Blk> StateInfo<B> {
-    pub fn new(height: Height, time_config: TimeConfig, pre_proof: Proof) -> Self {
+    pub fn new(
+        height: Height,
+        time_config: TimeConfig,
+        pre_proof: Proof,
+        pre_hash: Hash,
+        pre_exec_height: Height,
+    ) -> Self {
         StateInfo {
             stage: Stage::new(height),
             time_config,
             pre_proof,
+            pre_exec_height,
+            pre_hash,
             polc: None,
             pre_commit_qc: None,
             block: None,

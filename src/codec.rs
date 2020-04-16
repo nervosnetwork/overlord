@@ -421,13 +421,15 @@ impl<B: Blk> Encodable for StateInfo<B> {
             .block
             .as_ref()
             .map(|block| block.fixed_encode().unwrap().to_vec());
-        s.begin_list(7)
+        s.begin_list(9)
             .append(&self.stage)
             .append(&self.polc)
             .append(&self.pre_commit_qc)
             .append(&self.pre_proof)
             .append(&self.from)
             .append(&self.time_config)
+            .append(&self.pre_hash.to_vec())
+            .append(&self.pre_exec_height)
             .append(&block);
     }
 }
@@ -435,14 +437,17 @@ impl<B: Blk> Encodable for StateInfo<B> {
 impl<B: Blk> Decodable for StateInfo<B> {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         match r.prototype()? {
-            Prototype::List(7) => {
+            Prototype::List(9) => {
                 let stage: Stage = r.val_at(0)?;
                 let polc: Option<PoLC> = r.val_at(1)?;
                 let pre_commit_qc: Option<PreCommitQC> = r.val_at(2)?;
                 let pre_proof: Proof = r.val_at(3)?;
                 let from: Option<UpdateFrom> = r.val_at(4)?;
                 let time_config: TimeConfig = r.val_at(5)?;
-                let tmp: Option<Vec<u8>> = r.val_at(6)?;
+                let tmp: Vec<u8> = r.val_at(6)?;
+                let pre_hash = Hash::from(tmp);
+                let pre_exec_height: Height = r.val_at(7)?;
+                let tmp: Option<Vec<u8>> = r.val_at(8)?;
                 let block = if let Some(v) = tmp {
                     Some(
                         B::fixed_decode(&Bytes::from(v))
@@ -457,6 +462,8 @@ impl<B: Blk> Decodable for StateInfo<B> {
                     polc,
                     pre_commit_qc,
                     pre_proof,
+                    pre_hash,
+                    pre_exec_height,
                     from,
                     block,
                 })
