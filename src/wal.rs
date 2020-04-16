@@ -4,6 +4,7 @@
 use std::error::Error;
 use std::fs;
 use std::io::{Read, Write};
+use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 
 use bytes::Bytes;
@@ -74,14 +75,14 @@ impl Wal {
             let folder = entry.map_err(OverlordError::local_wal)?.path();
             let folder_name = folder
                 .file_stem()
-                .ok_or_else(|| OverlordError::local_other("file stem error"))?
+                .ok_or_else(|| OverlordError::local_other("file stem error".to_owned()))?
                 .to_os_string()
                 .clone();
             let folder_name = folder_name.into_string().map_err(|err| {
-                OverlordError::local_other(&format!("transfer os string to string error {:?}", err))
+                OverlordError::local_other(format!("transfer os string to string error {:?}", err))
             })?;
             let height_of_folder = folder_name.parse::<u64>().map_err(|err| {
-                OverlordError::local_other(&format!(
+                OverlordError::local_other(format!(
                     "parse folder name {:?} error {:?}",
                     folder, err
                 ))

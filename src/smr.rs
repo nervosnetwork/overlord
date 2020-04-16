@@ -17,7 +17,8 @@ use futures_timer::Delay;
 use log::{error, warn};
 
 use crate::auth::{AuthCell, AuthFixedConfig, AuthManage};
-use crate::cabinet::Cabinet;
+use crate::cabinet::{Cabinet, Capsule};
+use crate::error::ErrorInfo::MuchHighMsg;
 use crate::exec::ExecRequest;
 use crate::state::{ProposePrepare, Stage, StateInfo};
 use crate::timeout::TimeoutEvent;
@@ -31,6 +32,8 @@ use crate::{
 };
 
 const MULTIPLIER_CAP: u32 = 5;
+const HEIGHT_WINDOW: Height = 10;
+const ROUND_WINDOW: Round = 10;
 
 pub type WrappedOverlordMsg<B> = (Context, OverlordMsg<B>);
 
@@ -89,7 +92,7 @@ where
         };
 
         let current_auth = AuthCell::new(current_config.auth_config, &auth_fixed_config.address);
-        let last_auth: Option<AuthCell> =
+        let last_auth: Option<AuthCell<B>> =
             last_config.map(|config| AuthCell::new(config.auth_config, &auth_fixed_config.address));
 
         SMR {
@@ -178,10 +181,35 @@ where
         Ok(())
     }
 
-    async fn handle_signed_proposal(
+    async fn handle_signed_proposal(&mut self, sp: SignedProposal<B>) -> OverlordResult<()> {
+        let msg_h = sp.proposal.height;
+        let msg_r = sp.proposal.round;
+
+        self.filter_msg(msg_h, msg_r, &sp.clone().into())?;
+        self.auth.verify_signed_proposal(&sp)?;
+        self.cabinet.insert(msg_h, msg_r, sp.into())?;
+
+        // Todo tomorrow
+
+        Ok(())
+    }
+
+    fn filter_msg(
         &mut self,
-        signed_proposal: SignedProposal<B>,
+        height: Height,
+        round: Round,
+        capsule: &Capsule<B>,
     ) -> OverlordResult<()> {
+        let my_height = self.state.stage.height;
+        let my_round = self.state.stage.round;
+        if height < my_height || (height == my_height && round < my_round) {
+            return Err(OverlordError::debug_old());
+        } else if height > my_height + HEIGHT_WINDOW || round > my_round + ROUND_WINDOW {
+            return Err(OverlordError::net_much_high());
+        } else if height > my_height {
+            self.cabinet.insert(height, round, capsule.clone())?;
+            return Err(OverlordError::debug_high());
+        }
         Ok(())
     }
 }

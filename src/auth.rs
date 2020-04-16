@@ -2,13 +2,14 @@
 
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
+use std::marker::PhantomData;
 
 use bit_vec::BitVec;
 use bytes::Bytes;
 use derive_more::Display;
 use log::warn;
+use prime_tools::get_primes_less_than_x;
 use rlp::{encode, Encodable};
-use serde::export::PhantomData;
 
 use crate::error::{ErrorInfo, ErrorKind};
 use crate::types::{
@@ -16,14 +17,16 @@ use crate::types::{
     SelectMode, SignedChoke, SignedPreCommit, SignedPreVote, SignedProposal, UpdateFrom, Vote,
     VoteType, Weight,
 };
-use crate::{Adapter, Address, AuthConfig, Blk, CommonHex, Crypto, Hash, Signature, St};
+use crate::{
+    Adapter, Address, AuthConfig, Blk, CommonHex, Crypto, Hash, Height, Round, Signature, St,
+};
 use crate::{OverlordError, OverlordResult};
 
 pub struct AuthManage<A: Adapter<B, S>, B: Blk, S: St> {
     fixed_config: AuthFixedConfig,
 
-    current_auth: AuthCell,
-    last_auth:    Option<AuthCell>,
+    current_auth: AuthCell<B>,
+    last_auth:    Option<AuthCell<B>>,
 
     phantom_a: PhantomData<A>,
     phantom_b: PhantomData<B>,
@@ -33,8 +36,8 @@ pub struct AuthManage<A: Adapter<B, S>, B: Blk, S: St> {
 impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
     pub fn new(
         fixed_config: AuthFixedConfig,
-        current_auth: AuthCell,
-        last_auth: Option<AuthCell>,
+        current_auth: AuthCell<B>,
+        last_auth: Option<AuthCell<B>>,
     ) -> Self {
         AuthManage {
             fixed_config,
@@ -62,13 +65,19 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         Ok(SignedProposal::new(proposal, signature))
     }
 
-    pub fn verify_signed_proposal(&self, signed_proposal: SignedProposal<B>) -> OverlordResult<()> {
-        let hash = hash::<A, B, Proposal<B>, S>(&signed_proposal.proposal);
-        self.verify_signature(
-            &signed_proposal.proposal.proposer,
-            &hash,
-            &signed_proposal.signature,
-        )
+    pub fn verify_signed_proposal(&self, sp: &SignedProposal<B>) -> OverlordResult<()> {
+        check_leader(
+            sp.proposal.height,
+            sp.proposal.round,
+            &sp.proposal.proposer,
+            &self.current_auth,
+        )?;
+        let hash = hash::<A, B, Proposal<B>, S>(&sp.proposal);
+        self.verify_signature(&sp.proposal.proposer, &hash, &sp.signature)?;
+        if let Some(polc) = &sp.proposal.lock {
+            self.verify_pre_vote_qc(polc.lock_votes.clone())?;
+        }
+        Ok(())
     }
 
     pub fn sign_pre_vote(&self, vote: Vote) -> OverlordResult<SignedPreVote> {
@@ -248,8 +257,32 @@ fn hash_vote<A: Adapter<B, S>, B: Blk, E: Encodable, S: St>(data: &E, vote_type:
     A::CryptoImpl::hash(&Bytes::from(encode))
 }
 
+fn check_leader<B: Blk>(
+    height: Height,
+    round: Round,
+    leader: &Address,
+    cell: &AuthCell<B>,
+) -> OverlordResult<()> {
+    let expect_leader = calculate_leader(height, round, &cell.list);
+    if leader != &expect_leader {
+        return Err(OverlordError::byz_leader());
+    }
+    Ok(())
+}
+
+fn calculate_leader(height: Height, round: Round, list: &[(Address, PubKeyHex)]) -> Address {
+    // Todo: add random mode
+    let len = list.len();
+    let prime_num = *get_primes_less_than_x(len as u32).last().unwrap_or(&1) as u64;
+    let index = (height * prime_num + round) % (len as u64);
+    list.get(index as usize)
+        .expect("index out of auth_list which should not happen")
+        .0
+        .clone()
+}
+
 #[derive(Clone, Debug, Default)]
-pub struct AuthCell {
+pub struct AuthCell<B: Blk> {
     pub mode:               SelectMode,
     pub vote_weight:        Weight,
     pub propose_weight:     Weight,
@@ -259,9 +292,11 @@ pub struct AuthCell {
     pub list:            AuthList,
     pub map:             HashMap<Address, PubKeyHex>,
     pub vote_weight_map: HashMap<Address, Weight>,
+
+    pub phantom: PhantomData<B>,
 }
 
-impl AuthCell {
+impl<B: Blk> AuthCell<B> {
     pub fn new(config: AuthConfig, my_address: &Address) -> Self {
         let mut list = vec![];
         let mut vote_weight_map = HashMap::new();
@@ -291,6 +326,7 @@ impl AuthCell {
             vote_weight_map,
             vote_weight_sum,
             propose_weight_sum,
+            phantom: PhantomData,
         }
     }
 

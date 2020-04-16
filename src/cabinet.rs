@@ -12,7 +12,7 @@ use crate::types::{
 use crate::{Address, Blk, Hash, Height, OverlordError, OverlordResult, Round};
 
 #[allow(clippy::large_enum_variant)]
-#[derive(Debug, Display)]
+#[derive(Clone, Debug, Display)]
 pub enum Capsule<B: Blk> {
     #[display(fmt = "signed_proposal: {}", _0)]
     SignedProposal(SignedProposal<B>),
@@ -346,7 +346,7 @@ impl<B: Blk> Grid<B> {
         &mut self,
         signed_proposal: SignedProposal<B>,
     ) -> OverlordResult<Option<CumWeight>> {
-        check_exist::<SignedProposal<B>>(self.signed_proposal.as_ref(), &signed_proposal)?;
+        check_exist(self.signed_proposal.as_ref(), &signed_proposal)?;
 
         self.signed_proposal = Some(signed_proposal);
         Ok(None)

@@ -6,7 +6,8 @@ use std::error::Error;
 use derive_more::Display;
 use rlp::DecoderError;
 
-use crate::{Address, Height};
+use crate::cabinet::Capsule;
+use crate::{Address, Blk, Height};
 
 pub type OverlordResult<T> = Result<T, OverlordError>;
 
@@ -18,6 +19,8 @@ pub enum ErrorKind {
     Network,
     #[display(fmt = "Local")]
     Local,
+    #[display(fmt = "Debug")]
+    Debug,
     #[display(fmt = "Other")]
     Other,
 }
@@ -50,6 +53,14 @@ pub enum ErrorInfo {
     Other(String),
     #[display(fmt = "decode error, {:?}", _0)]
     Decode(DecoderError),
+    #[display(fmt = "receive old msg")]
+    OldMsg,
+    #[display(fmt = "receive much higher msg")]
+    MuchHighMsg,
+    #[display(fmt = "receive higher msg")]
+    HighMsg,
+    #[display(fmt = "receive msg with wrong leader")]
+    WrongLeader,
 }
 
 #[derive(Debug, Display)]
@@ -151,10 +162,38 @@ impl OverlordError {
         }
     }
 
-    pub fn local_other(str: &str) -> Self {
+    pub fn local_other(str: String) -> Self {
         OverlordError {
             kind: ErrorKind::Local,
-            info: ErrorInfo::Other(str.to_owned()),
+            info: ErrorInfo::Other(str),
+        }
+    }
+
+    pub fn debug_old() -> Self {
+        OverlordError {
+            kind: ErrorKind::Debug,
+            info: ErrorInfo::OldMsg,
+        }
+    }
+
+    pub fn debug_high() -> Self {
+        OverlordError {
+            kind: ErrorKind::Debug,
+            info: ErrorInfo::HighMsg,
+        }
+    }
+
+    pub fn net_much_high() -> Self {
+        OverlordError {
+            kind: ErrorKind::Network,
+            info: ErrorInfo::MuchHighMsg,
+        }
+    }
+
+    pub fn byz_leader() -> Self {
+        OverlordError {
+            kind: ErrorKind::Byzantine,
+            info: ErrorInfo::WrongLeader,
         }
     }
 }

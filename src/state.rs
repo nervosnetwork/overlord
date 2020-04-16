@@ -122,12 +122,6 @@ impl Ord for Stage {
     }
 }
 
-// impl<B: Blk> SignedProposal<B> {
-//     pub fn filter(&self, stage: &Stage) -> Result(()) {
-//
-//     }
-// }
-
 #[derive(Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Step {
     #[display(fmt = "Propose step")]
