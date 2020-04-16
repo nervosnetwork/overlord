@@ -18,6 +18,7 @@ use log::{error, warn};
 
 use crate::auth::{AuthCell, AuthFixedConfig, AuthManage};
 use crate::cabinet::Cabinet;
+use crate::exec::ExecRequest;
 use crate::state::{ProposePrepare, Stage, StateError, StateInfo};
 use crate::timeout::TimeoutEvent;
 use crate::types::{FetchedFullBlock, Proposal, UpdateFrom};
@@ -43,6 +44,8 @@ pub struct SMR<A: Adapter<B, S>, B: Blk, S: St> {
     auth:    AuthManage<A, B, S>,
 
     from_net:     UnboundedReceiver<WrappedOverlordMsg<B>>,
+    from_exec:    UnboundedReceiver<ExecResult<S>>,
+    to_exec:      UnboundedSender<ExecRequest>,
     from_fetch:   UnboundedReceiver<FetchedFullBlock>,
     to_fetch:     UnboundedSender<FetchedFullBlock>,
     from_timeout: UnboundedReceiver<TimeoutEvent>,
@@ -60,7 +63,9 @@ where
     pub async fn new(
         auth_fixed_config: AuthFixedConfig,
         adapter: &Arc<A>,
-        net_receiver: UnboundedReceiver<(Context, OverlordMsg<B>)>,
+        from_net: UnboundedReceiver<(Context, OverlordMsg<B>)>,
+        from_exec: UnboundedReceiver<ExecResult<S>>,
+        to_exec: UnboundedSender<ExecRequest>,
         wal_path: &str,
     ) -> Self {
         let (to_fetch, from_fetch) = unbounded();
@@ -102,8 +107,10 @@ where
             wal: Wal::new(wal_path),
             cabinet: Cabinet::default(),
             auth: AuthManage::new(auth_fixed_config, current_auth, last_auth),
-            from_net: net_receiver,
+            from_net,
             from_fetch,
+            from_exec,
+            to_exec,
             to_fetch,
             from_timeout,
             to_timeout,

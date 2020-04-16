@@ -29,6 +29,7 @@ use creep::Context;
 use futures::channel::mpsc::unbounded;
 
 use crate::auth::AuthFixedConfig;
+use crate::exec::Exec;
 use crate::smr::SMR;
 use crate::wal::Wal;
 
@@ -55,10 +56,24 @@ where
         wal_path: &str,
     ) {
         let (net_sender, net_receiver) = unbounded();
+        let (smr_sender, smr_receiver) = unbounded();
+        let (exec_sender, exec_receiver) = unbounded();
+
         adapter.register_network(Context::default(), net_sender);
         let auth_fixed_config = AuthFixedConfig::new(common_ref, pri_key, address);
-        let smr = SMR::new(auth_fixed_config, adapter, net_receiver, wal_path).await;
 
+        let smr = SMR::new(
+            auth_fixed_config,
+            adapter,
+            net_receiver,
+            exec_receiver,
+            smr_sender,
+            wal_path,
+        )
+        .await;
         smr.run();
+
+        let exec = Exec::new(adapter, smr_receiver, exec_sender);
+        exec.run();
     }
 }
