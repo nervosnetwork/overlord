@@ -62,6 +62,7 @@ where
         adapter.register_network(Context::default(), net_sender);
         let auth_fixed_config = AuthFixedConfig::new(common_ref, pri_key, address);
 
+        let exec = Exec::new(adapter, smr_receiver, exec_sender);
         let smr = SMR::new(
             auth_fixed_config,
             adapter,
@@ -71,9 +72,8 @@ where
             wal_path,
         )
         .await;
-        smr.run();
 
-        let exec = Exec::new(adapter, smr_receiver, exec_sender);
         exec.run();
+        smr.run().await;
     }
 }

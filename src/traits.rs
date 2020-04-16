@@ -32,7 +32,7 @@ pub trait Adapter<B: Blk, S: St>: 'static + Send + Sync + Unpin {
         block_states: Vec<BlockState<S>>,
     ) -> Result<B, Box<dyn Error + Send>>;
 
-    async fn check_block_states(
+    async fn check_block(
         &self,
         ctx: Context,
         block: &B,
@@ -85,7 +85,7 @@ pub trait Adapter<B: Blk, S: St>: 'static + Send + Sync + Unpin {
 }
 
 /// should ensure the same serialization results in different environments
-pub trait Blk: 'static + Clone + Debug + Default + PartialEq + Eq + Send + Unpin {
+pub trait Blk: 'static + Clone + Debug + Default + PartialEq + Eq + Send + Sync + Unpin {
     fn fixed_encode(&self) -> Result<Bytes, Box<dyn Error + Send>>;
 
     fn fixed_decode(data: &Bytes) -> Result<Self, Box<dyn Error + Send>>;
@@ -101,7 +101,7 @@ pub trait Blk: 'static + Clone + Debug + Default + PartialEq + Eq + Send + Unpin
     fn get_proof(&self) -> Proof;
 }
 
-pub trait St: 'static + Clone + Debug + Default + Send + Unpin {}
+pub trait St: 'static + Clone + Debug + Default + Send + Sync + Unpin {}
 
 /// provide DefaultCrypto
 pub trait Crypto: Send {

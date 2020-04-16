@@ -114,7 +114,7 @@ impl Crypto for DefaultCrypto {
     }
 }
 
-#[derive(Default, Serialize, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Serialize, Debug, PartialEq, Eq)]
 pub struct KeyPair {
     pub private_key:    PriKeyHex,
     pub public_key:     PubKeyHex,
@@ -122,7 +122,7 @@ pub struct KeyPair {
     pub bls_public_key: BlsPubKeyHex,
 }
 
-#[derive(Default, Serialize, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Serialize, Debug, PartialEq, Eq)]
 pub struct KeyPairs {
     pub common_ref: CommonHex,
     pub key_pairs:  Vec<KeyPair>,

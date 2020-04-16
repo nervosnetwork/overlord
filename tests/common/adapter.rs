@@ -78,7 +78,7 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         ))
     }
 
-    async fn check_block_states(
+    async fn check_block(
         &self,
         _ctx: Context,
         block: &Block,

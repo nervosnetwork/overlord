@@ -11,7 +11,7 @@ use std::{future::Future, pin::Pin};
 use creep::Context;
 use derive_more::Display;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
-use futures::stream::{Stream, StreamExt};
+use futures::{select, StreamExt};
 use futures::{FutureExt, SinkExt};
 use futures_timer::Delay;
 use log::{error, warn};
@@ -42,14 +42,7 @@ pub struct SMR<A: Adapter<B, S>, B: Blk, S: St> {
     wal:     Wal,
     cabinet: Cabinet<B>,
     auth:    AuthManage<A, B, S>,
-
-    from_net:     UnboundedReceiver<WrappedOverlordMsg<B>>,
-    from_exec:    UnboundedReceiver<ExecResult<S>>,
-    to_exec:      UnboundedSender<ExecRequest>,
-    from_fetch:   UnboundedReceiver<FetchedFullBlock>,
-    to_fetch:     UnboundedSender<FetchedFullBlock>,
-    from_timeout: UnboundedReceiver<TimeoutEvent>,
-    to_timeout:   UnboundedSender<TimeoutEvent>,
+    agent:   EventAgent<B, S>,
 
     phantom_s: PhantomData<S>,
 }
@@ -68,13 +61,10 @@ where
         to_exec: UnboundedSender<ExecRequest>,
         wal_path: &str,
     ) -> Self {
-        let (to_fetch, from_fetch) = unbounded();
-        let (to_timeout, from_timeout) = unbounded();
-
         let wal = Wal::new(wal_path);
         let rst = StateInfo::<B>::from_wal(&wal);
         let state = if let Err(e) = rst {
-            error!("Load wal failed! Try to recover state by the adapter, which face security risk if majority auth nodes lost their wal file at the same time");
+            warn!("Load wal failed! Try to recover state by the adapter, which face security risk if majority auth nodes lost their wal file at the same time");
             recover_state_by_adapter(adapter).await
         } else {
             rst.unwrap()
@@ -100,35 +90,54 @@ where
             last_config.map(|config| AuthCell::new(config.auth_config, &auth_fixed_config.address));
 
         SMR {
+            wal,
             state,
             prepare,
             time_start: Instant::now(),
             adapter: Arc::<A>::clone(adapter),
-            wal: Wal::new(wal_path),
             cabinet: Cabinet::default(),
             auth: AuthManage::new(auth_fixed_config, current_auth, last_auth),
-            from_net,
-            from_fetch,
-            from_exec,
-            to_exec,
-            to_fetch,
-            from_timeout,
-            to_timeout,
+            agent: EventAgent::new(from_net, from_exec, to_exec),
             phantom_s: PhantomData,
         }
     }
 
-    pub fn run(mut self) {
-        tokio::spawn(async move {
-            while let Some(err) = self.next().await {
-                // Todo: Add handle error here
-                error!("smr error {:?}", err);
+    pub async fn run(mut self) {
+        loop {
+            select! {
+                opt = self.agent.from_net.next() => {
+                    if let Err(e) = self.process_msg(opt).await {
+                        // self.adapter.handle_error()
+                        error!("{}", e);
+                    }
+                }
+                opt = self.agent.from_exec.next() => {
+                    if let Err(e) = self.process_exec_result(opt).await {
+                        // self.adapter.handle_error()
+                        error!("{}", e);
+                    }
+                }
+                // fetch = self.agent.from_fetch.next() => {
+                //     if let Err(e) = self.process_fetch(fetch.unwrap()).await {
+                //         // self.adapter.handle_error()
+                //         error!("{}", e);
+                //     }
+                // }
+                // timeout = self.agent.from_timeout.next() => {
+                //     if let Err(e) = self.process_timeout(timeout.unwrap()).await {
+                //         // self.adapter.handle_error()
+                //         error!("{}", e);
+                //     }
+                // }
             }
-        });
+        }
     }
 
-    fn process_msg(&mut self, wrapped_msg: WrappedOverlordMsg<B>) -> Result<(), SMRError> {
-        let (context, msg) = wrapped_msg;
+    async fn process_msg(&mut self, opt: Option<WrappedOverlordMsg<B>>) -> Result<(), SMRError> {
+        if opt.is_none() {
+            return Err(SMRError::ChannelClosed("network ".to_owned()));
+        }
+        let (context, msg) = opt.unwrap();
 
         match msg {
             OverlordMsg::SignedProposal(signed_proposal) => {}
@@ -145,11 +154,21 @@ where
         Ok(())
     }
 
-    fn process_fetch(&mut self, _fetched_full_block: FetchedFullBlock) -> Result<(), SMRError> {
+    async fn process_exec_result(&mut self, opt: Option<ExecResult<S>>) -> Result<(), SMRError> {
+        if opt.is_none() {
+            return Err(SMRError::ChannelClosed("exec ".to_owned()));
+        }
         Ok(())
     }
 
-    fn process_timeout(&mut self, timeout_event: TimeoutEvent) -> Result<(), SMRError> {
+    async fn process_fetch(
+        &mut self,
+        _fetched_full_block: FetchedFullBlock,
+    ) -> Result<(), SMRError> {
+        Ok(())
+    }
+
+    async fn process_timeout(&mut self, timeout_event: TimeoutEvent) -> Result<(), SMRError> {
         match timeout_event {
             TimeoutEvent::ProposeTimeout(stage) => {}
             TimeoutEvent::PreVoteTimeout(stage) => {}
@@ -183,6 +202,7 @@ async fn recover_propose_prepare_and_config<A: Adapter<B, S>, B: Blk, S: St>(
     let mut time_config = TimeConfig::default();
     let mut block_states = vec![];
     let mut latest_config = OverlordConfig::default();
+
     for h in exec_height + 1..=latest_height {
         let exec_result = get_exec_result(adapter, h).await.unwrap().unwrap();
         block_states.push(exec_result.block_states);
@@ -229,59 +249,35 @@ async fn get_exec_result<A: Adapter<B, S>, B: Blk, S: St>(
     }
 }
 
-impl<A, B, S> Stream for SMR<A, B, S>
-where
-    A: Adapter<B, S>,
-    B: Blk,
-    S: St,
-{
-    type Item = SMRError;
+pub struct EventAgent<B: Blk, S: St> {
+    from_net: UnboundedReceiver<WrappedOverlordMsg<B>>,
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut TaskCx) -> Poll<Option<Self::Item>> {
-        let mut net_ready = true;
-        let mut fetch_ready = true;
-        let mut timeout_ready = true;
+    from_exec: UnboundedReceiver<ExecResult<S>>,
+    to_exec:   UnboundedSender<ExecRequest>,
 
-        loop {
-            match self.from_net.poll_next_unpin(cx) {
-                Poll::Pending => net_ready = false,
+    from_fetch: UnboundedReceiver<FetchedFullBlock>,
+    to_fetch:   UnboundedSender<FetchedFullBlock>,
 
-                Poll::Ready(opt) => {
-                    let wrapped_msg =
-                        opt.expect("Network is down! It's meaningless to continue running");
-                    if let Err(e) = self.process_msg(wrapped_msg) {
-                        return Poll::Ready(Some(e));
-                    }
-                }
-            };
+    from_timeout: UnboundedReceiver<TimeoutEvent>,
+    to_timeout:   UnboundedSender<TimeoutEvent>,
+}
 
-            match self.from_fetch.poll_next_unpin(cx) {
-                Poll::Pending => fetch_ready = false,
-
-                Poll::Ready(opt) => {
-                    let fetched_full_block =
-                        opt.expect("Fetch Channel is down! It's meaningless to continue running");
-                    if let Err(e) = self.process_fetch(fetched_full_block) {
-                        return Poll::Ready(Some(e));
-                    }
-                }
-            }
-
-            match self.from_timeout.poll_next_unpin(cx) {
-                Poll::Pending => timeout_ready = false,
-
-                Poll::Ready(opt) => {
-                    let timeout_event =
-                        opt.expect("Timeout Channel is down! It's meaningless to continue running");
-                    if let Err(e) = self.process_timeout(timeout_event) {
-                        return Poll::Ready(Some(e));
-                    }
-                }
-            }
-
-            if !net_ready && !fetch_ready && !timeout_ready {
-                return Poll::Pending;
-            }
+impl<B: Blk, S: St> EventAgent<B, S> {
+    fn new(
+        from_net: UnboundedReceiver<(Context, OverlordMsg<B>)>,
+        from_exec: UnboundedReceiver<ExecResult<S>>,
+        to_exec: UnboundedSender<ExecRequest>,
+    ) -> Self {
+        let (to_fetch, from_fetch) = unbounded();
+        let (to_timeout, from_timeout) = unbounded();
+        EventAgent {
+            from_net,
+            from_exec,
+            to_exec,
+            from_fetch,
+            to_fetch,
+            from_timeout,
+            to_timeout,
         }
     }
 }
@@ -296,6 +292,8 @@ pub enum SMRError {
     FetchFullBlock(Box<dyn Error + Send>),
     #[display(fmt = "exec block failed: {}", _0)]
     ExecBlock(Box<dyn Error + Send>),
+    #[display(fmt = "{} channel closed", _0)]
+    ChannelClosed(String),
     #[display(fmt = "Other error: {}", _0)]
     Other(String),
 }
