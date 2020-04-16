@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#![recursion_limit = "256"]
 
 pub mod crypto;
 pub mod error;
@@ -15,7 +16,7 @@ mod timeout;
 mod wal;
 
 pub use crypto::{gen_key_pairs, AddressHex, BlsPubKeyHex, DefaultCrypto, PriKeyHex};
-pub use error::{OverlordError, OverlordErrorKind};
+pub use error::{OverlordError, OverlordResult};
 pub use traits::{Adapter, Blk, Crypto, St};
 pub use types::{
     Address, AuthConfig, BlockState, CommonHex, ExecResult, Hash, Height, HeightRange, Node,

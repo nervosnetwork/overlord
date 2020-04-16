@@ -21,7 +21,10 @@ use crate::cabinet::Cabinet;
 use crate::exec::ExecRequest;
 use crate::state::{ProposePrepare, Stage, StateError, StateInfo};
 use crate::timeout::TimeoutEvent;
-use crate::types::{FetchedFullBlock, Proposal, UpdateFrom};
+use crate::types::{
+    ChokeQC, FetchedFullBlock, PreCommitQC, Proposal, SignedChoke, SignedPreCommit, SignedPreVote,
+    SignedProposal, UpdateFrom,
+};
 use crate::{
     Adapter, Address, Blk, CommonHex, ExecResult, Height, HeightRange, OverlordConfig, OverlordMsg,
     PriKeyHex, Proof, Round, St, TimeConfig, Wal,
@@ -106,41 +109,43 @@ where
         loop {
             select! {
                 opt = self.agent.from_net.next() => {
-                    if let Err(e) = self.process_msg(opt).await {
+                    if let Err(e) = self.handle_msg(opt).await {
                         // self.adapter.handle_error()
                         error!("{}", e);
                     }
                 }
                 opt = self.agent.from_exec.next() => {
-                    if let Err(e) = self.process_exec_result(opt).await {
+                    if let Err(e) = self.handle_exec_result(opt.expect("Exec Channel is down!")).await {
                         // self.adapter.handle_error()
                         error!("{}", e);
                     }
                 }
-                // fetch = self.agent.from_fetch.next() => {
-                //     if let Err(e) = self.process_fetch(fetch.unwrap()).await {
-                //         // self.adapter.handle_error()
-                //         error!("{}", e);
-                //     }
-                // }
-                // timeout = self.agent.from_timeout.next() => {
-                //     if let Err(e) = self.process_timeout(timeout.unwrap()).await {
-                //         // self.adapter.handle_error()
-                //         error!("{}", e);
-                //     }
-                // }
+                opt = self.agent.from_fetch.next() => {
+                    if let Err(e) = self.handle_fetch(opt.expect("Fetch Channel is down!")).await {
+                        // self.adapter.handle_error()
+                        error!("{}", e);
+                    }
+                }
+                opt = self.agent.from_timeout.next() => {
+                    if let Err(e) = self.handle_timeout(opt.expect("Timeout Channel is down!")).await {
+                        // self.adapter.handle_error()
+                        error!("{}", e);
+                    }
+                }
             }
         }
     }
 
-    async fn process_msg(&mut self, opt: Option<WrappedOverlordMsg<B>>) -> Result<(), SMRError> {
+    async fn handle_msg(&mut self, opt: Option<WrappedOverlordMsg<B>>) -> Result<(), SMRError> {
         if opt.is_none() {
             return Err(SMRError::ChannelClosed("network ".to_owned()));
         }
         let (context, msg) = opt.unwrap();
 
         match msg {
-            OverlordMsg::SignedProposal(signed_proposal) => {}
+            OverlordMsg::SignedProposal(signed_proposal) => {
+                self.handle_signed_proposal(signed_proposal).await?;
+            }
             OverlordMsg::SignedPreVote(signed_pre_vote) => {}
             OverlordMsg::SignedPreCommit(signed_pre_commit) => {}
             OverlordMsg::SignedChoke(signed_choke) => {}
@@ -154,21 +159,18 @@ where
         Ok(())
     }
 
-    async fn process_exec_result(&mut self, opt: Option<ExecResult<S>>) -> Result<(), SMRError> {
-        if opt.is_none() {
-            return Err(SMRError::ChannelClosed("exec ".to_owned()));
-        }
+    async fn handle_exec_result(&mut self, exec_result: ExecResult<S>) -> Result<(), SMRError> {
         Ok(())
     }
 
-    async fn process_fetch(
+    async fn handle_fetch(
         &mut self,
         _fetched_full_block: FetchedFullBlock,
     ) -> Result<(), SMRError> {
         Ok(())
     }
 
-    async fn process_timeout(&mut self, timeout_event: TimeoutEvent) -> Result<(), SMRError> {
+    async fn handle_timeout(&mut self, timeout_event: TimeoutEvent) -> Result<(), SMRError> {
         match timeout_event {
             TimeoutEvent::ProposeTimeout(stage) => {}
             TimeoutEvent::PreVoteTimeout(stage) => {}
@@ -176,6 +178,13 @@ where
             TimeoutEvent::BrakeTimeout(stage) => {}
             TimeoutEvent::HeightTimeout(height) => {}
         }
+        Ok(())
+    }
+
+    async fn handle_signed_proposal(
+        &mut self,
+        signed_proposal: SignedProposal<B>,
+    ) -> Result<(), SMRError> {
         Ok(())
     }
 }

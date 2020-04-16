@@ -13,7 +13,10 @@ use rlp::{decode, encode, DecoderError};
 
 use crate::auth::AuthManage;
 use crate::cabinet::Cabinet;
-use crate::types::{PoLC, PreCommitQC, Proposal, UpdateFrom};
+use crate::types::{
+    ChokeQC, PoLC, PreCommitQC, PreVoteQC, Proposal, SignedChoke, SignedPreCommit, SignedPreVote,
+    SignedProposal, UpdateFrom,
+};
 use crate::wal::WalError;
 use crate::{
     Adapter, Address, Blk, BlockState, CommonHex, Hash, Height, OverlordConfig, OverlordMsg,
@@ -120,6 +123,12 @@ impl Ord for Stage {
             .then(self.step.cmp(&other.step))
     }
 }
+
+// impl<B: Blk> SignedProposal<B> {
+//     pub fn filter(&self, stage: &Stage) -> Result((), StateError) {
+//
+//     }
+// }
 
 #[derive(Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Step {

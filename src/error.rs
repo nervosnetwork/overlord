@@ -5,18 +5,37 @@ use std::error::Error;
 
 use derive_more::Display;
 
-#[derive(Clone, Debug)]
-pub enum OverlordErrorKind {
+pub type OverlordResult<T> = Result<T, OverlordError>;
+
+#[derive(Debug, Display)]
+pub enum ErrorKind {
+    #[display(fmt = "Byzantine")]
     Byzantine,
-    RepeatMsg,
+    #[display(fmt = "Network")]
+    Network,
+    #[display(fmt = "Local")]
+    Local,
+    #[display(fmt = "Other")]
     Other,
 }
 
 #[derive(Debug, Display)]
-#[display(fmt = "[ProtocolError] Kind: {:?} Error: {:?}", kind, error)]
+pub enum ErrorInfo {
+    #[display(fmt = "crypto error: {}", _0)]
+    Crypto(Box<dyn Error + Send>),
+    #[display(fmt = "unauthorized address")]
+    UnAuthorized,
+    #[display(fmt = "fake weight")]
+    FakeWeight,
+    #[display(fmt = "weight sum under majority")]
+    UnderMajority,
+}
+
+#[derive(Debug, Display)]
+#[display(fmt = "[OverlordError] Kind: {} Error: {}", kind, info)]
 pub struct OverlordError {
-    kind:  OverlordErrorKind,
-    error: Box<dyn Error + Send>,
+    pub kind: ErrorKind,
+    pub info: ErrorInfo,
 }
 
 impl Error for OverlordError {}

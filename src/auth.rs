@@ -10,12 +10,14 @@ use log::warn;
 use rlp::{encode, Encodable};
 use serde::export::PhantomData;
 
+use crate::error::{ErrorInfo, ErrorKind};
 use crate::types::{
     Aggregates, Choke, Node, PreCommitQC, PreVoteQC, PriKeyHex, Proof, Proposal, PubKeyHex,
     SelectMode, SignedChoke, SignedPreCommit, SignedPreVote, SignedProposal, UpdateFrom, Vote,
     VoteType, Weight,
 };
 use crate::{Adapter, Address, AuthConfig, Blk, CommonHex, Crypto, Hash, Signature, St};
+use crate::{OverlordError, OverlordResult};
 
 pub struct AuthManage<A: Adapter<B, S>, B: Blk, S: St> {
     fixed_config: AuthFixedConfig,
@@ -54,16 +56,13 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         self.current_auth = AuthCell::new(config, &self.fixed_config.address);
     }
 
-    pub fn sign_proposal(&self, proposal: Proposal<B>) -> Result<SignedProposal<B>, AuthError> {
+    pub fn sign_proposal(&self, proposal: Proposal<B>) -> OverlordResult<SignedProposal<B>> {
         let hash = hash::<A, B, Proposal<B>, S>(&proposal);
         let signature = self.sign(&hash)?;
         Ok(SignedProposal::new(proposal, signature))
     }
 
-    pub fn verify_signed_proposal(
-        &self,
-        signed_proposal: SignedProposal<B>,
-    ) -> Result<(), AuthError> {
+    pub fn verify_signed_proposal(&self, signed_proposal: SignedProposal<B>) -> OverlordResult<()> {
         let hash = hash::<A, B, Proposal<B>, S>(&signed_proposal.proposal);
         self.verify_signature(
             &signed_proposal.proposal.proposer,
@@ -72,7 +71,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         )
     }
 
-    pub fn sign_pre_vote(&self, vote: Vote) -> Result<SignedPreVote, AuthError> {
+    pub fn sign_pre_vote(&self, vote: Vote) -> OverlordResult<SignedPreVote> {
         let hash = hash_vote::<A, B, Vote, S>(&vote, VoteType::PreVote);
         let signature = self.sign(&hash)?;
         Ok(SignedPreVote::new(
@@ -83,14 +82,14 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         ))
     }
 
-    pub fn verify_signed_pre_vote(&self, signed_vote: SignedPreVote) -> Result<(), AuthError> {
+    pub fn verify_signed_pre_vote(&self, signed_vote: SignedPreVote) -> OverlordResult<()> {
         self.current_auth
             .check_vote_weight(&signed_vote.voter, signed_vote.vote_weight)?;
         let hash = hash_vote::<A, B, Vote, S>(&signed_vote.vote, VoteType::PreVote);
         self.verify_signature(&signed_vote.voter, &hash, &signed_vote.signature)
     }
 
-    pub fn sign_pre_commit(&self, vote: Vote) -> Result<SignedPreCommit, AuthError> {
+    pub fn sign_pre_commit(&self, vote: Vote) -> OverlordResult<SignedPreCommit> {
         let hash = hash_vote::<A, B, Vote, S>(&vote, VoteType::PreCommit);
         let signature = self.sign(&hash)?;
         Ok(SignedPreCommit::new(
@@ -101,17 +100,14 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         ))
     }
 
-    pub fn verify_signed_pre_commit(&self, signed_vote: SignedPreCommit) -> Result<(), AuthError> {
+    pub fn verify_signed_pre_commit(&self, signed_vote: SignedPreCommit) -> OverlordResult<()> {
         self.current_auth
             .check_vote_weight(&signed_vote.voter, signed_vote.vote_weight)?;
         let hash = hash_vote::<A, B, Vote, S>(&signed_vote.vote, VoteType::PreCommit);
         self.verify_signature(&signed_vote.voter, &hash, &signed_vote.signature)
     }
 
-    pub fn aggregate_pre_votes(
-        &self,
-        pre_votes: Vec<SignedPreVote>,
-    ) -> Result<PreVoteQC, AuthError> {
+    pub fn aggregate_pre_votes(&self, pre_votes: Vec<SignedPreVote>) -> OverlordResult<PreVoteQC> {
         assert!(
             pre_votes.is_empty(),
             "pre_votes is empty which won't happen!"
@@ -129,7 +125,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         Ok(PreVoteQC::new(pre_votes[0].vote.clone(), aggregates))
     }
 
-    pub fn verify_pre_vote_qc(&self, pre_vote_qc: PreVoteQC) -> Result<(), AuthError> {
+    pub fn verify_pre_vote_qc(&self, pre_vote_qc: PreVoteQC) -> OverlordResult<()> {
         let hash = hash_vote::<A, B, Vote, S>(&pre_vote_qc.vote, VoteType::PreVote);
         self.verify_aggregate(&hash, &pre_vote_qc.aggregates)
     }
@@ -137,7 +133,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
     pub fn aggregate_pre_commits(
         &self,
         pre_commits: Vec<SignedPreCommit>,
-    ) -> Result<PreCommitQC, AuthError> {
+    ) -> OverlordResult<PreCommitQC> {
         assert!(
             pre_commits.is_empty(),
             "pre_commits is empty which won't happen!"
@@ -155,12 +151,12 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         Ok(PreCommitQC::new(pre_commits[0].vote.clone(), aggregates))
     }
 
-    pub fn verify_pre_commit_qc(&self, pre_commit_qc: PreCommitQC) -> Result<(), AuthError> {
+    pub fn verify_pre_commit_qc(&self, pre_commit_qc: PreCommitQC) -> OverlordResult<()> {
         let hash = hash_vote::<A, B, Vote, S>(&pre_commit_qc.vote, VoteType::PreCommit);
         self.verify_aggregate(&hash, &pre_commit_qc.aggregates)
     }
 
-    pub fn sign_choke(&self, choke: Choke, from: UpdateFrom) -> Result<SignedChoke, AuthError> {
+    pub fn sign_choke(&self, choke: Choke, from: UpdateFrom) -> OverlordResult<SignedChoke> {
         let hash = hash_vote::<A, B, Choke, S>(&choke, VoteType::Choke);
         let signature = self.sign(&hash)?;
         Ok(SignedChoke::new(
@@ -172,14 +168,14 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         ))
     }
 
-    pub fn verify_signed_choke(&self, signed_choke: SignedChoke) -> Result<(), AuthError> {
+    pub fn verify_signed_choke(&self, signed_choke: SignedChoke) -> OverlordResult<()> {
         self.current_auth
             .check_vote_weight(&signed_choke.voter, signed_choke.vote_weight)?;
         let hash = hash_vote::<A, B, Choke, S>(&signed_choke.choke, VoteType::Choke);
         self.verify_signature(&signed_choke.voter, &hash, &signed_choke.signature)
     }
 
-    pub fn verify_proof(&self, proof: Proof) -> Result<(), AuthError> {
+    pub fn verify_proof(&self, proof: Proof) -> OverlordResult<()> {
         let hash = hash_vote::<A, B, Vote, S>(&proof.vote, VoteType::PreCommit);
 
         if let Some(last_auth) = &self.last_auth {
@@ -193,15 +189,21 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
                 pub_keys.as_slice(),
                 &proof.aggregates.signature,
             )
-            .map_err(AuthError::CryptoErr)
+            .map_err(|e| OverlordError {
+                kind: ErrorKind::Byzantine,
+                info: ErrorInfo::Crypto(e),
+            })
         } else {
             warn!("verify proof of height 0, which will always pass");
             Ok(())
         }
     }
 
-    fn sign(&self, hash: &Hash) -> Result<Signature, AuthError> {
-        A::CryptoImpl::sign(self.fixed_config.pri_key.clone(), hash).map_err(AuthError::CryptoErr)
+    fn sign(&self, hash: &Hash) -> OverlordResult<Signature> {
+        A::CryptoImpl::sign(self.fixed_config.pri_key.clone(), hash).map_err(|e| OverlordError {
+            kind: ErrorKind::Local,
+            info: ErrorInfo::Crypto(e),
+        })
     }
 
     fn verify_signature(
@@ -209,37 +211,43 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         signer: &Address,
         hash: &Hash,
         signature: &Signature,
-    ) -> Result<(), AuthError> {
+    ) -> OverlordResult<()> {
         let common_ref = self.fixed_config.common_ref.clone();
-        let pub_key = self
-            .current_auth
-            .map
-            .get(signer)
-            .ok_or(AuthError::UnAuthorized)?;
-        A::CryptoImpl::verify_signature(common_ref, pub_key.to_string(), hash, signature)
-            .map_err(AuthError::CryptoErr)
+        let pub_key = self.current_auth.map.get(signer).ok_or(OverlordError {
+            kind: ErrorKind::Byzantine,
+            info: ErrorInfo::UnAuthorized,
+        })?;
+        A::CryptoImpl::verify_signature(common_ref, pub_key.to_string(), hash, signature).map_err(
+            |e| OverlordError {
+                kind: ErrorKind::Byzantine,
+                info: ErrorInfo::Crypto(e),
+            },
+        )
     }
 
-    fn aggregate(
-        &self,
-        signatures: HashMap<&Address, &Signature>,
-    ) -> Result<Aggregates, AuthError> {
+    fn aggregate(&self, signatures: HashMap<&Address, &Signature>) -> OverlordResult<Aggregates> {
         let bitmap = self
             .current_auth
             .gen_bit_map(signatures.keys().cloned().collect());
         let signatures = self.current_auth.replace_pub_keys(signatures);
         let signature =
-            A::CryptoImpl::aggregate(signatures.iter().collect()).map_err(AuthError::CryptoErr)?;
+            A::CryptoImpl::aggregate(signatures.iter().collect()).map_err(|e| OverlordError {
+                kind: ErrorKind::Local,
+                info: ErrorInfo::Crypto(e),
+            })?;
         Ok(Aggregates::new(bitmap, signature))
     }
 
-    fn verify_aggregate(&self, hash: &Hash, aggregates: &Aggregates) -> Result<(), AuthError> {
+    fn verify_aggregate(&self, hash: &Hash, aggregates: &Aggregates) -> OverlordResult<()> {
         let common_ref = self.fixed_config.common_ref.clone();
         let voters = self.current_auth.get_voters(&aggregates.address_bitmap);
         let pub_keys = self.current_auth.get_pub_keys(voters.as_ref());
         self.current_auth.ensure_majority(voters)?;
         A::CryptoImpl::verify_aggregates(common_ref, &hash, &pub_keys, &aggregates.signature)
-            .map_err(AuthError::CryptoErr)
+            .map_err(|e| OverlordError {
+                kind: ErrorKind::Byzantine,
+                info: ErrorInfo::Crypto(e),
+            })
     }
 }
 
@@ -323,42 +331,54 @@ impl AuthCell {
         vec
     }
 
-    fn check_vote_weight(&self, address: &Address, vote_weight: Weight) -> Result<(), AuthError> {
-        let expect_weight = self
-            .vote_weight_map
-            .get(address)
-            .ok_or(AuthError::UnAuthorized)?;
+    fn check_vote_weight(&self, address: &Address, vote_weight: Weight) -> OverlordResult<()> {
+        let expect_weight = self.vote_weight_map.get(address).ok_or(OverlordError {
+            kind: ErrorKind::Byzantine,
+            info: ErrorInfo::FakeWeight,
+        })?;
         if expect_weight != &vote_weight {
-            return Err(AuthError::FakeVoteWeight);
+            return Err(OverlordError {
+                kind: ErrorKind::Byzantine,
+                info: ErrorInfo::FakeWeight,
+            });
         }
         Ok(())
     }
 
-    fn ensure_majority_weight(&self, pair_list: Vec<(&Address, Weight)>) -> Result<(), AuthError> {
+    fn ensure_majority_weight(&self, pair_list: Vec<(&Address, Weight)>) -> OverlordResult<()> {
         let mut weight_sum = 0;
         for (address, weight) in pair_list {
             self.check_vote_weight(address, weight)?;
             weight_sum += weight;
         }
-        self.check_majority(weight_sum)
-    }
-
-    fn ensure_majority(&self, list: Vec<Address>) -> Result<(), AuthError> {
-        let mut weight_sum = 0;
-        for address in list.iter() {
-            weight_sum += *self
-                .vote_weight_map
-                .get(address)
-                .ok_or(AuthError::UnAuthorized)?;
-        }
-        self.check_majority(weight_sum)
-    }
-
-    fn check_majority(&self, weight_sum: Weight) -> Result<(), AuthError> {
-        if weight_sum * 3 < self.vote_weight_sum * 2 {
-            return Err(AuthError::BelowMajority);
+        if !self.check_majority(weight_sum) {
+            return Err(OverlordError {
+                kind: ErrorKind::Byzantine,
+                info: ErrorInfo::UnderMajority,
+            });
         }
         Ok(())
+    }
+
+    fn ensure_majority(&self, list: Vec<Address>) -> OverlordResult<()> {
+        let mut weight_sum = 0;
+        for address in list.iter() {
+            weight_sum += *self.vote_weight_map.get(address).ok_or(OverlordError {
+                kind: ErrorKind::Byzantine,
+                info: ErrorInfo::UnderMajority,
+            })?;
+        }
+        if !self.check_majority(weight_sum) {
+            return Err(OverlordError {
+                kind: ErrorKind::Byzantine,
+                info: ErrorInfo::UnderMajority,
+            });
+        }
+        Ok(())
+    }
+
+    fn check_majority(&self, weight_sum: Weight) -> bool {
+        weight_sum * 3 > self.vote_weight_sum * 2
     }
 
     fn gen_bit_map(&self, set: HashSet<&Address>) -> Bytes {
@@ -399,17 +419,3 @@ impl AuthFixedConfig {
 }
 
 pub type AuthList = Vec<(Address, PubKeyHex)>;
-
-#[derive(Debug, Display)]
-pub enum AuthError {
-    #[display(fmt = "crypto error: {}", _0)]
-    CryptoErr(Box<dyn Error + Send>),
-    #[display(fmt = "unauthorized address")]
-    UnAuthorized,
-    #[display(fmt = "fake vote_weight")]
-    FakeVoteWeight,
-    #[display(fmt = "the sum of vote weights below majority")]
-    BelowMajority,
-}
-
-impl Error for AuthError {}
