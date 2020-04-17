@@ -245,15 +245,12 @@ impl From<u8> for Step {
 
 #[derive(Debug, Display)]
 #[display(
-    fmt = "time_config: {}, exec_height: {}, pre_proof: {}, pre_hash: {}",
-    time_config,
+    fmt = "exec_height: {}, pre_proof: {}, pre_hash: {}",
     exec_height,
     pre_proof,
     "hex::encode(pre_hash.clone())"
 )]
 pub struct ProposePrepare<S: St> {
-    pub time_config: TimeConfig,
-
     pub exec_height:  Height,
     pub block_states: BTreeMap<Height, S>,
 
@@ -264,7 +261,6 @@ pub struct ProposePrepare<S: St> {
 
 impl<S: St> ProposePrepare<S> {
     pub fn new(
-        time_config: TimeConfig,
         exec_height: Height,
         block_states: Vec<BlockState<S>>,
         pre_proof: Proof,
@@ -275,7 +271,6 @@ impl<S: St> ProposePrepare<S> {
             .map(|state| (state.height, state.state))
             .collect();
         ProposePrepare {
-            time_config,
             exec_height,
             block_states,
             pre_proof,

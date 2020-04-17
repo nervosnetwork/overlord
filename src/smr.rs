@@ -79,7 +79,8 @@ where
 
         let height = state.stage.height;
 
-        let (prepare, current_config) = recover_propose_prepare_and_config(adapter, height).await;
+        let (prepare, current_config, time_config) =
+            recover_propose_prepare_and_config(adapter, height).await;
         let last_config = if height > 0 {
             Some(
                 get_exec_result(adapter, state.stage.height - 1)
@@ -104,7 +105,7 @@ where
             adapter: Arc::<A>::clone(adapter),
             cabinet: Cabinet::default(),
             auth: AuthManage::new(auth_fixed_config, current_auth, last_auth),
-            agent: EventAgent::new(adapter, from_net, from_exec, to_exec),
+            agent: EventAgent::new(adapter, time_config, from_net, from_exec, to_exec),
             phantom_s: PhantomData,
         }
     }
@@ -265,7 +266,7 @@ async fn recover_state_by_adapter<A: Adapter<B, S>, B: Blk, S: St>(
 async fn recover_propose_prepare_and_config<A: Adapter<B, S>, B: Blk, S: St>(
     adapter: &Arc<A>,
     latest_height: Height,
-) -> (ProposePrepare<S>, OverlordConfig) {
+) -> (ProposePrepare<S>, OverlordConfig, TimeConfig) {
     let (block, proof) = get_block_with_proof(adapter, latest_height)
         .await
         .unwrap()
@@ -283,8 +284,9 @@ async fn recover_propose_prepare_and_config<A: Adapter<B, S>, B: Blk, S: St>(
         latest_config = exec_result.consensus_config.clone();
     }
     (
-        ProposePrepare::new(time_config, latest_height, block_states, proof, hash),
+        ProposePrepare::new(latest_height, block_states, proof, hash),
         latest_config,
+        time_config,
     )
 }
 
@@ -323,8 +325,9 @@ async fn get_exec_result<A: Adapter<B, S>, B: Blk, S: St>(
 }
 
 pub struct EventAgent<A: Adapter<B, S>, B: Blk, S: St> {
-    adapter:   Arc<A>,
-    fetch_set: HashSet<Hash>,
+    adapter:     Arc<A>,
+    time_config: TimeConfig,
+    fetch_set:   HashSet<Hash>,
 
     from_net: UnboundedReceiver<WrappedOverlordMsg<B>>,
 
@@ -341,6 +344,7 @@ pub struct EventAgent<A: Adapter<B, S>, B: Blk, S: St> {
 impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
     fn new(
         adapter: &Arc<A>,
+        time_config: TimeConfig,
         from_net: UnboundedReceiver<(Context, OverlordMsg<B>)>,
         from_exec: UnboundedReceiver<ExecResult<S>>,
         to_exec: UnboundedSender<ExecRequest>,
@@ -350,6 +354,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         EventAgent {
             adapter: Arc::<A>::clone(adapter),
             fetch_set: HashSet::new(),
+            time_config,
             from_net,
             from_exec,
             to_exec,
@@ -360,7 +365,8 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         }
     }
 
-    fn next_height(&mut self) {
+    fn next_height(&mut self, time_config: TimeConfig) {
+        self.time_config = time_config;
         self.fetch_set.clear();
     }
 
