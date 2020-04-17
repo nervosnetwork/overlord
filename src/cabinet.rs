@@ -68,8 +68,8 @@ impl<B: Blk> Cabinet<B> {
         )
     }
 
-    pub fn remove_below(&mut self, height: Height) {
-        self.0 = self.0.split_off(&height);
+    pub fn next_height(&mut self, new_height: Height) {
+        self.0 = self.0.split_off(&new_height);
     }
 
     pub fn insert(
@@ -540,7 +540,7 @@ mod test {
         cabinet.insert(98, 0, choke_qc.clone().into()).unwrap();
         cabinet.insert(99, 0, choke_qc.clone().into()).unwrap();
         cabinet.insert(100, 0, choke_qc.into()).unwrap();
-        cabinet.remove_below(100);
+        cabinet.next_height(100);
         assert_eq!(cabinet.0.len(), 1);
     }
 

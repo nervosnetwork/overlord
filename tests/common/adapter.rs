@@ -100,11 +100,9 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
     async fn fetch_full_block(
         &self,
         _ctx: Context,
-        block: &Block,
+        block: Block,
     ) -> Result<Bytes, Box<dyn Error + Send>> {
-        let full_block = FullBlock {
-            block: block.clone(),
-        };
+        let full_block = FullBlock { block };
         let vec = bincode::serialize(&full_block).unwrap();
         Ok(Bytes::from(vec))
     }

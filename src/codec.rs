@@ -3,8 +3,8 @@ use rlp::{Decodable, DecoderError, Encodable, Prototype, Rlp, RlpStream};
 
 use crate::state::{Stage, StateInfo, Step};
 use crate::types::{
-    Aggregates, Choke, ChokeQC, PoLC, PreCommitQC, PreVoteQC, Proposal, SignedChoke,
-    SignedPreCommit, SignedPreVote, SignedProposal, UpdateFrom, Vote, Weight,
+    Aggregates, Choke, ChokeQC, PreCommitQC, PreVoteQC, Proposal, SignedChoke, SignedPreCommit,
+    SignedPreVote, SignedProposal, UpdateFrom, Vote, Weight,
 };
 use crate::{Address, Blk, Hash, Height, Proof, Round, Signature};
 
@@ -291,31 +291,6 @@ impl Decodable for ChokeQC {
     }
 }
 
-// impl Encodable and Decodable trait for PoLC
-impl Encodable for PoLC {
-    fn rlp_append(&self, s: &mut RlpStream) {
-        s.begin_list(2)
-            .append(&self.lock_round)
-            .append(&self.lock_votes);
-    }
-}
-
-impl Decodable for PoLC {
-    fn decode(r: &Rlp) -> Result<Self, DecoderError> {
-        match r.prototype()? {
-            Prototype::List(2) => {
-                let lock_round: Round = r.val_at(0)?;
-                let lock_votes: PreVoteQC = r.val_at(1)?;
-                Ok(PoLC {
-                    lock_round,
-                    lock_votes,
-                })
-            }
-            _ => Err(DecoderError::RlpInconsistentLengthAndData),
-        }
-    }
-}
-
 // impl Encodable and Decodable trait for Proposal
 impl<B: Blk> Encodable for Proposal<B> {
     fn rlp_append(&self, s: &mut RlpStream) {
@@ -338,7 +313,7 @@ impl<B: Blk> Decodable for Proposal<B> {
                 let round: Round = r.val_at(1)?;
                 let tmp: Vec<u8> = r.val_at(2)?;
                 let block_hash = Hash::from(tmp);
-                let lock: Option<PoLC> = r.val_at(3)?;
+                let lock: Option<PreVoteQC> = r.val_at(3)?;
                 let tmp: Vec<u8> = r.val_at(4)?;
                 let proposer: Address = Address::from(tmp);
                 let tmp: Vec<u8> = r.val_at(5)?;
@@ -423,7 +398,7 @@ impl<B: Blk> Encodable for StateInfo<B> {
             .map(|block| block.fixed_encode().unwrap().to_vec());
         s.begin_list(5)
             .append(&self.stage)
-            .append(&self.polc)
+            .append(&self.lock)
             .append(&self.pre_commit_qc)
             .append(&self.from)
             .append(&block);
@@ -435,7 +410,7 @@ impl<B: Blk> Decodable for StateInfo<B> {
         match r.prototype()? {
             Prototype::List(5) => {
                 let stage: Stage = r.val_at(0)?;
-                let polc: Option<PoLC> = r.val_at(1)?;
+                let lock: Option<PreVoteQC> = r.val_at(1)?;
                 let pre_commit_qc: Option<PreCommitQC> = r.val_at(2)?;
                 let from: Option<UpdateFrom> = r.val_at(3)?;
                 let tmp: Option<Vec<u8>> = r.val_at(4)?;
@@ -449,7 +424,7 @@ impl<B: Blk> Decodable for StateInfo<B> {
                 };
                 Ok(StateInfo {
                     stage,
-                    polc,
+                    lock,
                     pre_commit_qc,
                     from,
                     block,

@@ -14,7 +14,7 @@ use rlp::{decode, encode, DecoderError};
 use crate::auth::AuthManage;
 use crate::cabinet::Cabinet;
 use crate::types::{
-    ChokeQC, PoLC, PreCommitQC, PreVoteQC, Proposal, SignedChoke, SignedPreCommit, SignedPreVote,
+    ChokeQC, PreCommitQC, PreVoteQC, Proposal, SignedChoke, SignedPreCommit, SignedPreVote,
     SignedProposal, UpdateFrom,
 };
 use crate::{
@@ -25,9 +25,9 @@ use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Display, Default, Eq, PartialEq)]
 #[display(
-    fmt = "stage: {}, polc: {}, pre_commit_qc: {}, from: {}",
+    fmt = "stage: {}, lock: {}, pre_commit_qc: {}, from: {}",
     stage,
-    "polc.clone().map_or(\"None\".to_owned(), |polc| format!(\"{}\", polc))",
+    "lock.clone().map_or(\"None\".to_owned(), |lock| format!(\"{}\", lock))",
     "pre_commit_qc.clone().map_or(\"None\".to_owned(), |qc| format!(\"{}\", qc))",
     "from.clone().map_or(\"None\".to_owned(), |from| format!(\"{}\", from))"
 )]
@@ -35,7 +35,7 @@ pub struct StateInfo<B: Blk> {
     // current info
     pub stage: Stage,
 
-    pub polc:          Option<PoLC>,
+    pub lock:          Option<PreVoteQC>,
     pub pre_commit_qc: Option<PreCommitQC>,
     pub block:         Option<B>,
     pub from:          Option<UpdateFrom>,
@@ -45,11 +45,19 @@ impl<B: Blk> StateInfo<B> {
     pub fn new(height: Height) -> Self {
         StateInfo {
             stage:         Stage::new(height),
-            polc:          None,
+            lock:          None,
             pre_commit_qc: None,
             block:         None,
             from:          None,
         }
+    }
+
+    pub fn next_height(&mut self) {
+        self.stage.next_height();
+        self.lock = None;
+        self.pre_commit_qc = None;
+        self.block = None;
+        self.from = None;
     }
 
     pub fn from_wal(wal: &Wal) -> OverlordResult<Self> {

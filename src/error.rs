@@ -17,12 +17,12 @@ pub enum ErrorKind {
     Byzantine,
     #[display(fmt = "Network")]
     Network,
-    #[display(fmt = "Local")]
-    Local,
+    #[display(fmt = "LocalError")]
+    LocalError,
+    #[display(fmt = "Warn")]
+    Warn,
     #[display(fmt = "Debug")]
     Debug,
-    #[display(fmt = "Other")]
-    Other,
 }
 
 #[derive(Debug, Display)]
@@ -39,8 +39,6 @@ pub enum ErrorInfo {
     MsgExist,
     #[display(fmt = "msg of multi version")]
     MultiVersion,
-    #[display(fmt = "channel closed")]
-    ClosedChannel,
     #[display(fmt = "get block failed: {}", _0)]
     GetBlock(Box<dyn Error + Send>),
     #[display(fmt = "fetch full block failed {}", _0)]
@@ -61,6 +59,8 @@ pub enum ErrorInfo {
     HighMsg,
     #[display(fmt = "receive msg with wrong leader")]
     WrongLeader,
+    #[display(fmt = "check block failed")]
+    CheckBlock,
 }
 
 #[derive(Debug, Display)]
@@ -80,7 +80,7 @@ impl OverlordError {
 
     pub fn local_crypto(e: Box<dyn Error + Send>) -> Self {
         OverlordError {
-            kind: ErrorKind::Local,
+            kind: ErrorKind::LocalError,
             info: ErrorInfo::Crypto(e),
         }
     }
@@ -120,51 +120,44 @@ impl OverlordError {
         }
     }
 
-    pub fn net_close() -> Self {
-        OverlordError {
-            kind: ErrorKind::Network,
-            info: ErrorInfo::ClosedChannel,
-        }
-    }
-
     pub fn local_get_block(e: Box<dyn Error + Send>) -> Self {
         OverlordError {
-            kind: ErrorKind::Local,
+            kind: ErrorKind::LocalError,
             info: ErrorInfo::GetBlock(e),
         }
     }
 
-    pub fn local_fetch(e: Box<dyn Error + Send>) -> Self {
+    pub fn net_fetch(e: Box<dyn Error + Send>) -> Self {
         OverlordError {
-            kind: ErrorKind::Local,
+            kind: ErrorKind::Network,
             info: ErrorInfo::FetchFullBlock(e),
         }
     }
 
     pub fn local_exec(e: Box<dyn Error + Send>) -> Self {
         OverlordError {
-            kind: ErrorKind::Local,
+            kind: ErrorKind::LocalError,
             info: ErrorInfo::Exec(e),
         }
     }
 
     pub fn local_wal(e: std::io::Error) -> Self {
         OverlordError {
-            kind: ErrorKind::Local,
+            kind: ErrorKind::LocalError,
             info: ErrorInfo::WalFile(e),
         }
     }
 
     pub fn local_decode(e: DecoderError) -> Self {
         OverlordError {
-            kind: ErrorKind::Local,
+            kind: ErrorKind::LocalError,
             info: ErrorInfo::Decode(e),
         }
     }
 
     pub fn local_other(str: String) -> Self {
         OverlordError {
-            kind: ErrorKind::Local,
+            kind: ErrorKind::LocalError,
             info: ErrorInfo::Other(str),
         }
     }
@@ -194,6 +187,20 @@ impl OverlordError {
         OverlordError {
             kind: ErrorKind::Byzantine,
             info: ErrorInfo::WrongLeader,
+        }
+    }
+
+    pub fn byz_block() -> Self {
+        OverlordError {
+            kind: ErrorKind::Byzantine,
+            info: ErrorInfo::CheckBlock,
+        }
+    }
+
+    pub fn warn_block() -> Self {
+        OverlordError {
+            kind: ErrorKind::Warn,
+            info: ErrorInfo::CheckBlock,
         }
     }
 }

@@ -42,7 +42,7 @@ pub trait Adapter<B: Blk, S: St>: 'static + Send + Sync + Unpin {
     async fn fetch_full_block(
         &self,
         ctx: Context,
-        block: &B,
+        block: B,
     ) -> Result<Bytes, Box<dyn Error + Send>>;
 
     async fn save_and_exec_block_with_proof(

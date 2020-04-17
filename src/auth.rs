@@ -50,7 +50,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         }
     }
 
-    pub fn update(&mut self, config: AuthConfig) {
+    pub fn next_height(&mut self, config: AuthConfig) {
         assert_eq!(
             self.fixed_config.common_ref, config.common_ref,
             "CommonRef mismatch, run in wrong chain!"
@@ -74,9 +74,6 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         )?;
         let hash = hash::<A, B, Proposal<B>, S>(&sp.proposal);
         self.verify_signature(&sp.proposal.proposer, &hash, &sp.signature)?;
-        if let Some(polc) = &sp.proposal.lock {
-            self.verify_pre_vote_qc(polc.lock_votes.clone())?;
-        }
         Ok(())
     }
 
@@ -134,7 +131,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         Ok(PreVoteQC::new(pre_votes[0].vote.clone(), aggregates))
     }
 
-    pub fn verify_pre_vote_qc(&self, pre_vote_qc: PreVoteQC) -> OverlordResult<()> {
+    pub fn verify_pre_vote_qc(&self, pre_vote_qc: &PreVoteQC) -> OverlordResult<()> {
         let hash = hash_vote::<A, B, Vote, S>(&pre_vote_qc.vote, VoteType::PreVote);
         self.verify_aggregate(&hash, &pre_vote_qc.aggregates)
     }

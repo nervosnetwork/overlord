@@ -70,7 +70,7 @@ impl<B: Blk> SignedProposal<B> {
     height,
     round,
     "hex::encode(block_hash)",
-    "lock.clone().map_or(\"None\".to_owned(), |polc| format!(\"{}\", polc))",
+    "lock.clone().map_or(\"None\".to_owned(), |lock| format!(\"{}\", lock))",
     "hex::encode(proposer)"
 )]
 pub struct Proposal<B: Blk> {
@@ -78,15 +78,8 @@ pub struct Proposal<B: Blk> {
     pub round:      Round,
     pub block:      B,
     pub block_hash: Hash,
-    pub lock:       Option<PoLC>,
+    pub lock:       Option<PreVoteQC>,
     pub proposer:   Address,
-}
-
-#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[display(fmt = "{{ lock_round: {}, lock_votes: {} }}", lock_round, lock_votes)]
-pub struct PoLC {
-    pub lock_round: Round,
-    pub lock_votes: PreVoteQC,
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -345,10 +338,20 @@ impl From<PreCommitQC> for Proof {
     height,
     "hex::encode(block_hash)"
 )]
-pub(crate) struct FetchedFullBlock {
-    pub(crate) height:     Height,
-    pub(crate) block_hash: Hash,
-    pub(crate) full_block: Bytes,
+pub struct FetchedFullBlock {
+    pub height:     Height,
+    pub block_hash: Hash,
+    pub full_block: Bytes,
+}
+
+impl FetchedFullBlock {
+    pub fn new(height: Height, block_hash: Hash, full_block: Bytes) -> Self {
+        FetchedFullBlock {
+            height,
+            block_hash,
+            full_block,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Display, Default)]

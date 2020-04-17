@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 #![allow(unused_variables)]
 
+use std::collections::HashSet;
 use std::error::Error;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -27,13 +28,13 @@ use crate::types::{
     SignedProposal, UpdateFrom,
 };
 use crate::{
-    Adapter, Address, Blk, CommonHex, ExecResult, Height, HeightRange, OverlordConfig,
+    Adapter, Address, Blk, CommonHex, ExecResult, Hash, Height, HeightRange, OverlordConfig,
     OverlordError, OverlordMsg, OverlordResult, PriKeyHex, Proof, Round, St, TimeConfig, Wal,
 };
 
 const MULTIPLIER_CAP: u32 = 5;
-const HEIGHT_WINDOW: Height = 10;
-const ROUND_WINDOW: Round = 10;
+const HEIGHT_WINDOW: Height = 5;
+const ROUND_WINDOW: Round = 5;
 
 pub type WrappedOverlordMsg<B> = (Context, OverlordMsg<B>);
 
@@ -48,7 +49,7 @@ pub struct SMR<A: Adapter<B, S>, B: Blk, S: St> {
     wal:     Wal,
     cabinet: Cabinet<B>,
     auth:    AuthManage<A, B, S>,
-    agent:   EventAgent<B, S>,
+    agent:   EventAgent<A, B, S>,
 
     phantom_s: PhantomData<S>,
 }
@@ -103,7 +104,7 @@ where
             adapter: Arc::<A>::clone(adapter),
             cabinet: Cabinet::default(),
             auth: AuthManage::new(auth_fixed_config, current_auth, last_auth),
-            agent: EventAgent::new(from_net, from_exec, to_exec),
+            agent: EventAgent::new(adapter, from_net, from_exec, to_exec),
             phantom_s: PhantomData,
         }
     }
@@ -112,7 +113,7 @@ where
         loop {
             select! {
                 opt = self.agent.from_net.next() => {
-                    if let Err(e) = self.handle_msg(opt).await {
+                    if let Err(e) = self.handle_msg(opt.expect("Net Channel is down!")).await {
                         // self.adapter.handle_error()
                         error!("{}", e);
                     }
@@ -139,11 +140,8 @@ where
         }
     }
 
-    async fn handle_msg(&mut self, opt: Option<WrappedOverlordMsg<B>>) -> OverlordResult<()> {
-        if opt.is_none() {
-            return Err(OverlordError::net_close());
-        }
-        let (context, msg) = opt.unwrap();
+    async fn handle_msg(&mut self, wrapped_msg: WrappedOverlordMsg<B>) -> OverlordResult<()> {
+        let (context, msg) = wrapped_msg;
 
         match msg {
             OverlordMsg::SignedProposal(signed_proposal) => {
@@ -166,7 +164,10 @@ where
         Ok(())
     }
 
-    async fn handle_fetch(&mut self, _fetched_full_block: FetchedFullBlock) -> OverlordResult<()> {
+    async fn handle_fetch(
+        &mut self,
+        _fetched_full_block: OverlordResult<FetchedFullBlock>,
+    ) -> OverlordResult<()> {
         Ok(())
     }
 
@@ -182,14 +183,47 @@ where
     }
 
     async fn handle_signed_proposal(&mut self, sp: SignedProposal<B>) -> OverlordResult<()> {
-        let msg_h = sp.proposal.height;
-        let msg_r = sp.proposal.round;
+        let msg_height = sp.proposal.height;
+        let msg_round = sp.proposal.round;
 
-        self.filter_msg(msg_h, msg_r, &sp.clone().into())?;
+        self.filter_msg(msg_height, msg_round, &sp.clone().into())?;
+        self.check_proposal(&sp.proposal).await?;
         self.auth.verify_signed_proposal(&sp)?;
-        self.cabinet.insert(msg_h, msg_r, sp.into())?;
+        self.cabinet
+            .insert(msg_height, msg_round, sp.clone().into())?;
+        if self
+            .cabinet
+            .get_block(msg_height, &sp.proposal.block_hash)
+            .is_none()
+        {
+            self.agent.request_full_block(sp.proposal.block.clone());
+        }
 
-        // Todo tomorrow
+        if sp.proposal.lock.is_none() && msg_round > self.state.stage.round {
+            return Err(OverlordError::debug_high());
+        }
+
+        Ok(())
+    }
+
+    async fn check_proposal(&mut self, p: &Proposal<B>) -> OverlordResult<()> {
+        if p.height != p.block.get_height() || p.block_hash != p.block.get_block_hash() {
+            return Err(OverlordError::byz_block());
+        }
+
+        if self.prepare.pre_hash != p.block.get_pre_hash() {
+            return Err(OverlordError::byz_block());
+        }
+
+        if self.prepare.exec_height < p.block.get_exec_height() {
+            return Err(OverlordError::warn_block());
+        }
+
+        self.auth.verify_proof(p.block.get_proof())?;
+
+        if let Some(lock) = &p.lock {
+            self.auth.verify_pre_vote_qc(&lock)?;
+        }
 
         Ok(())
     }
@@ -270,9 +304,9 @@ async fn get_exec_result<A: Adapter<B, S>, B: Blk, S: St>(
     let opt = get_block_with_proof(adapter, height).await?;
     if let Some((block, proof)) = opt {
         let full_block = adapter
-            .fetch_full_block(Context::default(), &block)
+            .fetch_full_block(Context::default(), block)
             .await
-            .map_err(OverlordError::local_fetch)?;
+            .map_err(OverlordError::net_fetch)?;
         let rst = adapter
             .save_and_exec_block_with_proof(Context::default(), height, full_block, proof.clone())
             .await
@@ -283,21 +317,25 @@ async fn get_exec_result<A: Adapter<B, S>, B: Blk, S: St>(
     }
 }
 
-pub struct EventAgent<B: Blk, S: St> {
+pub struct EventAgent<A: Adapter<B, S>, B: Blk, S: St> {
+    adapter:   Arc<A>,
+    fetch_set: HashSet<Hash>,
+
     from_net: UnboundedReceiver<WrappedOverlordMsg<B>>,
 
     from_exec: UnboundedReceiver<ExecResult<S>>,
     to_exec:   UnboundedSender<ExecRequest>,
 
-    from_fetch: UnboundedReceiver<FetchedFullBlock>,
-    to_fetch:   UnboundedSender<FetchedFullBlock>,
+    from_fetch: UnboundedReceiver<OverlordResult<FetchedFullBlock>>,
+    to_fetch:   UnboundedSender<OverlordResult<FetchedFullBlock>>,
 
     from_timeout: UnboundedReceiver<TimeoutEvent>,
     to_timeout:   UnboundedSender<TimeoutEvent>,
 }
 
-impl<B: Blk, S: St> EventAgent<B, S> {
+impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
     fn new(
+        adapter: &Arc<A>,
         from_net: UnboundedReceiver<(Context, OverlordMsg<B>)>,
         from_exec: UnboundedReceiver<ExecResult<S>>,
         to_exec: UnboundedSender<ExecRequest>,
@@ -305,6 +343,8 @@ impl<B: Blk, S: St> EventAgent<B, S> {
         let (to_fetch, from_fetch) = unbounded();
         let (to_timeout, from_timeout) = unbounded();
         EventAgent {
+            adapter: Arc::<A>::clone(adapter),
+            fetch_set: HashSet::new(),
             from_net,
             from_exec,
             to_exec,
@@ -313,5 +353,31 @@ impl<B: Blk, S: St> EventAgent<B, S> {
             from_timeout,
             to_timeout,
         }
+    }
+
+    fn next_height(&mut self) {
+        self.fetch_set.clear();
+    }
+
+    fn request_full_block(&self, block: B) {
+        let block_hash = block.get_block_hash();
+        if self.fetch_set.contains(&block_hash) {
+            return;
+        }
+
+        let adapter = Arc::<A>::clone(&self.adapter);
+        let to_fetch = self.to_fetch.clone();
+        let height = block.get_height();
+
+        tokio::spawn(async move {
+            let rst = adapter
+                .fetch_full_block(Context::default(), block)
+                .await
+                .map(|full_block| FetchedFullBlock::new(height, block_hash, full_block))
+                .map_err(OverlordError::net_fetch);
+            to_fetch
+                .unbounded_send(rst)
+                .expect("Fetch Channel is down!");
+        });
     }
 }
