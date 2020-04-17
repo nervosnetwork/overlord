@@ -160,6 +160,22 @@ impl<B: Blk> Cabinet<B> {
             .and_then(|drawer| drawer.get_signed_pre_commits_by_hash(round, block_hash))
     }
 
+    pub fn get_pre_vote_qc_by_hash(&self, height: Height, block_hash: &Hash) -> Option<PreVoteQC> {
+        self.0
+            .get(&height)
+            .and_then(|drawer| drawer.get_pre_vote_qc_by_hash(block_hash))
+    }
+
+    pub fn get_pre_commit_qc_by_hash(
+        &self,
+        height: Height,
+        block_hash: &Hash,
+    ) -> Option<PreCommitQC> {
+        self.0
+            .get(&height)
+            .and_then(|drawer| drawer.get_pre_commit_qc_by_hash(block_hash))
+    }
+
     pub fn get_signed_chokes(&self, height: Height, round: Round) -> Option<Vec<SignedChoke>> {
         self.0
             .get(&height)
@@ -181,18 +197,24 @@ impl<B: Blk> Cabinet<B> {
 
 #[derive(Default)]
 struct Drawer<B: Blk> {
-    grids: HashMap<Round, Grid<B>>,
-    blocks: HashMap<Hash, B>,
-    full_blocks: HashMap<Hash, Bytes>,
-    pre_vote_max_vote_weight: CumWeight,
+    grids:          HashMap<Round, Grid<B>>,
+    blocks:         HashMap<Hash, B>,
+    full_blocks:    HashMap<Hash, Bytes>,
+    pre_vote_qcs:   HashMap<Hash, PreVoteQC>,
+    pre_commit_qcs: HashMap<Hash, PreCommitQC>,
+
+    pre_vote_max_vote_weight:   CumWeight,
     pre_commit_max_vote_weight: CumWeight,
-    choke_max_vote_weight: CumWeight,
+    choke_max_vote_weight:      CumWeight,
 }
 
 impl<B: Blk> Drawer<B> {
     fn insert(&mut self, round: Round, data: Capsule<B>) -> OverlordResult<Option<CumWeight>> {
-        if let Capsule::SignedProposal(signed_proposal) = &data {
-            self.insert_block(&signed_proposal.proposal);
+        match &data {
+            Capsule::SignedProposal(sp) => self.insert_block(&sp.proposal),
+            Capsule::PreVoteQC(qc) => self.insert_pre_vote_qc(qc),
+            Capsule::PreCommitQC(qc) => self.insert_pre_commit_qc(qc),
+            _ => {}
         }
 
         let opt = self
@@ -230,6 +252,20 @@ impl<B: Blk> Drawer<B> {
         self.full_blocks.entry(hash).or_insert_with(|| full_block);
     }
 
+    fn insert_pre_vote_qc(&mut self, pre_vote_qc: &PreVoteQC) {
+        let hash = pre_vote_qc.vote.block_hash.clone();
+        self.pre_vote_qcs
+            .entry(hash)
+            .or_insert_with(|| pre_vote_qc.clone());
+    }
+
+    fn insert_pre_commit_qc(&mut self, pre_commit_qc: &PreCommitQC) {
+        let hash = pre_commit_qc.vote.block_hash.clone();
+        self.pre_commit_qcs
+            .entry(hash)
+            .or_insert_with(|| pre_commit_qc.clone());
+    }
+
     fn get_block(&self, hash: &Hash) -> Option<&B> {
         self.blocks.get(hash)
     }
@@ -262,6 +298,14 @@ impl<B: Blk> Drawer<B> {
         self.grids
             .get(&round)
             .and_then(|grid| grid.get_signed_pre_commits_by_hash(block_hash))
+    }
+
+    fn get_pre_vote_qc_by_hash(&self, block_hash: &Hash) -> Option<PreVoteQC> {
+        self.pre_vote_qcs.get(block_hash).cloned()
+    }
+
+    fn get_pre_commit_qc_by_hash(&self, block_hash: &Hash) -> Option<PreCommitQC> {
+        self.pre_commit_qcs.get(block_hash).cloned()
     }
 
     fn get_signed_chokes(&self, round: Round) -> Option<Vec<SignedChoke>> {

@@ -25,8 +25,8 @@ use crate::state::Step::Propose;
 use crate::state::{ProposePrepare, Stage, StateInfo, Step};
 use crate::timeout::{TimeoutEvent, TimeoutInfo};
 use crate::types::{
-    ChokeQC, FetchedFullBlock, PreCommitQC, PreVoteQC, Proposal, SignedChoke, SignedPreCommit,
-    SignedPreVote, SignedProposal, UpdateFrom,
+    Choke, ChokeQC, FetchedFullBlock, PreCommitQC, PreVoteQC, Proposal, SignedChoke,
+    SignedPreCommit, SignedPreVote, SignedProposal, UpdateFrom, Vote,
 };
 use crate::{
     Adapter, Address, Blk, CommonHex, ExecResult, Hash, Height, HeightRange, OverlordConfig,
@@ -188,20 +188,98 @@ where
         }
         self.cabinet.insert_full_block(fetch.clone());
         self.wal.save_full_block(&fetch)?;
-        // Todo: check if hash is waiting to process in PreVote Step or PreCommit Step
+
+        let hash = fetch.block_hash;
+        if let Some(qc) = self.cabinet.get_pre_commit_qc_by_hash(fetch.height, &hash) {
+            self.handle_pre_commit_qc(qc).await?;
+        } else if let Some(qc) = self.cabinet.get_pre_vote_qc_by_hash(fetch.height, &hash) {
+            self.handle_pre_vote_qc(qc).await?;
+        }
 
         Ok(())
     }
 
     async fn handle_timeout(&mut self, timeout_event: TimeoutEvent) -> OverlordResult<()> {
         match timeout_event {
-            TimeoutEvent::ProposeTimeout(stage) => {}
-            TimeoutEvent::PreVoteTimeout(stage) => {}
-            TimeoutEvent::PreCommitTimeout(stage) => {}
-            TimeoutEvent::BrakeTimeout(stage) => {}
-            TimeoutEvent::NextHeightTimeout(height) => {}
+            TimeoutEvent::ProposeTimeout(stage) => {
+                self.handle_propose_timeout(stage).await?;
+            }
+            TimeoutEvent::PreVoteTimeout(stage) => {
+                self.handle_pre_vote_timeout(stage).await?;
+            }
+            TimeoutEvent::PreCommitTimeout(stage) => {
+                self.handle_pre_commit_timeout(stage).await?;
+            }
+            TimeoutEvent::BrakeTimeout(stage) => {
+                self.handle_brake_timeout(stage).await?;
+            }
+            TimeoutEvent::NextHeightTimeout(stage) => {
+                self.handle_next_height_timeout(stage).await?;
+            }
         }
         Ok(())
+    }
+
+    async fn handle_propose_timeout(&mut self, stage: Stage) -> OverlordResult<()> {
+        self.state.handle_timeout(&stage)?;
+        self.agent.set_timeout(self.state.stage.clone());
+        self.state.save_wal(&self.wal)?;
+
+        let height = self.state.stage.height;
+        let round = self.state.stage.round;
+        let vote = Vote::empty_vote(height, round);
+        let signed_vote = self.auth.sign_pre_vote(vote)?;
+        let leader = self.auth.get_leader(height, round);
+        self.agent.transmit(leader, signed_vote.into()).await
+    }
+
+    async fn handle_pre_vote_timeout(&mut self, stage: Stage) -> OverlordResult<()> {
+        self.state.handle_timeout(&stage)?;
+        self.agent.set_timeout(self.state.stage.clone());
+        self.state.save_wal(&self.wal)?;
+
+        let height = self.state.stage.height;
+        let round = self.state.stage.round;
+        let vote = if let Some(lock) = self.state.lock.as_ref() {
+            Vote::new(height, round, lock.vote.block_hash.clone())
+        } else {
+            Vote::empty_vote(height, round)
+        };
+        let signed_vote = self.auth.sign_pre_commit(vote)?;
+        let leader = self.auth.get_leader(height, round);
+        self.agent.transmit(leader, signed_vote.into()).await?;
+        Ok(())
+    }
+
+    async fn handle_pre_commit_timeout(&mut self, stage: Stage) -> OverlordResult<()> {
+        self.state.handle_timeout(&stage)?;
+        self.agent.set_timeout(self.state.stage.clone());
+        self.state.save_wal(&self.wal)?;
+
+        let height = self.state.stage.height;
+        let round = self.state.stage.round;
+        let from = self.state.from.clone();
+        let choke = Choke::new(height, round);
+        let signed_choke = self.auth.sign_choke(choke, from)?;
+        self.agent.broadcast(signed_choke.into()).await?;
+        Ok(())
+    }
+
+    async fn handle_brake_timeout(&mut self, stage: Stage) -> OverlordResult<()> {
+        self.state.handle_timeout(&stage)?;
+        self.agent.set_timeout(self.state.stage.clone());
+
+        let height = self.state.stage.height;
+        let round = self.state.stage.round;
+        let from = self.state.from.clone();
+        let choke = Choke::new(height, round);
+        let signed_choke = self.auth.sign_choke(choke, from)?;
+        self.agent.broadcast(signed_choke.into()).await?;
+        Ok(())
+    }
+
+    async fn handle_next_height_timeout(&mut self, stage: Stage) -> OverlordResult<()> {
+        self.next_height().await
     }
 
     async fn handle_signed_proposal(&mut self, sp: SignedProposal<B>) -> OverlordResult<()> {
@@ -296,8 +374,8 @@ where
                     .expect("Unreachable! Lost signed_chokes while beyond majority");
                 let choke_qc = self.auth.aggregate_chokes(votes)?;
                 self.handle_choke_qc(choke_qc).await?;
-            } else {
-                match sc.from {
+            } else if let Some(from) = sc.from {
+                match from {
                     UpdateFrom::PreVoteQC(qc) => self.handle_pre_vote_qc(qc).await?,
                     UpdateFrom::PreCommitQC(qc) => self.handle_pre_commit_qc(qc).await?,
                     UpdateFrom::ChokeQC(qc) => self.handle_choke_qc(qc).await?,
@@ -398,6 +476,8 @@ where
         self.auth
             .handle_commit(commit_exec_result.consensus_config.auth_config);
         self.cabinet.handle_commit(next_height, &self.auth);
+        self.agent
+            .handle_commit(commit_exec_result.consensus_config.time_config.clone());
 
         // if self is leader, should not wait for interval timeout. This is different from previous
         // design.
@@ -406,14 +486,13 @@ where
         {
             return Ok(());
         }
-        self.next_height(commit_exec_result.consensus_config.time_config)
-            .await
+        self.next_height().await
     }
 
-    async fn next_height(&mut self, time_config: TimeConfig) -> OverlordResult<()> {
+    async fn next_height(&mut self) -> OverlordResult<()> {
         self.state.next_height();
         self.state.save_wal(&self.wal)?;
-        self.agent.next_height(time_config);
+        self.agent.next_height();
         self.new_round().await
     }
 
@@ -445,6 +524,9 @@ where
         self.auth.verify_proof(p.block.get_proof())?;
 
         if let Some(lock) = &p.lock {
+            if lock.vote.is_empty_vote() {
+                return Err(OverlordError::byz_empty_lock());
+            }
             self.auth.verify_pre_vote_qc(&lock)?;
         }
         Ok(())
@@ -648,9 +730,12 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         }
     }
 
-    fn next_height(&mut self, time_config: TimeConfig) {
+    fn handle_commit(&mut self, time_config: TimeConfig) {
         self.time_config = time_config;
         self.fetch_set.clear();
+    }
+
+    fn next_height(&mut self) {
         self.start_time = Instant::now();
     }
 

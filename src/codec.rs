@@ -253,7 +253,7 @@ impl Decodable for SignedChoke {
             Prototype::List(5) => {
                 let choke: Choke = r.val_at(0)?;
                 let vote_weight: Weight = r.val_at(1)?;
-                let from: UpdateFrom = r.val_at(2)?;
+                let from: Option<UpdateFrom> = r.val_at(2)?;
                 let tmp: Vec<u8> = r.val_at(3)?;
                 let voter = Address::from(tmp);
                 let tmp: Vec<u8> = r.val_at(3)?;

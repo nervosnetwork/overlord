@@ -73,6 +73,8 @@ pub enum ErrorInfo {
     Broadcast(Box<dyn Error + Send>),
     #[display(fmt = "create block error")]
     CreateBlock(Box<dyn Error + Send>),
+    #[display(fmt = "lock empty vote in proposal")]
+    EmptyLock,
 }
 
 #[derive(Debug, Display)]
@@ -262,6 +264,13 @@ impl OverlordError {
         OverlordError {
             kind: ErrorKind::LocalError,
             info: ErrorInfo::CreateBlock(e),
+        }
+    }
+
+    pub fn byz_empty_lock() -> Self {
+        OverlordError {
+            kind: ErrorKind::Byzantine,
+            info: ErrorInfo::EmptyLock,
         }
     }
 }

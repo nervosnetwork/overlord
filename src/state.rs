@@ -63,9 +63,9 @@ impl<B: Blk> StateInfo<B> {
             let qc = sp
                 .proposal
                 .lock
-                .clone()
+                .as_ref()
                 .expect("Unreachable! Have checked lock exists before");
-            self.handle_pre_vote_qc(&qc, sp.proposal.block.clone())?;
+            self.handle_pre_vote_qc(qc, sp.proposal.block.clone())?;
             return Err(OverlordError::debug_high());
         }
         if self.stage.update_stage(next_stage) {
@@ -85,8 +85,13 @@ impl<B: Blk> StateInfo<B> {
         if self.stage.update_stage(next_stage) {
             self.from = Some(UpdateFrom::PreVoteQC(pre_vote_qc.clone()));
         }
-        self.lock = Some(pre_vote_qc.clone());
-        self.block = Some(block);
+        if pre_vote_qc.vote.is_empty_vote() {
+            self.lock = None;
+            self.block = None;
+        } else {
+            self.lock = Some(pre_vote_qc.clone());
+            self.block = Some(block);
+        }
         Ok(())
     }
 
@@ -99,8 +104,10 @@ impl<B: Blk> StateInfo<B> {
         if self.stage.update_stage(next_stage) {
             self.from = Some(UpdateFrom::PreCommitQC(pre_commit_qc.clone()));
         }
-        self.pre_commit_qc = Some(pre_commit_qc.clone());
-        self.block = Some(block);
+        if !pre_commit_qc.vote.is_empty_vote() {
+            self.pre_commit_qc = Some(pre_commit_qc.clone());
+            self.block = Some(block);
+        }
         Ok(())
     }
 
@@ -109,6 +116,12 @@ impl<B: Blk> StateInfo<B> {
         if self.stage.update_stage(next_stage) {
             self.from = Some(UpdateFrom::ChokeQC(choke_qc.clone()));
         }
+        Ok(())
+    }
+
+    pub fn handle_timeout(&mut self, stage: &Stage) -> OverlordResult<()> {
+        let next_stage = self.filter_stage(stage)?;
+        self.stage.update_stage(next_stage);
         Ok(())
     }
 
@@ -124,7 +137,7 @@ impl<B: Blk> StateInfo<B> {
 
     pub fn filter_stage<T: NextStage>(&self, msg: &T) -> OverlordResult<Stage> {
         let next_stage = msg.next_stage();
-        if next_stage <= self.stage {
+        if next_stage < self.stage || (next_stage == self.stage && self.stage.step != Step::Brake) {
             return Err(OverlordError::debug_under_stage());
         }
         Ok(next_stage)
@@ -214,6 +227,19 @@ pub trait NextStage {
     fn next_stage(&self) -> Stage;
 }
 
+impl NextStage for Stage {
+    // timeout flow
+    fn next_stage(&self) -> Stage {
+        match self.step {
+            Step::Propose => Stage::new(self.height, self.round, Step::PreVote),
+            Step::PreVote => Stage::new(self.height, self.round, Step::PreCommit),
+            Step::PreCommit => Stage::new(self.height, self.round, Step::Brake),
+            Step::Brake => Stage::new(self.height, self.round, Step::Brake),
+            Step::Commit => Stage::new(self.height + 1, self.round, Step::Propose),
+        }
+    }
+}
+
 impl<B: Blk> NextStage for SignedProposal<B> {
     fn next_stage(&self) -> Stage {
         Stage::new(self.proposal.height, self.proposal.round, Step::PreVote)
@@ -228,7 +254,11 @@ impl NextStage for PreVoteQC {
 
 impl NextStage for PreCommitQC {
     fn next_stage(&self) -> Stage {
-        Stage::new(self.vote.height, self.vote.round, Step::Commit)
+        if self.vote.is_empty_vote() {
+            Stage::new(self.vote.height, self.vote.round, Step::Brake)
+        } else {
+            Stage::new(self.vote.height, self.vote.round, Step::Commit)
+        }
     }
 }
 

@@ -158,7 +158,11 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         self.verify_aggregate(&hash, &pre_commit_qc.aggregates)
     }
 
-    pub fn sign_choke(&self, choke: Choke, from: UpdateFrom) -> OverlordResult<SignedChoke> {
+    pub fn sign_choke(
+        &self,
+        choke: Choke,
+        from: Option<UpdateFrom>,
+    ) -> OverlordResult<SignedChoke> {
         let hash = hash_vote::<A, B, Choke, S>(&choke, VoteType::Choke);
         let signature = self.sign(&hash)?;
         Ok(SignedChoke::new(

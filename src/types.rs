@@ -138,6 +138,28 @@ pub struct Vote {
     pub block_hash: Hash,
 }
 
+impl Vote {
+    pub fn new(height: Height, round: Round, block_hash: Hash) -> Self {
+        Vote {
+            height,
+            round,
+            block_hash,
+        }
+    }
+
+    pub fn empty_vote(height: Height, round: Round) -> Vote {
+        Vote {
+            height,
+            round,
+            block_hash: Hash::default(),
+        }
+    }
+
+    pub fn is_empty_vote(&self) -> bool {
+        self.block_hash == Hash::default()
+    }
+}
+
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash)]
 #[display(
     fmt = "{{ vote: {}, vote_weight: {}, voter: {}, signature: {},  }}",
@@ -243,14 +265,14 @@ impl Aggregates {
     fmt = "{{ choke: {}, vote_weight: {}, from: {}, voter: {}, signature: {} }}",
     choke,
     vote_weight,
-    from,
+    "from.clone().map_or(\"None\".to_owned(), |from| format!(\"{}\", from))",
     "hex::encode(voter)",
     "hex::encode(signature)"
 )]
 pub struct SignedChoke {
     pub choke:       Choke,
     pub vote_weight: Weight,
-    pub from:        UpdateFrom,
+    pub from:        Option<UpdateFrom>,
     pub voter:       Address,
     pub signature:   Signature,
 }
@@ -259,7 +281,7 @@ impl SignedChoke {
     pub fn new(
         choke: Choke,
         vote_weight: Weight,
-        from: UpdateFrom,
+        from: Option<UpdateFrom>,
         voter: Address,
         signature: Signature,
     ) -> Self {
@@ -278,6 +300,12 @@ impl SignedChoke {
 pub struct Choke {
     pub height: Height,
     pub round:  Round,
+}
+
+impl Choke {
+    pub fn new(height: Height, round: Round) -> Self {
+        Choke { height, round }
+    }
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
