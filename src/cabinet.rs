@@ -30,31 +30,17 @@ pub enum Capsule<B: Blk> {
     ChokeQC(ChokeQC),
 }
 
-impl<B: Blk> From<SignedProposal<B>> for Capsule<B> {
-    fn from(data: SignedProposal<B>) -> Self {
-        Capsule::SignedProposal(data)
-    }
-}
-
-macro_rules! impl_capsule {
-    ($($struct: ident),+) => {
-        $(
-            impl<B:Blk> From<$struct> for Capsule<B> {
-                fn from(data: $struct) -> Self {
-                    Capsule::$struct(data)
-                }
-            }
-        )+
-    }
-}
-
-impl_capsule!(
-    SignedPreVote,
-    SignedPreCommit,
-    SignedChoke,
-    PreVoteQC,
-    PreCommitQC,
-    ChokeQC
+impl_from!(
+    Capsule,
+    [
+        tag SignedProposal,
+        SignedPreVote,
+        SignedPreCommit,
+        SignedChoke,
+        PreVoteQC,
+        PreCommitQC,
+        ChokeQC
+    ]
 );
 
 #[derive(Default)]
