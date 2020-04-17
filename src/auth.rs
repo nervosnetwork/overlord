@@ -24,7 +24,7 @@ use crate::{
 use crate::{OverlordError, OverlordResult};
 
 pub struct AuthManage<A: Adapter<B, S>, B: Blk, S: St> {
-    fixed_config: AuthFixedConfig,
+    pub fixed_config: AuthFixedConfig,
 
     pub current_auth: AuthCell<B>,
     pub last_auth:    Option<AuthCell<B>>,

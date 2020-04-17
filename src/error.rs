@@ -71,6 +71,8 @@ pub enum ErrorInfo {
     Transmit(Box<dyn Error + Send>),
     #[display(fmt = "broadcast error")]
     Broadcast(Box<dyn Error + Send>),
+    #[display(fmt = "create block error")]
+    CreateBlock(Box<dyn Error + Send>),
 }
 
 #[derive(Debug, Display)]
@@ -253,6 +255,13 @@ impl OverlordError {
         OverlordError {
             kind: ErrorKind::Byzantine,
             info: ErrorInfo::AdapterCheckBlock(e),
+        }
+    }
+
+    pub fn local_create_block(e: Box<dyn Error + Send>) -> Self {
+        OverlordError {
+            kind: ErrorKind::LocalError,
+            info: ErrorInfo::CreateBlock(e),
         }
     }
 }

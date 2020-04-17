@@ -65,11 +65,10 @@ impl<B: Blk> Cabinet<B> {
         next_auth: &AuthManage<A, B, S>,
     ) {
         if let Some(grids) = self.pop(next_height) {
-            for grid in grids {
-                if let Some(sp) = grid.get_signed_proposal() {
-                    if next_auth.verify_signed_proposal(sp).is_ok() {
-                        let _ =
-                            self.insert(sp.proposal.height, sp.proposal.round, sp.clone().into());
+            for mut grid in grids {
+                if let Some(sp) = grid.take_signed_proposal() {
+                    if next_auth.verify_signed_proposal(&sp).is_ok() {
+                        let _ = self.insert(sp.proposal.height, sp.proposal.round, sp.into());
                     }
                 }
                 if let Some(qc) = grid.get_pre_vote_qc() {
@@ -90,11 +89,6 @@ impl<B: Blk> Cabinet<B> {
                 for sv in grid.get_signed_pre_commits() {
                     if next_auth.verify_signed_pre_commit(&sv).is_ok() {
                         let _ = self.insert(sv.vote.height, sv.vote.round, sv.into());
-                    }
-                }
-                for sc in grid.get_signed_chokes() {
-                    if next_auth.verify_signed_choke(&sc).is_ok() {
-                        let _ = self.insert(sc.choke.height, sc.choke.round, sc.into());
                     }
                 }
             }
@@ -134,10 +128,14 @@ impl<B: Blk> Cabinet<B> {
             .and_then(|drawer| drawer.get_full_block(hash))
     }
 
-    pub fn get_signed_proposal(&self, height: Height, round: Round) -> Option<&SignedProposal<B>> {
+    pub fn take_signed_proposal(
+        &mut self,
+        height: Height,
+        round: Round,
+    ) -> Option<SignedProposal<B>> {
         self.0
-            .get(&height)
-            .and_then(|drawer| drawer.get_signed_proposal(round))
+            .get_mut(&height)
+            .and_then(|drawer| drawer.take_signed_proposal(round))
     }
 
     pub fn get_signed_pre_votes_by_hash(
@@ -178,12 +176,6 @@ impl<B: Blk> Cabinet<B> {
         self.0
             .get(&height)
             .and_then(|drawer| drawer.get_pre_commit_qc(round))
-    }
-
-    pub fn get_choke_qc(&self, height: Height, round: Round) -> Option<ChokeQC> {
-        self.0
-            .get(&height)
-            .and_then(|drawer| drawer.get_choke_qc(round))
     }
 }
 
@@ -246,10 +238,10 @@ impl<B: Blk> Drawer<B> {
         self.full_blocks.get(hash)
     }
 
-    fn get_signed_proposal(&self, round: Round) -> Option<&SignedProposal<B>> {
+    fn take_signed_proposal(&mut self, round: Round) -> Option<SignedProposal<B>> {
         self.grids
-            .get(&round)
-            .and_then(|grid| grid.get_signed_proposal())
+            .get_mut(&round)
+            .and_then(|grid| grid.take_signed_proposal())
     }
 
     fn get_signed_pre_votes_by_hash(
@@ -287,10 +279,6 @@ impl<B: Blk> Drawer<B> {
             .get(&round)
             .and_then(|grid| grid.get_pre_commit_qc())
     }
-
-    fn get_choke_qc(&self, round: Round) -> Option<ChokeQC> {
-        self.grids.get(&round).and_then(|grid| grid.get_choke_qc())
-    }
 }
 
 #[derive(Clone, Default)]
@@ -312,12 +300,13 @@ pub struct Grid<B: Blk> {
 
     pre_vote_qc:   Option<PreVoteQC>,
     pre_commit_qc: Option<PreCommitQC>,
-    choke_qc:      Option<ChokeQC>,
 }
 
 impl<B: Blk> Grid<B> {
-    pub fn get_signed_proposal(&self) -> Option<&SignedProposal<B>> {
-        self.signed_proposal.as_ref()
+    pub fn take_signed_proposal(&mut self) -> Option<SignedProposal<B>> {
+        let signed_proposal = self.signed_proposal.clone();
+        self.signed_proposal = None;
+        signed_proposal
     }
 
     pub fn get_signed_pre_votes(&self) -> Vec<SignedPreVote> {
@@ -349,10 +338,6 @@ impl<B: Blk> Grid<B> {
         self.pre_commit_qc.clone()
     }
 
-    pub fn get_choke_qc(&self) -> Option<ChokeQC> {
-        self.choke_qc.clone()
-    }
-
     fn get_signed_pre_votes_by_hash(&self, block_hash: &Hash) -> Option<Vec<SignedPreVote>> {
         self.pre_vote_sets.get(block_hash).cloned()
     }
@@ -373,7 +358,7 @@ impl<B: Blk> Grid<B> {
             Capsule::SignedChoke(signed_choke) => self.insert_signed_choke(signed_choke),
             Capsule::PreVoteQC(pre_vote_qc) => self.insert_pre_vote_qc(pre_vote_qc),
             Capsule::PreCommitQC(pre_commit_qc) => self.insert_pre_commit_qc(pre_commit_qc),
-            Capsule::ChokeQC(choke_qc) => self.insert_choke_qc(choke_qc),
+            _ => unreachable!(),
         }
     }
 
@@ -480,12 +465,6 @@ impl<B: Blk> Grid<B> {
         self.pre_commit_qc = Some(pre_commit_qc);
         Ok(None)
     }
-
-    fn insert_choke_qc(&mut self, choke_qc: ChokeQC) -> OverlordResult<Option<CumWeight>> {
-        check_exist(self.choke_qc.as_ref(), &choke_qc)?;
-        self.choke_qc = Some(choke_qc);
-        Ok(None)
-    }
 }
 
 fn check_exist<T: PartialEq + Eq>(opt: Option<&T>, check_data: &T) -> OverlordResult<()> {
@@ -551,7 +530,7 @@ mod test {
 
         let signed_proposal = SignedProposal::default();
         check_insert(&mut cabinet, &signed_proposal);
-        assert_eq!(cabinet.get_signed_proposal(0, 0).unwrap(), &signed_proposal);
+        assert_eq!(cabinet.take_signed_proposal(0, 0).unwrap(), signed_proposal);
 
         let pre_vote_qc = PreVoteQC::default();
         check_insert(&mut cabinet, &pre_vote_qc);
@@ -561,10 +540,6 @@ mod test {
         check_insert(&mut cabinet, &pre_commit_qc);
         assert_eq!(cabinet.get_pre_commit_qc(0, 0).unwrap(), pre_commit_qc);
 
-        let choke_qc = ChokeQC::default();
-        check_insert(&mut cabinet, &choke_qc);
-        assert_eq!(cabinet.get_choke_qc(0, 0).unwrap(), choke_qc);
-
         // test pop
         assert!(!cabinet.0.is_empty());
         let grids = cabinet.pop(0).unwrap();
@@ -572,9 +547,9 @@ mod test {
         assert_eq!(grids.len(), 2);
 
         // test remove
-        cabinet.insert(98, 0, choke_qc.clone().into()).unwrap();
-        cabinet.insert(99, 0, choke_qc.clone().into()).unwrap();
-        cabinet.insert(100, 0, choke_qc.into()).unwrap();
+        cabinet.insert(98, 0, pre_commit_qc.clone().into()).unwrap();
+        cabinet.insert(99, 0, pre_commit_qc.clone().into()).unwrap();
+        cabinet.insert(100, 0, pre_commit_qc.into()).unwrap();
         cabinet.next_height(100);
         assert_eq!(cabinet.0.len(), 1);
     }

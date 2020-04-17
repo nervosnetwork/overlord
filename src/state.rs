@@ -318,6 +318,12 @@ impl<S: St> ProposePrepare<S> {
         }
     }
 
+    pub fn handle_exec_result(&mut self, exec_result: ExecResult<S>) {
+        let exec_height = exec_result.block_states.height;
+        self.exec_height = exec_height;
+        self.exec_results.insert(exec_height, exec_result);
+    }
+
     pub fn handle_commit(
         &mut self,
         block_hash: Hash,

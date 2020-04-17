@@ -98,6 +98,24 @@ pub struct Proposal<B: Blk> {
 }
 
 impl<B: Blk> Proposal<B> {
+    pub fn new(
+        height: Height,
+        round: Round,
+        block: B,
+        block_hash: Hash,
+        lock: Option<PreVoteQC>,
+        proposer: Address,
+    ) -> Self {
+        Proposal {
+            height,
+            round,
+            block,
+            block_hash,
+            lock,
+            proposer,
+        }
+    }
+
     pub fn as_vote(&self) -> Vote {
         Vote {
             height:     self.height,

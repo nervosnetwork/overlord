@@ -21,6 +21,7 @@ use crate::auth::{AuthCell, AuthFixedConfig, AuthManage};
 use crate::cabinet::{Cabinet, Capsule};
 use crate::error::ErrorInfo;
 use crate::exec::ExecRequest;
+use crate::state::Step::Propose;
 use crate::state::{ProposePrepare, Stage, StateInfo, Step};
 use crate::timeout::{TimeoutEvent, TimeoutInfo};
 use crate::types::{
@@ -125,10 +126,7 @@ where
                     }
                 }
                 opt = self.agent.from_exec.next() => {
-                    if let Err(e) = self.handle_exec_result(opt.expect("Exec Channel is down! It's meaningless to continue running")).await {
-                        // self.adapter.handle_error()
-                        error!("{}", e);
-                    }
+                    self.handle_exec_result(opt.expect("Exec Channel is down! It's meaningless to continue running"));
                 }
                 opt = self.agent.from_fetch.next() => {
                     if let Err(e) = self.handle_fetch(opt.expect("Fetch Channel is down! It's meaningless to continue running")).await {
@@ -159,7 +157,9 @@ where
             OverlordMsg::SignedPreCommit(signed_pre_commit) => {
                 self.handle_signed_pre_commit(signed_pre_commit).await?;
             }
-            OverlordMsg::SignedChoke(signed_choke) => {}
+            OverlordMsg::SignedChoke(signed_choke) => {
+                self.handle_signed_choke(signed_choke).await?;
+            }
             OverlordMsg::PreVoteQC(pre_vote_qc) => {
                 self.handle_pre_vote_qc(pre_vote_qc).await?;
             }
@@ -174,8 +174,8 @@ where
         Ok(())
     }
 
-    async fn handle_exec_result(&mut self, exec_result: ExecResult<S>) -> OverlordResult<()> {
-        Ok(())
+    fn handle_exec_result(&mut self, exec_result: ExecResult<S>) {
+        self.prepare.handle_exec_result(exec_result);
     }
 
     async fn handle_fetch(
@@ -183,6 +183,9 @@ where
         fetch_result: OverlordResult<FetchedFullBlock>,
     ) -> OverlordResult<()> {
         let fetch = self.agent.handle_fetch(fetch_result)?;
+        if fetch.height < self.state.stage.height {
+            return Err(OverlordError::debug_old());
+        }
         self.cabinet.insert_full_block(fetch.clone());
         self.wal.save_full_block(&fetch)?;
         // Todo: check if hash is waiting to process in PreVote Step or PreCommit Step
@@ -246,8 +249,8 @@ where
                     )
                     .expect("Unreachable! Lost signed_pre_votes while beyond majority");
                 let pre_vote_qc = self.auth.aggregate_pre_votes(votes)?;
-                self.handle_pre_vote_qc(pre_vote_qc.clone()).await?;
-                self.agent.broadcast(pre_vote_qc.into()).await?;
+                self.agent.broadcast(pre_vote_qc.clone().into()).await?;
+                self.handle_pre_vote_qc(pre_vote_qc).await?;
             }
         }
         Ok(())
@@ -272,8 +275,8 @@ where
                     )
                     .expect("Unreachable! Lost signed_pre_votes while beyond majority");
                 let pre_commit_qc = self.auth.aggregate_pre_commits(votes)?;
-                self.handle_pre_commit_qc(pre_commit_qc.clone()).await?;
-                self.agent.broadcast(pre_commit_qc.into()).await?;
+                self.agent.broadcast(pre_commit_qc.clone().into()).await?;
+                self.handle_pre_commit_qc(pre_commit_qc).await?;
             }
         }
         Ok(())
@@ -396,7 +399,9 @@ where
             .handle_commit(commit_exec_result.consensus_config.auth_config);
         self.cabinet.handle_commit(next_height, &self.auth);
 
-        if self.auth.am_i_leader(next_height, INIT_ROUND)
+        // if self is leader, should not wait for interval timeout. This is different from previous
+        // design.
+        if !self.auth.am_i_leader(next_height, INIT_ROUND)
             && self.agent.set_timeout(self.state.stage.clone())
         {
             return Ok(());
@@ -407,11 +412,24 @@ where
 
     async fn next_height(&mut self, time_config: TimeConfig) -> OverlordResult<()> {
         self.state.next_height();
+        self.state.save_wal(&self.wal)?;
         self.agent.next_height(time_config);
         self.new_round().await
     }
 
     async fn new_round(&mut self) -> OverlordResult<()> {
+        // if leader send proposal else search proposal, last set time
+        let h = self.state.stage.height;
+        let r = self.state.stage.round;
+
+        self.agent.set_timeout(self.state.stage.clone());
+
+        if self.auth.am_i_leader(h, r) {
+            let signed_proposal = self.create_signed_proposal().await?;
+            self.agent.broadcast(signed_proposal.into()).await?;
+        } else if let Some(signed_proposal) = self.cabinet.take_signed_proposal(h, r) {
+            self.handle_signed_proposal(signed_proposal).await?;
+        }
         Ok(())
     }
 
@@ -445,6 +463,52 @@ where
             )
             .await
             .map_err(OverlordError::byz_adapter_check_block)
+    }
+
+    async fn create_block(&self) -> OverlordResult<B> {
+        let height = self.state.stage.height;
+        let exec_height = self.prepare.exec_height;
+        let pre_hash = self.prepare.pre_hash.clone();
+        let pre_proof = self.prepare.pre_proof.clone();
+        let block_states = self.prepare.get_block_states_list(exec_height);
+        self.adapter
+            .create_block(
+                Context::default(),
+                height,
+                exec_height,
+                pre_hash,
+                pre_proof,
+                block_states,
+            )
+            .await
+            .map_err(OverlordError::local_create_block)
+    }
+
+    async fn create_signed_proposal(&self) -> OverlordResult<SignedProposal<B>> {
+        let height = self.state.stage.height;
+        let round = self.state.stage.round;
+        let proposer = self.auth.fixed_config.address.clone();
+        let proposal = if let Some(lock) = &self.state.lock {
+            let block = self
+                .state
+                .block
+                .as_ref()
+                .expect("Unreachable! Block is none when lock is some");
+            let hash = lock.vote.block_hash.clone();
+            Proposal::new(
+                height,
+                round,
+                block.clone(),
+                hash,
+                Some(lock.clone()),
+                proposer,
+            )
+        } else {
+            let block = self.create_block().await?;
+            let hash = block.get_block_hash();
+            Proposal::new(height, round, block, hash, None, proposer)
+        };
+        self.auth.sign_proposal(proposal)
     }
 
     fn filter_msg(
