@@ -21,7 +21,7 @@ use crate::auth::{AuthCell, AuthFixedConfig, AuthManage};
 use crate::cabinet::{Cabinet, Capsule};
 use crate::error::ErrorInfo;
 use crate::exec::ExecRequest;
-use crate::state::{ProposePrepare, Stage, StateInfo};
+use crate::state::{ProposePrepare, Stage, StateInfo, Step};
 use crate::timeout::{TimeoutEvent, TimeoutInfo};
 use crate::types::{
     ChokeQC, FetchedFullBlock, PreCommitQC, Proposal, SignedChoke, SignedPreCommit, SignedPreVote,
@@ -32,7 +32,9 @@ use crate::{
     OverlordError, OverlordMsg, OverlordResult, PriKeyHex, Proof, Round, St, TimeConfig, Wal,
 };
 
-const MULTIPLIER_CAP: u32 = 5;
+const POWER_CAP: u32 = 5;
+const TIME_DIVISOR: u64 = 10;
+
 const HEIGHT_WINDOW: Height = 5;
 const ROUND_WINDOW: Round = 5;
 
@@ -148,7 +150,9 @@ where
             OverlordMsg::SignedProposal(signed_proposal) => {
                 self.handle_signed_proposal(signed_proposal).await?;
             }
-            OverlordMsg::SignedPreVote(signed_pre_vote) => {}
+            OverlordMsg::SignedPreVote(signed_pre_vote) => {
+                
+            }
             OverlordMsg::SignedPreCommit(signed_pre_commit) => {}
             OverlordMsg::SignedChoke(signed_choke) => {}
             OverlordMsg::PreVoteQC(pre_vote_qc) => {}
@@ -193,6 +197,7 @@ where
         let msg_round = sp.proposal.round;
 
         self.filter_msg(msg_height, msg_round, &sp.clone().into())?;
+        // only msg of current height will go down
         self.check_proposal(&sp.proposal).await?;
         self.auth.verify_signed_proposal(&sp)?;
         self.cabinet
@@ -205,7 +210,7 @@ where
 
         self.state.handle_signed_proposal(&sp)?;
         self.state.save_wal(&self.wal)?;
-        // set timeout
+        self.agent.set_timeout(self.state.stage.clone());
 
         self.auth.can_i_vote()?;
         let vote = self.auth.sign_pre_vote(sp.proposal.as_vote())?;
@@ -421,12 +426,43 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         });
     }
 
-    // fn set_timeout(&self, stage: Stage) {
-    //     let interval =
-    //     let smr_timer = TimeoutInfo::new(interval, TimeoutEvent::, self.sender.clone());
-    //
-    //     tokio::spawn(async move {
-    //         smr_timer.await;
-    //     });
-    // }
+    fn set_timeout(&self, stage: Stage) {
+        let interval = compute_timeout(&stage, &self.time_config);
+        let timeout_info = TimeoutInfo::new(interval, stage.into(), self.to_timeout.clone());
+        tokio::spawn(async move {
+            timeout_info.await;
+        });
+    }
+}
+
+fn compute_timeout(stage: &Stage, config: &TimeConfig) -> Duration {
+    match stage.step {
+        Step::Propose => {
+            let timeout =
+                Duration::from_millis(config.interval * config.propose_ratio / TIME_DIVISOR);
+            apply_power(timeout, stage.round as u32)
+        }
+        Step::PreVote => {
+            let timeout =
+                Duration::from_millis(config.interval * config.pre_vote_ratio / TIME_DIVISOR);
+            apply_power(timeout, stage.round as u32)
+        }
+        Step::PreCommit => {
+            let timeout =
+                Duration::from_millis(config.interval * config.pre_commit_ratio / TIME_DIVISOR);
+            apply_power(timeout, stage.round as u32)
+        }
+        Step::Brake => Duration::from_millis(config.interval * config.brake_ratio / TIME_DIVISOR),
+        _ => unreachable!(),
+    }
+}
+
+fn apply_power(timeout: Duration, power: u32) -> Duration {
+    let mut timeout = timeout;
+    let mut power = power;
+    if power > POWER_CAP {
+        power = POWER_CAP;
+    }
+    timeout *= 2u32.pow(power);
+    timeout
 }

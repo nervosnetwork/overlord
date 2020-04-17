@@ -9,9 +9,10 @@ use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use futures::{FutureExt, SinkExt};
 use futures_timer::Delay;
 
-use crate::state::Stage;
+use crate::state::{Stage, Step};
 use crate::types::TimeConfig;
 use crate::Height;
+use std::sync::mpsc::RecvTimeoutError::Timeout;
 
 #[derive(Clone, Debug, Display)]
 pub enum TimeoutEvent {
@@ -25,6 +26,18 @@ pub enum TimeoutEvent {
     BrakeTimeout(Stage),
     #[display(fmt = "HeightTimeout( {} )", _0)]
     HeightTimeout(Height),
+}
+
+impl From<Stage> for TimeoutEvent {
+    fn from(stage: Stage) -> TimeoutEvent {
+        match stage.step.clone() {
+            Step::Propose => TimeoutEvent::ProposeTimeout(stage),
+            Step::PreVote => TimeoutEvent::PreVoteTimeout(stage),
+            Step::PreCommit => TimeoutEvent::PreCommitTimeout(stage),
+            Step::Brake => TimeoutEvent::BrakeTimeout(stage),
+            _ => unreachable!(),
+        }
+    }
 }
 
 #[derive(Debug, Display)]
