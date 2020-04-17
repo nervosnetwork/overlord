@@ -17,15 +17,15 @@ use futures::{FutureExt, SinkExt};
 use futures_timer::Delay;
 use log::{error, warn};
 
-use crate::auth::{AuthCell, AuthFixedConfig, AuthManage};
+use crate::auth::{calculate_leader, AuthCell, AuthFixedConfig, AuthManage};
 use crate::cabinet::{Cabinet, Capsule};
 use crate::error::ErrorInfo;
 use crate::exec::ExecRequest;
 use crate::state::{ProposePrepare, Stage, StateInfo, Step};
 use crate::timeout::{TimeoutEvent, TimeoutInfo};
 use crate::types::{
-    ChokeQC, FetchedFullBlock, PreCommitQC, Proposal, SignedChoke, SignedPreCommit, SignedPreVote,
-    SignedProposal, UpdateFrom,
+    ChokeQC, FetchedFullBlock, PreCommitQC, PreVoteQC, Proposal, SignedChoke, SignedPreCommit,
+    SignedPreVote, SignedProposal, UpdateFrom,
 };
 use crate::{
     Adapter, Address, Blk, CommonHex, ExecResult, Hash, Height, HeightRange, OverlordConfig,
@@ -116,25 +116,25 @@ where
         loop {
             select! {
                 opt = self.agent.from_net.next() => {
-                    if let Err(e) = self.handle_msg(opt.expect("Net Channel is down!")).await {
+                    if let Err(e) = self.handle_msg(opt.expect("Net Channel is down! It's meaningless to continue running")).await {
                         // self.adapter.handle_error()
                         error!("{}", e);
                     }
                 }
                 opt = self.agent.from_exec.next() => {
-                    if let Err(e) = self.handle_exec_result(opt.expect("Exec Channel is down!")).await {
+                    if let Err(e) = self.handle_exec_result(opt.expect("Exec Channel is down! It's meaningless to continue running")).await {
                         // self.adapter.handle_error()
                         error!("{}", e);
                     }
                 }
                 opt = self.agent.from_fetch.next() => {
-                    if let Err(e) = self.handle_fetch(opt.expect("Fetch Channel is down!")).await {
+                    if let Err(e) = self.handle_fetch(opt.expect("Fetch Channel is down! It's meaningless to continue running")).await {
                         // self.adapter.handle_error()
                         error!("{}", e);
                     }
                 }
                 opt = self.agent.from_timeout.next() => {
-                    if let Err(e) = self.handle_timeout(opt.expect("Timeout Channel is down!")).await {
+                    if let Err(e) = self.handle_timeout(opt.expect("Timeout Channel is down! It's meaningless to continue running")).await {
                         // self.adapter.handle_error()
                         error!("{}", e);
                     }
@@ -151,12 +151,18 @@ where
                 self.handle_signed_proposal(signed_proposal).await?;
             }
             OverlordMsg::SignedPreVote(signed_pre_vote) => {
-                
+                self.handle_signed_pre_vote(signed_pre_vote).await?;
             }
-            OverlordMsg::SignedPreCommit(signed_pre_commit) => {}
+            OverlordMsg::SignedPreCommit(signed_pre_commit) => {
+                self.handle_signed_pre_commit(signed_pre_commit).await?;
+            }
             OverlordMsg::SignedChoke(signed_choke) => {}
-            OverlordMsg::PreVoteQC(pre_vote_qc) => {}
-            OverlordMsg::PreCommitQC(pre_commit_qc) => {}
+            OverlordMsg::PreVoteQC(pre_vote_qc) => {
+                self.handle_pre_vote_qc(pre_vote_qc).await?;
+            }
+            OverlordMsg::PreCommitQC(pre_commit_qc) => {
+                self.handle_pre_commit_qc(pre_commit_qc).await?;
+            }
             _ => {
                 // ToDo: synchronization
             }
@@ -193,28 +199,134 @@ where
     }
 
     async fn handle_signed_proposal(&mut self, sp: SignedProposal<B>) -> OverlordResult<()> {
-        let msg_height = sp.proposal.height;
-        let msg_round = sp.proposal.round;
+        let msg_h = sp.proposal.height;
+        let msg_r = sp.proposal.round;
 
-        self.filter_msg(msg_height, msg_round, &sp.clone().into())?;
+        self.filter_msg(msg_h, msg_r, &sp.clone().into())?;
         // only msg of current height will go down
         self.check_proposal(&sp.proposal).await?;
         self.auth.verify_signed_proposal(&sp)?;
-        self.cabinet
-            .insert(msg_height, msg_round, sp.clone().into())?;
+        self.cabinet.insert(msg_h, msg_r, sp.clone().into())?;
         self.agent.request_full_block(sp.proposal.block.clone());
 
-        if sp.proposal.lock.is_none() && msg_round > self.state.stage.round {
+        if sp.proposal.lock.is_none() && msg_r > self.state.stage.round {
             return Err(OverlordError::debug_high());
         }
 
         self.state.handle_signed_proposal(&sp)?;
-        self.state.save_wal(&self.wal)?;
         self.agent.set_timeout(self.state.stage.clone());
+        self.state.save_wal(&self.wal)?;
 
         self.auth.can_i_vote()?;
         let vote = self.auth.sign_pre_vote(sp.proposal.as_vote())?;
         self.agent.transmit(sp.proposal.proposer, vote.into()).await
+    }
+
+    async fn handle_signed_pre_vote(&mut self, sv: SignedPreVote) -> OverlordResult<()> {
+        let msg_h = sv.vote.height;
+        let msg_r = sv.vote.round;
+
+        self.filter_msg(msg_h, msg_r, &sv.clone().into())?;
+        self.auth.verify_signed_pre_vote(&sv)?;
+        if let Some(sum_w) = self.cabinet.insert(msg_h, msg_r, sv.clone().into())? {
+            if self.auth.current_auth.beyond_majority(sum_w.cum_weight) {
+                let votes = self
+                    .cabinet
+                    .take_signed_pre_votes(
+                        msg_h,
+                        sum_w.round,
+                        &sum_w
+                            .block_hash
+                            .expect("Unreachable! Lost the vote_hash while beyond majority"),
+                    )
+                    .expect("Unreachable! Lost signed_pre_votes while beyond majority");
+                let pre_vote_qc = self.auth.aggregate_pre_votes(votes)?;
+                self.handle_pre_vote_qc(pre_vote_qc.clone()).await?;
+                self.agent.broadcast(pre_vote_qc.into()).await?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn handle_signed_pre_commit(&mut self, sv: SignedPreCommit) -> OverlordResult<()> {
+        let msg_h = sv.vote.height;
+        let msg_r = sv.vote.round;
+
+        self.filter_msg(msg_h, msg_r, &sv.clone().into())?;
+        self.auth.verify_signed_pre_commit(&sv)?;
+        if let Some(sum_w) = self.cabinet.insert(msg_h, msg_r, sv.clone().into())? {
+            if self.auth.current_auth.beyond_majority(sum_w.cum_weight) {
+                let votes = self
+                    .cabinet
+                    .take_signed_pre_commits(
+                        msg_h,
+                        sum_w.round,
+                        &sum_w
+                            .block_hash
+                            .expect("Unreachable! Lost the vote_hash while beyond majority"),
+                    )
+                    .expect("Unreachable! Lost signed_pre_votes while beyond majority");
+                let pre_commit_qc = self.auth.aggregate_pre_commits(votes)?;
+                self.handle_pre_commit_qc(pre_commit_qc.clone()).await?;
+                self.agent.broadcast(pre_commit_qc.into()).await?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn handle_pre_vote_qc(&mut self, qc: PreVoteQC) -> OverlordResult<()> {
+        let msg_h = qc.vote.height;
+        let msg_r = qc.vote.round;
+
+        self.filter_msg(msg_h, msg_r, &qc.clone().into())?;
+        self.auth.verify_pre_vote_qc(&qc)?;
+        self.cabinet.insert(msg_h, msg_r, qc.clone().into())?;
+        if self
+            .cabinet
+            .get_full_block(msg_h, &qc.vote.block_hash)
+            .is_some()
+        {
+            let block = self
+                .cabinet
+                .get_block(msg_h, &qc.vote.block_hash)
+                .expect("Unreachable! Lost a block which full block exist");
+            self.state.handle_pre_vote_qc(&qc, block.clone())?;
+            self.agent.set_timeout(self.state.stage.clone());
+            self.state.save_wal(&self.wal)?;
+
+            self.auth.can_i_vote()?;
+            let vote = self.auth.sign_pre_commit(qc.vote.clone())?;
+            let leader = calculate_leader(msg_h, msg_r, &self.auth.current_auth.list);
+            self.agent.transmit(leader, vote.into()).await?;
+        }
+        Ok(())
+    }
+
+    async fn handle_pre_commit_qc(&mut self, qc: PreCommitQC) -> OverlordResult<()> {
+        let msg_h = qc.vote.height;
+        let msg_r = qc.vote.round;
+
+        self.filter_msg(msg_h, msg_r, &qc.clone().into())?;
+        self.auth.verify_pre_commit_qc(&qc)?;
+        self.cabinet.insert(msg_h, msg_r, qc.clone().into())?;
+        if self
+            .cabinet
+            .get_full_block(msg_h, &qc.vote.block_hash)
+            .is_some()
+        {
+            let block = self
+                .cabinet
+                .get_block(msg_h, &qc.vote.block_hash)
+                .expect("Unreachable! Lost a block which full block exist");
+            self.state.handle_pre_commit_qc(&qc, block.clone())?;
+            self.state.save_wal(&self.wal)?;
+            self.handle_commit().await?;
+        }
+        Ok(())
+    }
+
+    async fn handle_commit(&mut self) -> OverlordResult<()> {
+        Ok(())
     }
 
     async fn check_proposal(&mut self, p: &Proposal<B>) -> OverlordResult<()> {
@@ -422,7 +534,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
                 .map_err(|_| OverlordError::net_fetch(block_hash));
             to_fetch
                 .unbounded_send(rst)
-                .expect("Fetch Channel is down!");
+                .expect("Fetch Channel is down! It's meaningless to continue running");
         });
     }
 

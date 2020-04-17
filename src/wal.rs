@@ -132,7 +132,8 @@ impl Wal {
 
 fn ensure_dir_exists(dir: &PathBuf) {
     if !dir.exists() {
-        fs::create_dir_all(dir).expect("Create wal directory failed");
+        fs::create_dir_all(dir)
+            .expect("Failed to create wal directory! It's meaningless to continue running");
     }
 }
 

@@ -25,7 +25,7 @@ pub enum TimeoutEvent {
     #[display(fmt = "BrakeTimeout( {} )", _0)]
     BrakeTimeout(Stage),
     #[display(fmt = "HeightTimeout( {} )", _0)]
-    HeightTimeout(Height),
+    HeightTimeout(Stage),
 }
 
 impl From<Stage> for TimeoutEvent {
@@ -35,7 +35,7 @@ impl From<Stage> for TimeoutEvent {
             Step::PreVote => TimeoutEvent::PreVoteTimeout(stage),
             Step::PreCommit => TimeoutEvent::PreCommitTimeout(stage),
             Step::Brake => TimeoutEvent::BrakeTimeout(stage),
-            _ => unreachable!(),
+            Step::Commit => TimeoutEvent::HeightTimeout(stage),
         }
     }
 }

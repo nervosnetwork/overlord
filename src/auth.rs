@@ -25,8 +25,8 @@ use crate::{OverlordError, OverlordResult};
 pub struct AuthManage<A: Adapter<B, S>, B: Blk, S: St> {
     fixed_config: AuthFixedConfig,
 
-    current_auth: AuthCell<B>,
-    last_auth:    Option<AuthCell<B>>,
+    pub current_auth: AuthCell<B>,
+    pub last_auth:    Option<AuthCell<B>>,
 
     phantom_a: PhantomData<A>,
     phantom_b: PhantomData<B>,
@@ -88,7 +88,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         ))
     }
 
-    pub fn verify_signed_pre_vote(&self, signed_vote: SignedPreVote) -> OverlordResult<()> {
+    pub fn verify_signed_pre_vote(&self, signed_vote: &SignedPreVote) -> OverlordResult<()> {
         self.current_auth
             .check_vote_weight(&signed_vote.voter, signed_vote.vote_weight)?;
         let hash = hash_vote::<A, B, Vote, S>(&signed_vote.vote, VoteType::PreVote);
@@ -106,7 +106,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         ))
     }
 
-    pub fn verify_signed_pre_commit(&self, signed_vote: SignedPreCommit) -> OverlordResult<()> {
+    pub fn verify_signed_pre_commit(&self, signed_vote: &SignedPreCommit) -> OverlordResult<()> {
         self.current_auth
             .check_vote_weight(&signed_vote.voter, signed_vote.vote_weight)?;
         let hash = hash_vote::<A, B, Vote, S>(&signed_vote.vote, VoteType::PreCommit);
@@ -157,7 +157,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         Ok(PreCommitQC::new(pre_commits[0].vote.clone(), aggregates))
     }
 
-    pub fn verify_pre_commit_qc(&self, pre_commit_qc: PreCommitQC) -> OverlordResult<()> {
+    pub fn verify_pre_commit_qc(&self, pre_commit_qc: &PreCommitQC) -> OverlordResult<()> {
         let hash = hash_vote::<A, B, Vote, S>(&pre_commit_qc.vote, VoteType::PreCommit);
         self.verify_aggregate(&hash, &pre_commit_qc.aggregates)
     }
@@ -274,13 +274,13 @@ fn check_leader<B: Blk>(
     Ok(())
 }
 
-fn calculate_leader(height: Height, round: Round, list: &[(Address, PubKeyHex)]) -> Address {
+pub fn calculate_leader(height: Height, round: Round, list: &[(Address, PubKeyHex)]) -> Address {
     // Todo: add random mode
     let len = list.len();
     let prime_num = *get_primes_less_than_x(len as u32).last().unwrap_or(&1) as u64;
     let index = (height * prime_num + round) % (len as u64);
     list.get(index as usize)
-        .expect("index out of auth_list which should not happen")
+        .expect("Unreachable! Calculate a leader index out of auth_list")
         .0
         .clone()
 }
@@ -394,7 +394,7 @@ impl<B: Blk> AuthCell<B> {
         Ok(())
     }
 
-    fn beyond_majority(&self, weight_sum: Weight) -> bool {
+    pub fn beyond_majority(&self, weight_sum: Weight) -> bool {
         weight_sum * 3 > self.vote_weight_sum * 2
     }
 

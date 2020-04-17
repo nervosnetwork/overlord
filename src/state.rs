@@ -1,4 +1,6 @@
 #![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
 
 use std::cmp::{Ord, Ordering, PartialOrd};
 use std::error::Error;
@@ -68,18 +70,42 @@ impl<B: Blk> StateInfo<B> {
                 .proposal
                 .lock
                 .clone()
-                .expect("Have checked before, this is Impossible!");
-            self.handle_pre_vote_qc(&qc)?;
+                .expect("Unreachable! Have checked lock exists before");
+            self.handle_pre_vote_qc(&qc, sp.proposal.block.clone())?;
             return Err(OverlordError::debug_high());
         }
-        self.stage.update_stage(next_stage);
+        if self.stage.update_stage(next_stage) {
+            self.from = Some(UpdateFrom::PreVoteQC(
+                sp.proposal
+                    .lock
+                    .clone()
+                    .expect("Unreachable! Have checked lock exists before"),
+            ));
+        }
         self.update_lock(&sp.proposal)?;
         Ok(())
     }
 
-    pub fn handle_pre_vote_qc(&self, pre_vote_qc: &PreVoteQC) -> OverlordResult<()> {
-        let _next_stage = self.filter_stage(pre_vote_qc)?;
-        // Todo:
+    pub fn handle_pre_vote_qc(&mut self, pre_vote_qc: &PreVoteQC, block: B) -> OverlordResult<()> {
+        let next_stage = self.filter_stage(pre_vote_qc)?;
+        if self.stage.update_stage(next_stage) {
+            self.from = Some(UpdateFrom::PreVoteQC(pre_vote_qc.clone()));
+        }
+        self.lock = Some(pre_vote_qc.clone());
+        self.block = Some(block);
+        Ok(())
+    }
+
+    pub fn handle_pre_commit_qc(
+        &mut self,
+        pre_commit_qc: &PreCommitQC,
+        block: B,
+    ) -> OverlordResult<()> {
+        let next_stage = self.filter_stage(pre_commit_qc)?;
+        if self.stage.update_stage(next_stage) {
+            self.from = Some(UpdateFrom::PreCommitQC(pre_commit_qc.clone()));
+        }
+        self.pre_commit_qc = Some(pre_commit_qc.clone());
         Ok(())
     }
 
@@ -144,9 +170,12 @@ impl Stage {
         self.step = Step::Propose;
     }
 
-    pub fn update_stage(&mut self, stage: Stage) {
+    // if round jump return true
+    pub fn update_stage(&mut self, stage: Stage) -> bool {
         assert!(*self >= stage);
+        let is_jump = stage.round > self.round;
         *self = stage;
+        is_jump
     }
 }
 

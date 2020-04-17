@@ -58,6 +58,7 @@ impl<B: Blk> Cabinet<B> {
         self.0 = self.0.split_off(&new_height);
     }
 
+    // Return max vote_weight when insert signed_pre_vote/signed_pre_commit/signed_choke
     pub fn insert(
         &mut self,
         height: Height,
