@@ -202,6 +202,13 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         }
     }
 
+    pub fn can_i_vote(&self) -> OverlordResult<()> {
+        if self.current_auth.vote_weight == 0 {
+            return Err(OverlordError::debug_un_auth());
+        }
+        Ok(())
+    }
+
     fn sign(&self, hash: &Hash) -> OverlordResult<Signature> {
         A::CryptoImpl::sign(self.fixed_config.pri_key.clone(), hash)
             .map_err(OverlordError::local_crypto)

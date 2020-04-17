@@ -43,7 +43,6 @@ pub struct StateInfo<B: Blk> {
 
 impl<B: Blk> StateInfo<B> {
     pub fn from_height(height: Height) -> Self {
-        
         StateInfo {
             stage:         Stage::new(height, INIT_ROUND, Step::Propose),
             lock:          None,

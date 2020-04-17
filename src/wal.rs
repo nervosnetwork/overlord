@@ -21,8 +21,8 @@ const FULL_BLOCK_SUB_DIR: &str = "full_block";
 /// Simple Write Ahead Logging
 #[derive(Debug)]
 pub struct Wal {
-    wal_dir_path:   PathBuf,
-    state_dir_path: PathBuf,
+    pub wal_dir_path:   PathBuf,
+    pub state_dir_path: PathBuf,
 }
 
 impl Wal {

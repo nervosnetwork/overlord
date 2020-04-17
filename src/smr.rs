@@ -203,8 +203,10 @@ where
         }
 
         self.state.handle_signed_proposal(&sp)?;
-        // vote for proposal
-        // self.auth.sign_pre_vote()
+        self.state.save_wal(&self.wal)?;
+
+        self.auth.can_i_vote()?;
+        let signed_pre_vote = self.auth.sign_pre_vote(sp.proposal.as_vote())?;
 
         Ok(())
     }

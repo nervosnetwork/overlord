@@ -96,6 +96,13 @@ impl OverlordError {
         }
     }
 
+    pub fn debug_un_auth() -> Self {
+        OverlordError {
+            kind: ErrorKind::Debug,
+            info: ErrorInfo::UnAuthorized,
+        }
+    }
+
     pub fn byz_fake() -> Self {
         OverlordError {
             kind: ErrorKind::Byzantine,

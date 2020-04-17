@@ -44,6 +44,21 @@ pub enum OverlordMsg<B: Blk> {
     Stop,
 }
 
+impl_from!(
+    OverlordMsg,
+    [
+        tag SignedProposal,
+        SignedPreVote,
+        SignedPreCommit,
+        SignedChoke,
+        PreVoteQC,
+        PreCommitQC,
+        SignedHeight,
+        SyncRequest,
+        tag SyncResponse
+    ]
+);
+
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq)]
 #[display(
     fmt = "{{ proposal: {}， signature: {} }}",
@@ -80,6 +95,16 @@ pub struct Proposal<B: Blk> {
     pub block_hash: Hash,
     pub lock:       Option<PreVoteQC>,
     pub proposer:   Address,
+}
+
+impl<B: Blk> Proposal<B> {
+    pub fn as_vote(&self) -> Vote {
+        Vote {
+            height:     self.height,
+            round:      self.round,
+            block_hash: self.block_hash.clone(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]

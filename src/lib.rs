@@ -1,6 +1,9 @@
 #![allow(dead_code)]
 #![recursion_limit = "256"]
 
+#[macro_use]
+mod r#macro;
+
 pub mod crypto;
 pub mod error;
 pub mod traits;
