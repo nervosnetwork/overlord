@@ -29,7 +29,7 @@ pub enum TimeoutEvent {
 
 #[derive(Debug, Display)]
 #[display(fmt = "{}", event)]
-struct TimeoutInfo {
+pub struct TimeoutInfo {
     delay:  Delay,
     event:  TimeoutEvent,
     to_smr: UnboundedSender<TimeoutEvent>,
@@ -55,7 +55,11 @@ impl Future for TimeoutInfo {
 }
 
 impl TimeoutInfo {
-    fn new(interval: Duration, event: TimeoutEvent, to_smr: UnboundedSender<TimeoutEvent>) -> Self {
+    pub fn new(
+        interval: Duration,
+        event: TimeoutEvent,
+        to_smr: UnboundedSender<TimeoutEvent>,
+    ) -> Self {
         TimeoutInfo {
             delay: Delay::new(interval),
             event,

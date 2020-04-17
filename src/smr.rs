@@ -12,7 +12,7 @@ use std::{future::Future, pin::Pin};
 use creep::Context;
 use derive_more::Display;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
-use futures::{select, StreamExt};
+use futures::{select, StreamExt, TryFutureExt};
 use futures::{FutureExt, SinkExt};
 use futures_timer::Delay;
 use log::{error, warn};
@@ -22,7 +22,7 @@ use crate::cabinet::{Cabinet, Capsule};
 use crate::error::ErrorInfo;
 use crate::exec::ExecRequest;
 use crate::state::{ProposePrepare, Stage, StateInfo};
-use crate::timeout::TimeoutEvent;
+use crate::timeout::{TimeoutEvent, TimeoutInfo};
 use crate::types::{
     ChokeQC, FetchedFullBlock, PreCommitQC, Proposal, SignedChoke, SignedPreCommit, SignedPreVote,
     SignedProposal, UpdateFrom,
@@ -204,11 +204,11 @@ where
 
         self.state.handle_signed_proposal(&sp)?;
         self.state.save_wal(&self.wal)?;
+        // set timeout
 
         self.auth.can_i_vote()?;
-        let signed_pre_vote = self.auth.sign_pre_vote(sp.proposal.as_vote())?;
-
-        Ok(())
+        let vote = self.auth.sign_pre_vote(sp.proposal.as_vote())?;
+        self.agent.transmit(sp.proposal.proposer, vote.into()).await
     }
 
     async fn check_proposal(&mut self, p: &Proposal<B>) -> OverlordResult<()> {
@@ -364,6 +364,20 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         self.fetch_set.clear();
     }
 
+    async fn transmit(&self, to: Address, msg: OverlordMsg<B>) -> OverlordResult<()> {
+        self.adapter
+            .transmit(Context::default(), to, msg)
+            .await
+            .map_err(OverlordError::net_transmit)
+    }
+
+    async fn broadcast(&self, msg: OverlordMsg<B>) -> OverlordResult<()> {
+        self.adapter
+            .broadcast(Context::default(), msg)
+            .await
+            .map_err(OverlordError::local_broadcast)
+    }
+
     fn handle_fetch(
         &mut self,
         fetch_result: OverlordResult<FetchedFullBlock>,
@@ -400,4 +414,13 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
                 .expect("Fetch Channel is down!");
         });
     }
+
+    // fn set_timeout(&self, stage: Stage) {
+    //     let interval =
+    //     let smr_timer = TimeoutInfo::new(interval, TimeoutEvent::, self.sender.clone());
+    //
+    //     tokio::spawn(async move {
+    //         smr_timer.await;
+    //     });
+    // }
 }

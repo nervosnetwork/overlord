@@ -13,6 +13,7 @@ use rlp::{decode, encode, DecoderError};
 
 use crate::auth::AuthManage;
 use crate::cabinet::Cabinet;
+use crate::smr::EventAgent;
 use crate::types::{
     Choke, ChokeQC, PreCommitQC, PreVoteQC, Proposal, SignedChoke, SignedPreCommit, SignedPreVote,
     SignedProposal, UpdateFrom,

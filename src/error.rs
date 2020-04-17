@@ -65,6 +65,10 @@ pub enum ErrorInfo {
     UnderStage,
     #[display(fmt = "higher proposal with lower lock_round")]
     AbnormalLock,
+    #[display(fmt = "transmit error")]
+    Transmit(Box<dyn Error + Send>),
+    #[display(fmt = "broadcast error")]
+    Broadcast(Box<dyn Error + Send>),
 }
 
 #[derive(Debug, Display)]
@@ -226,6 +230,20 @@ impl OverlordError {
         OverlordError {
             kind: ErrorKind::Warn,
             info: ErrorInfo::AbnormalLock,
+        }
+    }
+
+    pub fn net_transmit(e: Box<dyn Error + Send>) -> Self {
+        OverlordError {
+            kind: ErrorKind::Network,
+            info: ErrorInfo::Transmit(e),
+        }
+    }
+
+    pub fn local_broadcast(e: Box<dyn Error + Send>) -> Self {
+        OverlordError {
+            kind: ErrorKind::LocalError,
+            info: ErrorInfo::Broadcast(e),
         }
     }
 }
