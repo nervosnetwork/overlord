@@ -307,6 +307,13 @@ impl<S: St> ProposePrepare<S> {
         }
     }
 
+    // pub fn commit(&mut self, block_hash: hash, vote: Vote, pre_commit_qc: PreCommitQC) {
+    //     self.pre_hash = block_hash;
+    //     self.pre_proof = Proof{
+    //         vote
+    //     }
+    // }
+
     pub fn get_block_state_vec(&self) -> Vec<BlockState<S>> {
         self.block_states
             .iter()

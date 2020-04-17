@@ -198,6 +198,8 @@ impl PreCommitQC {
     }
 }
 
+pub type Proof = PreCommitQC;
+
 #[derive(Clone, Debug, Default, Display, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[display(
     fmt = "{{ address_bitmap: {}, signature: {} }}",
@@ -337,22 +339,6 @@ impl HeightRange {
         HeightRange {
             from: start,
             to:   start + number,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[display(fmt = "{{ vote: {}, aggregates: {} }}", vote, aggregates)]
-pub struct Proof {
-    pub vote:       Vote,
-    pub aggregates: Aggregates,
-}
-
-impl From<PreCommitQC> for Proof {
-    fn from(pre_commit_qc: PreCommitQC) -> Self {
-        Proof {
-            vote:       pre_commit_qc.vote,
-            aggregates: pre_commit_qc.aggregates,
         }
     }
 }

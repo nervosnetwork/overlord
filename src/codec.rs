@@ -6,7 +6,7 @@ use crate::types::{
     Aggregates, Choke, ChokeQC, PreCommitQC, PreVoteQC, Proposal, SignedChoke, SignedPreCommit,
     SignedPreVote, SignedProposal, UpdateFrom, Vote, Weight,
 };
-use crate::{Address, Blk, Hash, Height, Proof, Round, Signature};
+use crate::{Address, Blk, Hash, Height, Round, Signature};
 
 // impl Encodable and Decodable trait for Aggregates
 impl Encodable for Aggregates {
@@ -429,26 +429,6 @@ impl<B: Blk> Decodable for StateInfo<B> {
                     from,
                     block,
                 })
-            }
-            _ => Err(DecoderError::RlpInconsistentLengthAndData),
-        }
-    }
-}
-
-// impl Encodable and Decodable trait for Proof
-impl Encodable for Proof {
-    fn rlp_append(&self, s: &mut RlpStream) {
-        s.begin_list(2).append(&self.vote).append(&self.aggregates);
-    }
-}
-
-impl Decodable for Proof {
-    fn decode(r: &Rlp) -> Result<Self, DecoderError> {
-        match r.prototype()? {
-            Prototype::List(2) => {
-                let vote: Vote = r.val_at(0)?;
-                let aggregates: Aggregates = r.val_at(1)?;
-                Ok(Proof { vote, aggregates })
             }
             _ => Err(DecoderError::RlpInconsistentLengthAndData),
         }

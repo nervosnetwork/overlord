@@ -42,10 +42,8 @@ pub type WrappedOverlordMsg<B> = (Context, OverlordMsg<B>);
 
 /// State Machine Replica
 pub struct SMR<A: Adapter<B, S>, B: Blk, S: St> {
-    state: StateInfo<B>,
+    state:   StateInfo<B>,
     prepare: ProposePrepare<S>,
-    /// start time of current height
-    time_start: Instant,
 
     adapter: Arc<A>,
     wal:     Wal,
@@ -103,7 +101,6 @@ where
             wal,
             state,
             prepare,
-            time_start: Instant::now(),
             adapter: Arc::<A>::clone(adapter),
             cabinet: Cabinet::default(),
             auth: AuthManage::new(auth_fixed_config, current_auth, last_auth),
@@ -193,7 +190,7 @@ where
             TimeoutEvent::PreVoteTimeout(stage) => {}
             TimeoutEvent::PreCommitTimeout(stage) => {}
             TimeoutEvent::BrakeTimeout(stage) => {}
-            TimeoutEvent::HeightTimeout(height) => {}
+            TimeoutEvent::NextHeightTimeout(height) => {}
         }
         Ok(())
     }
@@ -326,6 +323,12 @@ where
     }
 
     async fn handle_commit(&mut self) -> OverlordResult<()> {
+        // save_and_exec_block
+        // let commit_hash = self.state.lock.expect("").vote.block_hash;
+        // let proof = self.state.
+        // let request = ExecRequest::new();
+
+        // send height timeout
         Ok(())
     }
 
@@ -444,6 +447,7 @@ async fn get_exec_result<A: Adapter<B, S>, B: Blk, S: St>(
 pub struct EventAgent<A: Adapter<B, S>, B: Blk, S: St> {
     adapter:     Arc<A>,
     time_config: TimeConfig,
+    start_time:  Instant, // start time of current height
     fetch_set:   HashSet<Hash>,
 
     from_net: UnboundedReceiver<WrappedOverlordMsg<B>>,
@@ -471,6 +475,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         EventAgent {
             adapter: Arc::<A>::clone(adapter),
             fetch_set: HashSet::new(),
+            start_time: Instant::now(),
             time_config,
             from_net,
             from_exec,
@@ -485,6 +490,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
     fn next_height(&mut self, time_config: TimeConfig) {
         self.time_config = time_config;
         self.fetch_set.clear();
+        self.start_time = Instant::now();
     }
 
     async fn transmit(&self, to: Address, msg: OverlordMsg<B>) -> OverlordResult<()> {
@@ -538,34 +544,50 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         });
     }
 
-    fn set_timeout(&self, stage: Stage) {
-        let interval = compute_timeout(&stage, &self.time_config);
-        let timeout_info = TimeoutInfo::new(interval, stage.into(), self.to_timeout.clone());
-        tokio::spawn(async move {
-            timeout_info.await;
-        });
+    fn save_and_exec_block(&self, request: ExecRequest) {
+        self.to_exec
+            .unbounded_send(request)
+            .expect("Exec Channel is down! It's meaningless to continue running");
     }
-}
 
-fn compute_timeout(stage: &Stage, config: &TimeConfig) -> Duration {
-    match stage.step {
-        Step::Propose => {
-            let timeout =
-                Duration::from_millis(config.interval * config.propose_ratio / TIME_DIVISOR);
-            apply_power(timeout, stage.round as u32)
+    fn set_timeout(&self, stage: Stage) -> bool {
+        let opt = self.compute_timeout(&stage);
+        if let Some(interval) = opt {
+            let timeout_info = TimeoutInfo::new(interval, stage.into(), self.to_timeout.clone());
+            tokio::spawn(async move {
+                timeout_info.await;
+            });
+            return true;
         }
-        Step::PreVote => {
-            let timeout =
-                Duration::from_millis(config.interval * config.pre_vote_ratio / TIME_DIVISOR);
-            apply_power(timeout, stage.round as u32)
+        false
+    }
+
+    fn compute_timeout(&self, stage: &Stage) -> Option<Duration> {
+        let config = &self.time_config;
+        match stage.step {
+            Step::Propose => {
+                let timeout =
+                    Duration::from_millis(config.interval * config.propose_ratio / TIME_DIVISOR);
+                Some(apply_power(timeout, stage.round as u32))
+            }
+            Step::PreVote => {
+                let timeout =
+                    Duration::from_millis(config.interval * config.pre_vote_ratio / TIME_DIVISOR);
+                Some(apply_power(timeout, stage.round as u32))
+            }
+            Step::PreCommit => {
+                let timeout =
+                    Duration::from_millis(config.interval * config.pre_commit_ratio / TIME_DIVISOR);
+                Some(apply_power(timeout, stage.round as u32))
+            }
+            Step::Brake => Some(Duration::from_millis(
+                config.interval * config.brake_ratio / TIME_DIVISOR,
+            )),
+            Step::Commit => {
+                let cost = Instant::now() - self.start_time;
+                cost.checked_sub(Duration::from_millis(config.interval))
+            }
         }
-        Step::PreCommit => {
-            let timeout =
-                Duration::from_millis(config.interval * config.pre_commit_ratio / TIME_DIVISOR);
-            apply_power(timeout, stage.round as u32)
-        }
-        Step::Brake => Duration::from_millis(config.interval * config.brake_ratio / TIME_DIVISOR),
-        _ => unreachable!(),
     }
 }
 

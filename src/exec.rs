@@ -16,6 +16,16 @@ pub struct ExecRequest {
     proof:      Proof,
 }
 
+impl ExecRequest {
+    pub fn new(height: Height, full_block: Bytes, proof: Proof) -> Self {
+        ExecRequest {
+            height,
+            full_block,
+            proof,
+        }
+    }
+}
+
 pub struct Exec<A: Adapter<B, S>, B: Blk, S: St> {
     adapter:  Arc<A>,
     from_smr: UnboundedReceiver<ExecRequest>,
