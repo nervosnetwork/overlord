@@ -171,7 +171,7 @@ where
         let fetch = self.agent.handle_fetch(fetch_result)?;
         self.cabinet.insert_full_block(fetch.clone());
         self.wal.save_full_block(&fetch)?;
-        // Todo:
+        // Todo: check if hash is waiting to process in PreVote Step or PreCommit Step
 
         Ok(())
     }
@@ -196,17 +196,15 @@ where
         self.auth.verify_signed_proposal(&sp)?;
         self.cabinet
             .insert(msg_height, msg_round, sp.clone().into())?;
-        if self
-            .cabinet
-            .get_block(msg_height, &sp.proposal.block_hash)
-            .is_none()
-        {
-            self.agent.request_full_block(sp.proposal.block.clone());
-        }
+        self.agent.request_full_block(sp.proposal.block.clone());
 
         if sp.proposal.lock.is_none() && msg_round > self.state.stage.round {
             return Err(OverlordError::debug_high());
         }
+
+        self.state.handle_signed_proposal(&sp)?;
+        // vote for proposal
+        // self.auth.sign_pre_vote()
 
         Ok(())
     }
@@ -259,7 +257,7 @@ async fn recover_state_by_adapter<A: Adapter<B, S>, B: Blk, S: St>(
     let height = adapter.get_latest_height(Context::default()).await.expect(
         "Cannot get the latest height from the adapter! It's meaningless to continue running",
     );
-    StateInfo::new(height)
+    StateInfo::from_height(height)
 }
 
 async fn recover_propose_prepare_and_config<A: Adapter<B, S>, B: Blk, S: St>(

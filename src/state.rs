@@ -14,7 +14,7 @@ use rlp::{decode, encode, DecoderError};
 use crate::auth::AuthManage;
 use crate::cabinet::Cabinet;
 use crate::types::{
-    ChokeQC, PreCommitQC, PreVoteQC, Proposal, SignedChoke, SignedPreCommit, SignedPreVote,
+    Choke, ChokeQC, PreCommitQC, PreVoteQC, Proposal, SignedChoke, SignedPreCommit, SignedPreVote,
     SignedProposal, UpdateFrom,
 };
 use crate::{
@@ -36,15 +36,16 @@ pub struct StateInfo<B: Blk> {
     pub stage: Stage,
 
     pub lock:          Option<PreVoteQC>,
-    pub pre_commit_qc: Option<PreCommitQC>,
     pub block:         Option<B>,
+    pub pre_commit_qc: Option<PreCommitQC>,
     pub from:          Option<UpdateFrom>,
 }
 
 impl<B: Blk> StateInfo<B> {
-    pub fn new(height: Height) -> Self {
+    pub fn from_height(height: Height) -> Self {
+        
         StateInfo {
-            stage:         Stage::new(height),
+            stage:         Stage::new(height, INIT_ROUND, Step::Propose),
             lock:          None,
             pre_commit_qc: None,
             block:         None,
@@ -60,6 +61,28 @@ impl<B: Blk> StateInfo<B> {
         self.from = None;
     }
 
+    pub fn handle_signed_proposal(&mut self, sp: &SignedProposal<B>) -> OverlordResult<()> {
+        let next_stage = self.filter_stage(sp)?;
+        if next_stage.round > self.stage.round {
+            let qc = sp
+                .proposal
+                .lock
+                .clone()
+                .expect("Have checked before, this is Impossible!");
+            self.handle_pre_vote_qc(&qc)?;
+            return Err(OverlordError::debug_high());
+        }
+        self.stage.update_stage(next_stage);
+        self.update_lock(&sp.proposal)?;
+        Ok(())
+    }
+
+    pub fn handle_pre_vote_qc(&self, pre_vote_qc: &PreVoteQC) -> OverlordResult<()> {
+        let _next_stage = self.filter_stage(pre_vote_qc)?;
+        // Todo:
+        Ok(())
+    }
+
     pub fn from_wal(wal: &Wal) -> OverlordResult<Self> {
         let encode = wal.load_state()?;
         decode(&encode).map_err(OverlordError::local_decode)
@@ -68,6 +91,33 @@ impl<B: Blk> StateInfo<B> {
     pub fn save_wal(&self, wal: &Wal) -> OverlordResult<()> {
         let encode = encode(self);
         wal.save_state(&Bytes::from(encode))
+    }
+
+    pub fn filter_stage<T: NextStage>(&self, msg: &T) -> OverlordResult<Stage> {
+        let next_stage = msg.next_stage();
+        if next_stage <= self.stage {
+            return Err(OverlordError::debug_under_stage());
+        }
+        Ok(next_stage)
+    }
+
+    pub fn update_lock(&mut self, proposal: &Proposal<B>) -> OverlordResult<()> {
+        if let Some(qc) = &proposal.lock {
+            if let Some(lock) = &self.lock {
+                if qc.vote.round > lock.vote.round {
+                    self.lock = Some(qc.clone());
+                    self.block = Some(proposal.block.clone());
+                } else {
+                    return Err(OverlordError::warn_abnormal_lock());
+                }
+            } else {
+                self.lock = Some(qc.clone());
+                self.block = Some(proposal.block.clone());
+            }
+        } else if self.lock.is_none() {
+            self.block = Some(proposal.block.clone());
+        }
+        Ok(())
     }
 }
 
@@ -80,11 +130,11 @@ pub struct Stage {
 }
 
 impl Stage {
-    pub fn new(height: Height) -> Self {
+    pub fn new(height: Height, round: Round, step: Step) -> Self {
         Stage {
             height,
-            round: INIT_ROUND,
-            step: Step::Propose,
+            round,
+            step,
         }
     }
 
@@ -92,16 +142,6 @@ impl Stage {
         self.height += 1;
         self.round = INIT_ROUND;
         self.step = Step::Propose;
-    }
-
-    pub fn next_round(&mut self) {
-        self.round += 1;
-        self.step = Step::Propose;
-    }
-
-    pub fn goto_step(&mut self, step: Step) {
-        assert!(self.step >= step);
-        self.step = step;
     }
 
     pub fn update_stage(&mut self, stage: Stage) {
@@ -127,6 +167,34 @@ impl Ord for Stage {
             .cmp(&other.height)
             .then(self.round.cmp(&other.round))
             .then(self.step.cmp(&other.step))
+    }
+}
+
+pub trait NextStage {
+    fn next_stage(&self) -> Stage;
+}
+
+impl<B: Blk> NextStage for SignedProposal<B> {
+    fn next_stage(&self) -> Stage {
+        Stage::new(self.proposal.height, self.proposal.round, Step::PreVote)
+    }
+}
+
+impl NextStage for PreVoteQC {
+    fn next_stage(&self) -> Stage {
+        Stage::new(self.vote.height, self.vote.round, Step::PreCommit)
+    }
+}
+
+impl NextStage for PreCommitQC {
+    fn next_stage(&self) -> Stage {
+        Stage::new(self.vote.height, self.vote.round, Step::Commit)
+    }
+}
+
+impl NextStage for ChokeQC {
+    fn next_stage(&self) -> Stage {
+        Stage::new(self.choke.height, self.choke.round + 1, Step::Propose)
     }
 }
 

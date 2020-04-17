@@ -61,6 +61,10 @@ pub enum ErrorInfo {
     WrongLeader,
     #[display(fmt = "check block failed")]
     CheckBlock,
+    #[display(fmt = "under stage")]
+    UnderStage,
+    #[display(fmt = "higher proposal with lower lock_round")]
+    AbnormalLock,
 }
 
 #[derive(Debug, Display)]
@@ -201,6 +205,20 @@ impl OverlordError {
         OverlordError {
             kind: ErrorKind::Warn,
             info: ErrorInfo::CheckBlock,
+        }
+    }
+
+    pub fn debug_under_stage() -> Self {
+        OverlordError {
+            kind: ErrorKind::Debug,
+            info: ErrorInfo::UnderStage,
+        }
+    }
+
+    pub fn warn_abnormal_lock() -> Self {
+        OverlordError {
+            kind: ErrorKind::Warn,
+            info: ErrorInfo::AbnormalLock,
         }
     }
 }
