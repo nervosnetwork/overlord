@@ -30,6 +30,7 @@ use crate::types::{
 use crate::{
     Adapter, Address, Blk, CommonHex, ExecResult, Hash, Height, HeightRange, OverlordConfig,
     OverlordError, OverlordMsg, OverlordResult, PriKeyHex, Proof, Round, St, TimeConfig, Wal,
+    INIT_ROUND,
 };
 
 const POWER_CAP: u32 = 5;
@@ -323,12 +324,38 @@ where
     }
 
     async fn handle_commit(&mut self) -> OverlordResult<()> {
-        // save_and_exec_block
-        // let commit_hash = self.state.lock.expect("").vote.block_hash;
-        // let proof = self.state.
-        // let request = ExecRequest::new();
+        let proof = self
+            .state
+            .pre_commit_qc
+            .as_ref()
+            .expect("Unreachable! Lost pre_commit_qc when commit");
+        let commit_hash = proof.vote.block_hash.clone();
+        let height = self.state.stage.height;
 
-        // send height timeout
+        let full_block = self
+            .cabinet
+            .get_full_block(height, &commit_hash)
+            .expect("Unreachable! Lost full block when commit");
+        let request = ExecRequest::new(height, full_block.clone(), proof.clone());
+        self.agent.save_and_exec_block(request);
+
+        let commit_exec_h = self
+            .state
+            .block
+            .as_ref()
+            .expect("Unreachable! Lost commit block when commit")
+            .get_exec_height();
+
+        self.prepare
+            .commit(commit_hash, proof.clone(), commit_exec_h);
+
+        // let next_height = height + 1;
+        // let next_leader = calculate_leader(next_height, INIT_ROUND, )
+        if self.agent.set_timeout(self.state.stage.clone()) {
+            return Ok(());
+        }
+
+        // goto new height
         Ok(())
     }
 
