@@ -15,14 +15,16 @@ use rlp::{decode, encode, DecoderError};
 
 use crate::auth::AuthManage;
 use crate::cabinet::Cabinet;
+use crate::exec::Exec;
 use crate::smr::EventAgent;
 use crate::types::{
     Choke, ChokeQC, PreCommitQC, PreVoteQC, Proposal, SignedChoke, SignedPreCommit, SignedPreVote,
     SignedProposal, UpdateFrom,
 };
 use crate::{
-    Adapter, Address, Blk, BlockState, CommonHex, Hash, Height, OverlordConfig, OverlordError,
-    OverlordMsg, OverlordResult, PriKeyHex, Proof, Round, St, TimeConfig, Wal, INIT_ROUND,
+    Adapter, Address, Blk, BlockState, CommonHex, ExecResult, Hash, Height, OverlordConfig,
+    OverlordError, OverlordMsg, OverlordResult, PriKeyHex, Proof, Round, St, TimeConfig, Wal,
+    INIT_ROUND,
 };
 use std::collections::BTreeMap;
 
@@ -53,14 +55,6 @@ impl<B: Blk> StateInfo<B> {
             block:         None,
             from:          None,
         }
-    }
-
-    pub fn next_height(&mut self) {
-        self.stage.next_height();
-        self.lock = None;
-        self.pre_commit_qc = None;
-        self.block = None;
-        self.from = None;
     }
 
     pub fn handle_signed_proposal(&mut self, sp: &SignedProposal<B>) -> OverlordResult<()> {
@@ -106,6 +100,15 @@ impl<B: Blk> StateInfo<B> {
             self.from = Some(UpdateFrom::PreCommitQC(pre_commit_qc.clone()));
         }
         self.pre_commit_qc = Some(pre_commit_qc.clone());
+        self.block = Some(block);
+        Ok(())
+    }
+
+    pub fn handle_choke_qc(&mut self, choke_qc: &ChokeQC) -> OverlordResult<()> {
+        let next_stage = self.filter_stage(choke_qc)?;
+        if self.stage.update_stage(next_stage) {
+            self.from = Some(UpdateFrom::ChokeQC(choke_qc.clone()));
+        }
         Ok(())
     }
 
@@ -144,6 +147,14 @@ impl<B: Blk> StateInfo<B> {
             self.block = Some(proposal.block.clone());
         }
         Ok(())
+    }
+
+    pub fn next_height(&mut self) {
+        self.stage.next_height();
+        self.lock = None;
+        self.pre_commit_qc = None;
+        self.block = None;
+        self.from = None;
     }
 }
 
@@ -281,7 +292,7 @@ impl From<u8> for Step {
 )]
 pub struct ProposePrepare<S: St> {
     pub exec_height:  Height,
-    pub block_states: BTreeMap<Height, S>,
+    pub exec_results: BTreeMap<Height, ExecResult<S>>,
 
     pub pre_proof: Proof, /* proof for the previous block which will be involved in the
                            * next block */
@@ -291,31 +302,45 @@ pub struct ProposePrepare<S: St> {
 impl<S: St> ProposePrepare<S> {
     pub fn new(
         exec_height: Height,
-        block_states: Vec<BlockState<S>>,
+        exec_results: Vec<ExecResult<S>>,
         pre_proof: Proof,
         pre_hash: Hash,
     ) -> Self {
-        let block_states = block_states
+        let exec_results = exec_results
             .into_iter()
-            .map(|state| (state.height, state.state))
+            .map(|rst| (rst.block_states.height, rst))
             .collect();
         ProposePrepare {
             exec_height,
-            block_states,
+            exec_results,
             pre_proof,
             pre_hash,
         }
     }
 
-    pub fn commit(&mut self, block_hash: Hash, pre_commit_qc: PreCommitQC, _commit_exec_h: Height) {
+    pub fn handle_commit(
+        &mut self,
+        block_hash: Hash,
+        pre_commit_qc: PreCommitQC,
+        commit_exec_h: Height,
+        next_height: Height,
+    ) -> ExecResult<S> {
         self.pre_hash = block_hash;
         self.pre_proof = pre_commit_qc;
+        let commit_exec_result = self
+            .exec_results
+            .get(&commit_exec_h)
+            .expect("Unreachable! Cannot get commit exec result when commit")
+            .clone();
+        self.exec_results = self.exec_results.split_off(&next_height);
+        commit_exec_result
     }
 
-    pub fn get_block_state_vec(&self) -> Vec<BlockState<S>> {
-        self.block_states
+    pub fn get_block_states_list(&self, cut_off: Height) -> Vec<BlockState<S>> {
+        self.exec_results
             .iter()
-            .map(|(height, state)| BlockState::new(*height, state.clone()))
+            .filter(|(h, _)| **h <= cut_off)
+            .map(|(height, exec_result)| exec_result.block_states.clone())
             .collect()
     }
 }

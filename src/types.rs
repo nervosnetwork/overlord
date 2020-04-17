@@ -263,10 +263,16 @@ pub struct Choke {
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[display(fmt = "{{ aggregates: {}, choke: {} }}", aggregates, choke)]
+#[display(fmt = "{{ choke: {}, aggregates: {} }}", choke, aggregates)]
 pub struct ChokeQC {
-    pub aggregates: Aggregates,
     pub choke:      Choke,
+    pub aggregates: Aggregates,
+}
+
+impl ChokeQC {
+    pub fn new(choke: Choke, aggregates: Aggregates) -> Self {
+        ChokeQC { choke, aggregates }
+    }
 }
 
 #[derive(Clone, Debug, Display, PartialEq, Eq, Hash, Serialize, Deserialize)]

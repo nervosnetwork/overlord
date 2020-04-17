@@ -17,7 +17,7 @@ use futures::{FutureExt, SinkExt};
 use futures_timer::Delay;
 use log::{error, warn};
 
-use crate::auth::{calculate_leader, AuthCell, AuthFixedConfig, AuthManage};
+use crate::auth::{AuthCell, AuthFixedConfig, AuthManage};
 use crate::cabinet::{Cabinet, Capsule};
 use crate::error::ErrorInfo;
 use crate::exec::ExecRequest;
@@ -80,8 +80,13 @@ where
 
         let height = state.stage.height;
 
-        let (prepare, current_config, time_config) =
-            recover_propose_prepare_and_config(adapter, height).await;
+        let prepare = recover_propose_prepare_and_config(adapter, height).await;
+        let last_exec_result = prepare
+            .exec_results
+            .get(&prepare.exec_height)
+            .expect("Unreachable! Cannot get last exec result");
+        let auth_config = last_exec_result.consensus_config.auth_config.clone();
+        let time_config = last_exec_result.consensus_config.time_config.clone();
         let last_config = if height > 0 {
             Some(
                 get_exec_result(adapter, state.stage.height - 1)
@@ -94,7 +99,7 @@ where
             None
         };
 
-        let current_auth = AuthCell::new(current_config.auth_config, &auth_fixed_config.address);
+        let current_auth = AuthCell::new(auth_config, &auth_fixed_config.address);
         let last_auth: Option<AuthCell<B>> =
             last_config.map(|config| AuthCell::new(config.auth_config, &auth_fixed_config.address));
 
@@ -202,9 +207,11 @@ where
 
         self.filter_msg(msg_h, msg_r, &sp.clone().into())?;
         // only msg of current height will go down
-        self.check_proposal(&sp.proposal).await?;
+        self.check_proposal(&sp.proposal)?;
         self.auth.verify_signed_proposal(&sp)?;
         self.cabinet.insert(msg_h, msg_r, sp.clone().into())?;
+
+        self.check_block(&sp.proposal.block).await?;
         self.agent.request_full_block(sp.proposal.block.clone());
 
         if sp.proposal.lock.is_none() && msg_r > self.state.stage.round {
@@ -230,7 +237,7 @@ where
             if self.auth.current_auth.beyond_majority(sum_w.cum_weight) {
                 let votes = self
                     .cabinet
-                    .take_signed_pre_votes(
+                    .get_signed_pre_votes_by_hash(
                         msg_h,
                         sum_w.round,
                         &sum_w
@@ -256,7 +263,7 @@ where
             if self.auth.current_auth.beyond_majority(sum_w.cum_weight) {
                 let votes = self
                     .cabinet
-                    .take_signed_pre_commits(
+                    .get_signed_pre_commits_by_hash(
                         msg_h,
                         sum_w.round,
                         &sum_w
@@ -267,6 +274,31 @@ where
                 let pre_commit_qc = self.auth.aggregate_pre_commits(votes)?;
                 self.handle_pre_commit_qc(pre_commit_qc.clone()).await?;
                 self.agent.broadcast(pre_commit_qc.into()).await?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn handle_signed_choke(&mut self, sc: SignedChoke) -> OverlordResult<()> {
+        let msg_h = sc.choke.height;
+        let msg_r = sc.choke.round;
+
+        self.filter_msg(msg_h, msg_r, &sc.clone().into())?;
+        self.auth.verify_signed_choke(&sc)?;
+        if let Some(sum_w) = self.cabinet.insert(msg_h, msg_r, sc.clone().into())? {
+            if self.auth.current_auth.beyond_majority(sum_w.cum_weight) {
+                let votes = self
+                    .cabinet
+                    .get_signed_chokes(msg_h, sum_w.round)
+                    .expect("Unreachable! Lost signed_chokes while beyond majority");
+                let choke_qc = self.auth.aggregate_chokes(votes)?;
+                self.handle_choke_qc(choke_qc).await?;
+            } else {
+                match sc.from {
+                    UpdateFrom::PreVoteQC(qc) => self.handle_pre_vote_qc(qc).await?,
+                    UpdateFrom::PreCommitQC(qc) => self.handle_pre_commit_qc(qc).await?,
+                    UpdateFrom::ChokeQC(qc) => self.handle_choke_qc(qc).await?,
+                }
             }
         }
         Ok(())
@@ -294,7 +326,7 @@ where
 
             self.auth.can_i_vote()?;
             let vote = self.auth.sign_pre_commit(qc.vote.clone())?;
-            let leader = calculate_leader(msg_h, msg_r, &self.auth.current_auth.list);
+            let leader = self.auth.get_leader(msg_h, msg_r);
             self.agent.transmit(leader, vote.into()).await?;
         }
         Ok(())
@@ -323,6 +355,17 @@ where
         Ok(())
     }
 
+    async fn handle_choke_qc(&mut self, qc: ChokeQC) -> OverlordResult<()> {
+        let msg_h = qc.choke.height;
+        let msg_r = qc.choke.round;
+
+        self.filter_msg(msg_h, msg_r, &qc.clone().into())?;
+        self.auth.verify_choke_qc(&qc)?;
+        self.state.handle_choke_qc(&qc)?;
+        self.state.save_wal(&self.wal)?;
+        self.new_round().await
+    }
+
     async fn handle_commit(&mut self) -> OverlordResult<()> {
         let proof = self
             .state
@@ -345,21 +388,34 @@ where
             .as_ref()
             .expect("Unreachable! Lost commit block when commit")
             .get_exec_height();
+        let next_height = height + 1;
+        let commit_exec_result =
+            self.prepare
+                .handle_commit(commit_hash, proof.clone(), commit_exec_h, next_height);
+        self.auth
+            .handle_commit(commit_exec_result.consensus_config.auth_config);
+        self.cabinet.handle_commit(next_height, &self.auth);
 
-        self.prepare
-            .commit(commit_hash, proof.clone(), commit_exec_h);
-
-        // let next_height = height + 1;
-        // let next_leader = calculate_leader(next_height, INIT_ROUND, )
-        if self.agent.set_timeout(self.state.stage.clone()) {
+        if self.auth.am_i_leader(next_height, INIT_ROUND)
+            && self.agent.set_timeout(self.state.stage.clone())
+        {
             return Ok(());
         }
+        self.next_height(commit_exec_result.consensus_config.time_config)
+            .await
+    }
 
-        // goto new height
+    async fn next_height(&mut self, time_config: TimeConfig) -> OverlordResult<()> {
+        self.state.next_height();
+        self.agent.next_height(time_config);
+        self.new_round().await
+    }
+
+    async fn new_round(&mut self) -> OverlordResult<()> {
         Ok(())
     }
 
-    async fn check_proposal(&mut self, p: &Proposal<B>) -> OverlordResult<()> {
+    fn check_proposal(&self, p: &Proposal<B>) -> OverlordResult<()> {
         if p.height != p.block.get_height() || p.block_hash != p.block.get_block_hash() {
             return Err(OverlordError::byz_block());
         }
@@ -368,17 +424,27 @@ where
             return Err(OverlordError::byz_block());
         }
 
-        if self.prepare.exec_height < p.block.get_exec_height() {
-            return Err(OverlordError::warn_block());
-        }
-
         self.auth.verify_proof(p.block.get_proof())?;
 
         if let Some(lock) = &p.lock {
             self.auth.verify_pre_vote_qc(&lock)?;
         }
-
         Ok(())
+    }
+
+    async fn check_block(&self, block: &B) -> OverlordResult<()> {
+        let exec_h = block.get_exec_height();
+        if self.prepare.exec_height < exec_h {
+            return Err(OverlordError::warn_block());
+        }
+        self.adapter
+            .check_block(
+                Context::new(),
+                block,
+                &self.prepare.get_block_states_list(exec_h),
+            )
+            .await
+            .map_err(OverlordError::byz_adapter_check_block)
     }
 
     fn filter_msg(
@@ -389,7 +455,12 @@ where
     ) -> OverlordResult<()> {
         let my_height = self.state.stage.height;
         let my_round = self.state.stage.round;
-        if height < my_height || (height == my_height && round < my_round) {
+        if height < my_height {
+            return Err(OverlordError::debug_old());
+        } else if height == my_height && round < my_round {
+            if let Capsule::SignedProposal(_) = capsule {
+                return Ok(());
+            }
             return Err(OverlordError::debug_old());
         } else if height > my_height + HEIGHT_WINDOW || round > my_round + ROUND_WINDOW {
             return Err(OverlordError::net_much_high());
@@ -413,28 +484,27 @@ async fn recover_state_by_adapter<A: Adapter<B, S>, B: Blk, S: St>(
 async fn recover_propose_prepare_and_config<A: Adapter<B, S>, B: Blk, S: St>(
     adapter: &Arc<A>,
     latest_height: Height,
-) -> (ProposePrepare<S>, OverlordConfig, TimeConfig) {
+) -> ProposePrepare<S> {
     let (block, proof) = get_block_with_proof(adapter, latest_height)
         .await
         .unwrap()
         .unwrap();
     let hash = block.get_block_hash();
     let exec_height = block.get_exec_height();
-    let mut time_config = TimeConfig::default();
-    let mut block_states = vec![];
-    let mut latest_config = OverlordConfig::default();
+    let mut exec_results = vec![];
 
-    for h in exec_height + 1..=latest_height {
+    let start_height = if exec_height == 0 {
+        exec_height
+    } else {
+        exec_height + 1
+    };
+
+    for h in start_height..=latest_height {
         let exec_result = get_exec_result(adapter, h).await.unwrap().unwrap();
-        block_states.push(exec_result.block_states);
-        time_config = exec_result.consensus_config.time_config.clone();
-        latest_config = exec_result.consensus_config.clone();
+        exec_results.push(exec_result.clone());
     }
-    (
-        ProposePrepare::new(latest_height, block_states, proof, hash),
-        latest_config,
-        time_config,
-    )
+
+    ProposePrepare::new(latest_height, exec_results, proof, hash)
 }
 
 async fn get_block_with_proof<A: Adapter<B, S>, B: Blk, S: St>(

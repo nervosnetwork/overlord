@@ -3,6 +3,7 @@
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::marker::PhantomData;
+use std::sync::Arc;
 
 use bit_vec::BitVec;
 use bytes::Bytes;
@@ -13,9 +14,9 @@ use rlp::{encode, Encodable};
 
 use crate::error::{ErrorInfo, ErrorKind};
 use crate::types::{
-    Aggregates, Choke, Node, PreCommitQC, PreVoteQC, PriKeyHex, Proof, Proposal, PubKeyHex,
-    SelectMode, SignedChoke, SignedPreCommit, SignedPreVote, SignedProposal, UpdateFrom, Vote,
-    VoteType, Weight,
+    Aggregates, Choke, ChokeQC, Node, PreCommitQC, PreVoteQC, PriKeyHex, Proof, Proposal,
+    PubKeyHex, SelectMode, SignedChoke, SignedPreCommit, SignedPreVote, SignedProposal, UpdateFrom,
+    Vote, VoteType, Weight,
 };
 use crate::{
     Adapter, Address, AuthConfig, Blk, CommonHex, Crypto, Hash, Height, Round, Signature, St,
@@ -50,7 +51,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         }
     }
 
-    pub fn next_height(&mut self, config: AuthConfig) {
+    pub fn handle_commit(&mut self, config: AuthConfig) {
         assert_eq!(
             self.fixed_config.common_ref, config.common_ref,
             "CommonRef mismatch, run in wrong chain!"
@@ -66,12 +67,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
     }
 
     pub fn verify_signed_proposal(&self, sp: &SignedProposal<B>) -> OverlordResult<()> {
-        check_leader(
-            sp.proposal.height,
-            sp.proposal.round,
-            &sp.proposal.proposer,
-            &self.current_auth,
-        )?;
+        self.check_leader(sp.proposal.height, sp.proposal.round, &sp.proposal.proposer)?;
         let hash = hash::<A, B, Proposal<B>, S>(&sp.proposal);
         self.verify_signature(&sp.proposal.proposer, &hash, &sp.signature)?;
         Ok(())
@@ -116,7 +112,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
     pub fn aggregate_pre_votes(&self, pre_votes: Vec<SignedPreVote>) -> OverlordResult<PreVoteQC> {
         assert!(
             pre_votes.is_empty(),
-            "pre_votes is empty which won't happen!"
+            "Unreachable! pre_votes is empty while aggregate chokes!"
         );
 
         let mut pair_list = vec![];
@@ -142,7 +138,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
     ) -> OverlordResult<PreCommitQC> {
         assert!(
             pre_commits.is_empty(),
-            "pre_commits is empty which won't happen!"
+            "Unreachable! pre_commits is empty while aggregate chokes!"
         );
 
         let mut pair_list = vec![];
@@ -174,11 +170,34 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         ))
     }
 
-    pub fn verify_signed_choke(&self, signed_choke: SignedChoke) -> OverlordResult<()> {
+    pub fn verify_signed_choke(&self, signed_choke: &SignedChoke) -> OverlordResult<()> {
         self.current_auth
             .check_vote_weight(&signed_choke.voter, signed_choke.vote_weight)?;
         let hash = hash_vote::<A, B, Choke, S>(&signed_choke.choke, VoteType::Choke);
         self.verify_signature(&signed_choke.voter, &hash, &signed_choke.signature)
+    }
+
+    pub fn aggregate_chokes(&self, chokes: Vec<SignedChoke>) -> OverlordResult<ChokeQC> {
+        assert!(
+            chokes.is_empty(),
+            "Unreachable! chokes is empty while aggregate chokes!"
+        );
+
+        let mut pair_list = vec![];
+        let mut signatures = HashMap::new();
+        chokes.iter().for_each(|choke| {
+            pair_list.push((&choke.voter, choke.vote_weight));
+            signatures.insert(&choke.voter, &choke.signature);
+        });
+
+        self.current_auth.ensure_majority_weight(pair_list)?;
+        let aggregates = self.aggregate(signatures)?;
+        Ok(ChokeQC::new(chokes[0].choke.clone(), aggregates))
+    }
+
+    pub fn verify_choke_qc(&self, choke_qc: &ChokeQC) -> OverlordResult<()> {
+        let hash = hash_vote::<A, B, Choke, S>(&choke_qc.choke, VoteType::Choke);
+        self.verify_aggregate(&hash, &choke_qc.aggregates)
     }
 
     pub fn verify_proof(&self, proof: Proof) -> OverlordResult<()> {
@@ -200,6 +219,14 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
             warn!("verify proof of height 0, which will always pass");
             Ok(())
         }
+    }
+
+    pub fn am_i_leader(&self, height: Height, round: Round) -> bool {
+        self.fixed_config.address == self.current_auth.calculate_leader(height, round)
+    }
+
+    pub fn get_leader(&self, height: Height, round: Round) -> Address {
+        self.current_auth.calculate_leader(height, round)
     }
 
     pub fn can_i_vote(&self) -> OverlordResult<()> {
@@ -248,6 +275,14 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         A::CryptoImpl::verify_aggregates(common_ref, &hash, &pub_keys, &aggregates.signature)
             .map_err(OverlordError::byz_crypto)
     }
+
+    fn check_leader(&self, height: Height, round: Round, leader: &Address) -> OverlordResult<()> {
+        let expect_leader = self.get_leader(height, round);
+        if leader != &expect_leader {
+            return Err(OverlordError::byz_leader());
+        }
+        Ok(())
+    }
 }
 
 fn hash<A: Adapter<B, S>, B: Blk, E: Encodable, S: St>(data: &E) -> Hash {
@@ -259,30 +294,6 @@ fn hash_vote<A: Adapter<B, S>, B: Blk, E: Encodable, S: St>(data: &E, vote_type:
     let mut encode = encode(data);
     encode.insert(0, vote_type.into());
     A::CryptoImpl::hash(&Bytes::from(encode))
-}
-
-fn check_leader<B: Blk>(
-    height: Height,
-    round: Round,
-    leader: &Address,
-    cell: &AuthCell<B>,
-) -> OverlordResult<()> {
-    let expect_leader = calculate_leader(height, round, &cell.list);
-    if leader != &expect_leader {
-        return Err(OverlordError::byz_leader());
-    }
-    Ok(())
-}
-
-pub fn calculate_leader(height: Height, round: Round, list: &[(Address, PubKeyHex)]) -> Address {
-    // Todo: add random mode
-    let len = list.len();
-    let prime_num = *get_primes_less_than_x(len as u32).last().unwrap_or(&1) as u64;
-    let index = (height * prime_num + round) % (len as u64);
-    list.get(index as usize)
-        .expect("Unreachable! Calculate a leader index out of auth_list")
-        .0
-        .clone()
 }
 
 #[derive(Clone, Debug, Default)]
@@ -332,6 +343,18 @@ impl<B: Blk> AuthCell<B> {
             propose_weight_sum,
             phantom: PhantomData,
         }
+    }
+
+    fn calculate_leader(&self, height: Height, round: Round) -> Address {
+        // Todo: add random mode
+        let len = self.list.len();
+        let prime_num = *get_primes_less_than_x(len as u32).last().unwrap_or(&1) as u64;
+        let index = (height * prime_num + round) % (len as u64);
+        self.list
+            .get(index as usize)
+            .expect("Unreachable! Calculate a leader index out of auth_list")
+            .0
+            .clone()
     }
 
     fn replace_pub_keys(

@@ -5,11 +5,12 @@ use std::collections::{BTreeMap, HashMap};
 use bytes::Bytes;
 use derive_more::Display;
 
+use crate::auth::AuthManage;
 use crate::types::{
     ChokeQC, CumWeight, FetchedFullBlock, PreCommitQC, PreVoteQC, Proposal, SignedChoke,
     SignedPreCommit, SignedPreVote, SignedProposal, VoteType, Weight,
 };
-use crate::{Address, Blk, Hash, Height, OverlordError, OverlordResult, Round};
+use crate::{Adapter, Address, Blk, Hash, Height, OverlordError, OverlordResult, Round, St};
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, Display)]
@@ -58,6 +59,49 @@ impl<B: Blk> Cabinet<B> {
         self.0 = self.0.split_off(&new_height);
     }
 
+    pub fn handle_commit<A: Adapter<B, S>, S: St>(
+        &mut self,
+        next_height: Height,
+        next_auth: &AuthManage<A, B, S>,
+    ) {
+        if let Some(grids) = self.pop(next_height) {
+            for grid in grids {
+                if let Some(sp) = grid.get_signed_proposal() {
+                    if next_auth.verify_signed_proposal(sp).is_ok() {
+                        let _ =
+                            self.insert(sp.proposal.height, sp.proposal.round, sp.clone().into());
+                    }
+                }
+                if let Some(qc) = grid.get_pre_vote_qc() {
+                    if next_auth.verify_pre_vote_qc(&qc).is_ok() {
+                        let _ = self.insert(qc.vote.height, qc.vote.round, qc.into());
+                    }
+                }
+                if let Some(qc) = grid.get_pre_commit_qc() {
+                    if next_auth.verify_pre_commit_qc(&qc).is_ok() {
+                        let _ = self.insert(qc.vote.height, qc.vote.round, qc.into());
+                    }
+                }
+                for sv in grid.get_signed_pre_votes() {
+                    if next_auth.verify_signed_pre_vote(&sv).is_ok() {
+                        let _ = self.insert(sv.vote.height, sv.vote.round, sv.into());
+                    }
+                }
+                for sv in grid.get_signed_pre_commits() {
+                    if next_auth.verify_signed_pre_commit(&sv).is_ok() {
+                        let _ = self.insert(sv.vote.height, sv.vote.round, sv.into());
+                    }
+                }
+                for sc in grid.get_signed_chokes() {
+                    if next_auth.verify_signed_choke(&sc).is_ok() {
+                        let _ = self.insert(sc.choke.height, sc.choke.round, sc.into());
+                    }
+                }
+            }
+        }
+        self.next_height(next_height);
+    }
+
     // Return max vote_weight when insert signed_pre_vote/signed_pre_commit/signed_choke
     pub fn insert(
         &mut self,
@@ -96,7 +140,7 @@ impl<B: Blk> Cabinet<B> {
             .and_then(|drawer| drawer.get_signed_proposal(round))
     }
 
-    pub fn take_signed_pre_votes(
+    pub fn get_signed_pre_votes_by_hash(
         &self,
         height: Height,
         round: Round,
@@ -104,10 +148,10 @@ impl<B: Blk> Cabinet<B> {
     ) -> Option<Vec<SignedPreVote>> {
         self.0
             .get(&height)
-            .and_then(|drawer| drawer.take_signed_pre_votes(round, block_hash))
+            .and_then(|drawer| drawer.get_signed_pre_votes_by_hash(round, block_hash))
     }
 
-    pub fn take_signed_pre_commits(
+    pub fn get_signed_pre_commits_by_hash(
         &self,
         height: Height,
         round: Round,
@@ -115,31 +159,31 @@ impl<B: Blk> Cabinet<B> {
     ) -> Option<Vec<SignedPreCommit>> {
         self.0
             .get(&height)
-            .and_then(|drawer| drawer.take_signed_pre_commits(round, block_hash))
+            .and_then(|drawer| drawer.get_signed_pre_commits_by_hash(round, block_hash))
     }
 
-    pub fn take_signed_chokes(&self, height: Height, round: Round) -> Option<Vec<SignedChoke>> {
+    pub fn get_signed_chokes(&self, height: Height, round: Round) -> Option<Vec<SignedChoke>> {
         self.0
             .get(&height)
-            .and_then(|drawer| drawer.take_signed_chokes(round))
+            .and_then(|drawer| drawer.get_signed_chokes(round))
     }
 
-    pub fn take_pre_vote_qc(&self, height: Height, round: Round) -> Option<PreVoteQC> {
+    pub fn get_pre_vote_qc(&self, height: Height, round: Round) -> Option<PreVoteQC> {
         self.0
             .get(&height)
-            .and_then(|drawer| drawer.take_pre_vote_qc(round))
+            .and_then(|drawer| drawer.get_pre_vote_qc(round))
     }
 
-    pub fn take_pre_commit_qc(&self, height: Height, round: Round) -> Option<PreCommitQC> {
+    pub fn get_pre_commit_qc(&self, height: Height, round: Round) -> Option<PreCommitQC> {
         self.0
             .get(&height)
-            .and_then(|drawer| drawer.take_pre_commit_qc(round))
+            .and_then(|drawer| drawer.get_pre_commit_qc(round))
     }
 
-    pub fn take_choke_qc(&self, height: Height, round: Round) -> Option<ChokeQC> {
+    pub fn get_choke_qc(&self, height: Height, round: Round) -> Option<ChokeQC> {
         self.0
             .get(&height)
-            .and_then(|drawer| drawer.take_choke_qc(round))
+            .and_then(|drawer| drawer.get_choke_qc(round))
     }
 }
 
@@ -208,40 +252,44 @@ impl<B: Blk> Drawer<B> {
             .and_then(|grid| grid.get_signed_proposal())
     }
 
-    fn take_signed_pre_votes(&self, round: Round, block_hash: &Hash) -> Option<Vec<SignedPreVote>> {
+    fn get_signed_pre_votes_by_hash(
+        &self,
+        round: Round,
+        block_hash: &Hash,
+    ) -> Option<Vec<SignedPreVote>> {
         self.grids
             .get(&round)
-            .and_then(|grid| grid.take_signed_pre_votes(block_hash))
+            .and_then(|grid| grid.get_signed_pre_votes_by_hash(block_hash))
     }
 
-    fn take_signed_pre_commits(
+    fn get_signed_pre_commits_by_hash(
         &self,
         round: Round,
         block_hash: &Hash,
     ) -> Option<Vec<SignedPreCommit>> {
         self.grids
             .get(&round)
-            .and_then(|grid| grid.take_signed_pre_commits(block_hash))
+            .and_then(|grid| grid.get_signed_pre_commits_by_hash(block_hash))
     }
 
-    fn take_signed_chokes(&self, round: Round) -> Option<Vec<SignedChoke>> {
-        self.grids.get(&round).map(|grid| grid.take_signed_chokes())
+    fn get_signed_chokes(&self, round: Round) -> Option<Vec<SignedChoke>> {
+        self.grids.get(&round).map(|grid| grid.get_signed_chokes())
     }
 
-    fn take_pre_vote_qc(&self, round: Round) -> Option<PreVoteQC> {
+    fn get_pre_vote_qc(&self, round: Round) -> Option<PreVoteQC> {
         self.grids
             .get(&round)
-            .and_then(|grid| grid.take_pre_vote_qc())
+            .and_then(|grid| grid.get_pre_vote_qc())
     }
 
-    fn take_pre_commit_qc(&self, round: Round) -> Option<PreCommitQC> {
+    fn get_pre_commit_qc(&self, round: Round) -> Option<PreCommitQC> {
         self.grids
             .get(&round)
-            .and_then(|grid| grid.take_pre_commit_qc())
+            .and_then(|grid| grid.get_pre_commit_qc())
     }
 
-    fn take_choke_qc(&self, round: Round) -> Option<ChokeQC> {
-        self.grids.get(&round).and_then(|grid| grid.take_choke_qc())
+    fn get_choke_qc(&self, round: Round) -> Option<ChokeQC> {
+        self.grids.get(&round).and_then(|grid| grid.get_choke_qc())
     }
 }
 
@@ -286,30 +334,30 @@ impl<B: Blk> Grid<B> {
             .collect()
     }
 
-    pub fn take_signed_chokes(&self) -> Vec<SignedChoke> {
+    pub fn get_signed_chokes(&self) -> Vec<SignedChoke> {
         self.signed_chokes
             .iter()
             .map(|(_, signed_choke)| signed_choke.clone())
             .collect()
     }
 
-    pub fn take_pre_vote_qc(&self) -> Option<PreVoteQC> {
+    pub fn get_pre_vote_qc(&self) -> Option<PreVoteQC> {
         self.pre_vote_qc.clone()
     }
 
-    pub fn take_pre_commit_qc(&self) -> Option<PreCommitQC> {
+    pub fn get_pre_commit_qc(&self) -> Option<PreCommitQC> {
         self.pre_commit_qc.clone()
     }
 
-    pub fn take_choke_qc(&self) -> Option<ChokeQC> {
+    pub fn get_choke_qc(&self) -> Option<ChokeQC> {
         self.choke_qc.clone()
     }
 
-    fn take_signed_pre_votes(&self, block_hash: &Hash) -> Option<Vec<SignedPreVote>> {
+    fn get_signed_pre_votes_by_hash(&self, block_hash: &Hash) -> Option<Vec<SignedPreVote>> {
         self.pre_vote_sets.get(block_hash).cloned()
     }
 
-    fn take_signed_pre_commits(&self, block_hash: &Hash) -> Option<Vec<SignedPreCommit>> {
+    fn get_signed_pre_commits_by_hash(&self, block_hash: &Hash) -> Option<Vec<SignedPreCommit>> {
         self.pre_commit_sets.get(block_hash).cloned()
     }
 
@@ -507,15 +555,15 @@ mod test {
 
         let pre_vote_qc = PreVoteQC::default();
         check_insert(&mut cabinet, &pre_vote_qc);
-        assert_eq!(cabinet.take_pre_vote_qc(0, 0).unwrap(), pre_vote_qc);
+        assert_eq!(cabinet.get_pre_vote_qc(0, 0).unwrap(), pre_vote_qc);
 
         let pre_commit_qc = PreCommitQC::default();
         check_insert(&mut cabinet, &pre_commit_qc);
-        assert_eq!(cabinet.take_pre_commit_qc(0, 0).unwrap(), pre_commit_qc);
+        assert_eq!(cabinet.get_pre_commit_qc(0, 0).unwrap(), pre_commit_qc);
 
         let choke_qc = ChokeQC::default();
         check_insert(&mut cabinet, &choke_qc);
-        assert_eq!(cabinet.take_choke_qc(0, 0).unwrap(), choke_qc);
+        assert_eq!(cabinet.get_choke_qc(0, 0).unwrap(), choke_qc);
 
         // test pop
         assert!(!cabinet.0.is_empty());

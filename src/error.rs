@@ -61,6 +61,8 @@ pub enum ErrorInfo {
     WrongLeader,
     #[display(fmt = "check block failed")]
     CheckBlock,
+    #[display(fmt = "adapter check block failed")]
+    AdapterCheckBlock(Box<dyn Error + Send>),
     #[display(fmt = "under stage")]
     UnderStage,
     #[display(fmt = "higher proposal with lower lock_round")]
@@ -244,6 +246,13 @@ impl OverlordError {
         OverlordError {
             kind: ErrorKind::LocalError,
             info: ErrorInfo::Broadcast(e),
+        }
+    }
+
+    pub fn byz_adapter_check_block(e: Box<dyn Error + Send>) -> Self {
+        OverlordError {
+            kind: ErrorKind::Byzantine,
+            info: ErrorInfo::AdapterCheckBlock(e),
         }
     }
 }
