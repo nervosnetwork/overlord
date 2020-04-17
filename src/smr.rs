@@ -19,7 +19,7 @@ use log::{error, warn};
 
 use crate::auth::{AuthCell, AuthFixedConfig, AuthManage};
 use crate::cabinet::{Cabinet, Capsule};
-use crate::error::ErrorInfo::MuchHighMsg;
+use crate::error::ErrorInfo;
 use crate::exec::ExecRequest;
 use crate::state::{ProposePrepare, Stage, StateInfo};
 use crate::timeout::TimeoutEvent;
@@ -166,8 +166,13 @@ where
 
     async fn handle_fetch(
         &mut self,
-        _fetched_full_block: OverlordResult<FetchedFullBlock>,
+        fetch_result: OverlordResult<FetchedFullBlock>,
     ) -> OverlordResult<()> {
+        let fetch = self.agent.handle_fetch(fetch_result)?;
+        self.cabinet.insert_full_block(fetch.clone());
+        self.wal.save_full_block(&fetch)?;
+        // Todo:
+
         Ok(())
     }
 
@@ -304,9 +309,9 @@ async fn get_exec_result<A: Adapter<B, S>, B: Blk, S: St>(
     let opt = get_block_with_proof(adapter, height).await?;
     if let Some((block, proof)) = opt {
         let full_block = adapter
-            .fetch_full_block(Context::default(), block)
+            .fetch_full_block(Context::default(), block.clone())
             .await
-            .map_err(OverlordError::net_fetch)?;
+            .map_err(|_| OverlordError::net_fetch(block.get_block_hash()))?;
         let rst = adapter
             .save_and_exec_block_with_proof(Context::default(), height, full_block, proof.clone())
             .await
@@ -359,6 +364,21 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         self.fetch_set.clear();
     }
 
+    fn handle_fetch(
+        &mut self,
+        fetch_result: OverlordResult<FetchedFullBlock>,
+    ) -> OverlordResult<FetchedFullBlock> {
+        if let Err(error) = fetch_result {
+            if let ErrorInfo::FetchFullBlock(hash) = error.info {
+                self.fetch_set.remove(&hash);
+                return Err(OverlordError::net_fetch(hash));
+            }
+            unreachable!()
+        } else {
+            Ok(fetch_result.unwrap())
+        }
+    }
+
     fn request_full_block(&self, block: B) {
         let block_hash = block.get_block_hash();
         if self.fetch_set.contains(&block_hash) {
@@ -373,8 +393,8 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
             let rst = adapter
                 .fetch_full_block(Context::default(), block)
                 .await
-                .map(|full_block| FetchedFullBlock::new(height, block_hash, full_block))
-                .map_err(OverlordError::net_fetch);
+                .map(|full_block| FetchedFullBlock::new(height, block_hash.clone(), full_block))
+                .map_err(|_| OverlordError::net_fetch(block_hash));
             to_fetch
                 .unbounded_send(rst)
                 .expect("Fetch Channel is down!");

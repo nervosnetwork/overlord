@@ -11,7 +11,7 @@ use bytes::Bytes;
 use derive_more::Display;
 
 use crate::state::Step;
-use crate::types::UpdateFrom;
+use crate::types::{FetchedFullBlock, UpdateFrom};
 use crate::{Blk, Hash, Height, OverlordError, OverlordResult, Round};
 
 const STATE_SUB_DIR: &str = "state";
@@ -48,15 +48,10 @@ impl Wal {
         self.safe_load_file(self.state_dir_path.clone(), STATE_FILE_NAME.to_owned())
     }
 
-    pub fn save_full_block(
-        &self,
-        height: Height,
-        block_hash: &Hash,
-        full_block: &Bytes,
-    ) -> OverlordResult<()> {
-        let dir = self.assemble_full_block_dir(height);
-        let file_name = hex::encode(block_hash) + ".wal";
-        self.safe_save_file(dir, file_name, full_block)
+    pub fn save_full_block(&self, fetch: &FetchedFullBlock) -> OverlordResult<()> {
+        let dir = self.assemble_full_block_dir(fetch.height);
+        let file_name = hex::encode(&fetch.block_hash) + ".wal";
+        self.safe_save_file(dir, file_name, &fetch.full_block)
     }
 
     pub fn load_full_block(&self, height: Height, block_hash: &Hash) -> OverlordResult<Bytes> {
@@ -157,11 +152,13 @@ mod test {
 
         let full_block = Bytes::from(gen_random_bytes(1000));
         let hash = DefaultCrypto::hash(&full_block);
-        wal.save_full_block(10, &hash, &full_block).unwrap();
+        wal.save_full_block(&FetchedFullBlock::new(10, hash.clone(), full_block.clone()))
+            .unwrap();
         let load_full_block = wal.load_full_block(10, &hash).unwrap();
         assert_eq!(full_block, load_full_block);
 
-        wal.save_full_block(11, &hash, &full_block).unwrap();
+        wal.save_full_block(&FetchedFullBlock::new(11, hash, full_block))
+            .unwrap();
         wal.remove_full_blocks(10).unwrap();
     }
 

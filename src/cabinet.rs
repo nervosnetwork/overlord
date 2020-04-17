@@ -6,8 +6,8 @@ use bytes::Bytes;
 use derive_more::Display;
 
 use crate::types::{
-    ChokeQC, CumWeight, PreCommitQC, PreVoteQC, Proposal, SignedChoke, SignedPreCommit,
-    SignedPreVote, SignedProposal, VoteType, Weight,
+    ChokeQC, CumWeight, FetchedFullBlock, PreCommitQC, PreVoteQC, Proposal, SignedChoke,
+    SignedPreCommit, SignedPreVote, SignedProposal, VoteType, Weight,
 };
 use crate::{Address, Blk, Hash, Height, OverlordError, OverlordResult, Round};
 
@@ -84,11 +84,11 @@ impl<B: Blk> Cabinet<B> {
             .insert(round, data)
     }
 
-    pub fn insert_full_block(&mut self, height: Height, hash: Hash, full_block: Bytes) {
+    pub fn insert_full_block(&mut self, fetch: FetchedFullBlock) {
         self.0
-            .entry(height)
+            .entry(fetch.height)
             .or_insert_with(Drawer::default)
-            .insert_full_block(hash, full_block)
+            .insert_full_block(fetch.block_hash, fetch.full_block)
     }
 
     pub fn get_block(&self, height: Height, hash: &Hash) -> Option<&B> {

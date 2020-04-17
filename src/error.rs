@@ -7,7 +7,7 @@ use derive_more::Display;
 use rlp::DecoderError;
 
 use crate::cabinet::Capsule;
-use crate::{Address, Blk, Height};
+use crate::{Address, Blk, Hash, Height};
 
 pub type OverlordResult<T> = Result<T, OverlordError>;
 
@@ -41,8 +41,8 @@ pub enum ErrorInfo {
     MultiVersion,
     #[display(fmt = "get block failed: {}", _0)]
     GetBlock(Box<dyn Error + Send>),
-    #[display(fmt = "fetch full block failed {}", _0)]
-    FetchFullBlock(Box<dyn Error + Send>),
+    #[display(fmt = "fetch full block of {} failed", "hex::encode(_0.clone())")]
+    FetchFullBlock(Hash),
     #[display(fmt = "exec block failed {}", _0)]
     Exec(Box<dyn Error + Send>),
     #[display(fmt = "operate wal file failed, {:?}", _0)]
@@ -127,10 +127,10 @@ impl OverlordError {
         }
     }
 
-    pub fn net_fetch(e: Box<dyn Error + Send>) -> Self {
+    pub fn net_fetch(hash: Hash) -> Self {
         OverlordError {
             kind: ErrorKind::Network,
-            info: ErrorInfo::FetchFullBlock(e),
+            info: ErrorInfo::FetchFullBlock(hash),
         }
     }
 
