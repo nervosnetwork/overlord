@@ -15,5 +15,5 @@ async fn test_4_nodes() {
         .try_init();
     let platform = Platform::new(4);
     platform.run();
-    thread::sleep(Duration::from_secs(10));
+    thread::sleep(Duration::from_secs(100));
 }

@@ -173,7 +173,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
 
     pub fn aggregate_chokes(&self, chokes: Vec<SignedChoke>) -> OverlordResult<ChokeQC> {
         assert!(
-            chokes.is_empty(),
+            !chokes.is_empty(),
             "Unreachable! chokes is empty while aggregate chokes!"
         );
 

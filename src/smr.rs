@@ -218,6 +218,7 @@ where
         if fetch.height < self.state.stage.height {
             return Err(OverlordError::debug_old());
         }
+        info!("[FETCH]\n\t<{}> <-\t{}\n", self.address.tiny_hex(), fetch);
         self.cabinet.insert_full_block(fetch.clone());
         self.wal.save_full_block(&fetch)?;
 
@@ -349,6 +350,12 @@ where
         self.filter_msg(msg_h, msg_r, (&sv).into())?;
         self.auth.verify_signed_pre_vote(&sv)?;
         if let Some(sum_w) = self.cabinet.insert(msg_h, msg_r, (&sv).into())? {
+            debug!(
+                "[WEIGHT SUM]\n\t<{}> <=> {}\n\tmessage: signed_pre_vote: {}\n",
+                self.address.tiny_hex(),
+                sum_w,
+                sv
+            );
             if self.auth.current_auth.beyond_majority(sum_w.cum_weight) {
                 let votes = self
                     .cabinet
@@ -375,6 +382,12 @@ where
         self.filter_msg(msg_h, msg_r, (&sv).into())?;
         self.auth.verify_signed_pre_commit(&sv)?;
         if let Some(sum_w) = self.cabinet.insert(msg_h, msg_r, (&sv).into())? {
+            debug!(
+                "<{}> [Weight_SUM] {}\n\tmessage: signed_pre_commit {}\n",
+                self.address.tiny_hex(),
+                sum_w,
+                sv
+            );
             if self.auth.current_auth.beyond_majority(sum_w.cum_weight) {
                 let votes = self
                     .cabinet
@@ -401,12 +414,19 @@ where
         self.filter_msg(msg_h, msg_r, (&sc).into())?;
         self.auth.verify_signed_choke(&sc)?;
         if let Some(sum_w) = self.cabinet.insert(msg_h, msg_r, (&sc).into())? {
+            debug!(
+                "<{}> [Weight_SUM] {}\n\tmessage: signed_choke: {}\n",
+                self.address.tiny_hex(),
+                sum_w,
+                &sc
+            );
             if self.auth.current_auth.beyond_majority(sum_w.cum_weight) {
-                let votes = self
+                let chokes = self
                     .cabinet
                     .get_signed_chokes(msg_h, sum_w.round)
                     .expect("Unreachable! Lost signed_chokes while beyond majority");
-                let choke_qc = self.auth.aggregate_chokes(votes)?;
+
+                let choke_qc = self.auth.aggregate_chokes(chokes)?;
                 self.handle_choke_qc(choke_qc).await?;
             } else if let Some(from) = sc.from {
                 match from {
@@ -781,7 +801,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
 
     async fn transmit(&self, to: Address, msg: OverlordMsg<B>) -> OverlordResult<()> {
         info!(
-            "<{}> [Transmit] -> {}\n\tmessage: {} \n",
+            "[TRANSMIT]\n\t<{}> -> {}\tmessage: {} \n",
             self.address.tiny_hex(),
             to.tiny_hex(),
             msg
@@ -802,7 +822,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
 
     async fn broadcast(&self, msg: OverlordMsg<B>) -> OverlordResult<()> {
         info!(
-            "<{}> [Broadcast] \n\tmessage: {} \n",
+            "[BROADCAST]\n\t<{}> =>\tmessage: {} \n",
             self.address.tiny_hex(),
             msg
         );
@@ -864,9 +884,10 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         if let Some(interval) = opt {
             let timeout_info = TimeoutInfo::new(interval, stage.into(), self.to_timeout.clone());
             info!(
-                "<{}> [SET TIMEOUT]\n\t{}\n",
+                "[SET TIMEOUT]\n\t<{}> {}, interval: {:?}\n",
                 self.address.tiny_hex(),
-                timeout_info
+                timeout_info,
+                interval
             );
             tokio::spawn(async move {
                 timeout_info.await;

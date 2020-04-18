@@ -78,7 +78,7 @@ pub enum ErrorInfo {
 }
 
 #[derive(Debug, Display)]
-#[display(fmt = "[OverlordError] Kind: {} Error: {}", kind, info)]
+#[display(fmt = "[ERROR] Kind: {} Error: {}", kind, info)]
 pub struct OverlordError {
     pub kind: ErrorKind,
     pub info: ErrorInfo,

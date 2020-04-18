@@ -172,7 +172,7 @@ impl<B: Blk> StateInfo<B> {
 
     fn log_state_update_of_msg(&self, old_state: StateInfo<B>, msg: Capsule<B>) {
         info!(
-            "<{}> [Message] \n\tmessage: {} \n\tbefore : {} \n\tupdated: {}\n",
+            "[MESSAGE] \n\t<{}> <=\t{} \n\tbefore : {} \n\tupdated: {}\n",
             self.address.tiny_hex(),
             msg,
             old_state,
@@ -182,7 +182,7 @@ impl<B: Blk> StateInfo<B> {
 
     fn log_state_update_of_timeout(&self, old_state: StateInfo<B>, timeout: TimeoutEvent) {
         info!(
-            "<{}> [Timeout] \n\ttimeout: {} \n\tbefore : {} \n\tupdated: {}\n",
+            "[TIMEOUT] \n\t<{}> <-\t{} \n\tbefore : {} \n\tupdated: {}\n",
             self.address.tiny_hex(),
             timeout,
             old_state,
