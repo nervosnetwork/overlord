@@ -1,10 +1,12 @@
+use std::fmt::Debug;
+
 use bytes::Bytes;
 use rlp::{Decodable, DecoderError, Encodable, Prototype, Rlp, RlpStream};
 
 use crate::state::{Stage, StateInfo, Step};
 use crate::types::{
-    Aggregates, Choke, ChokeQC, PreCommitQC, PreVoteQC, Proposal, SignedChoke, SignedPreCommit,
-    SignedPreVote, SignedProposal, UpdateFrom, Vote, Weight,
+    Aggregates, Choke, ChokeQC, FetchedFullBlock, PreCommitQC, PreVoteQC, Proposal, SignedChoke,
+    SignedPreCommit, SignedPreVote, SignedProposal, UpdateFrom, Vote, Weight,
 };
 use crate::{Address, Blk, Hash, Height, Round, Signature};
 
@@ -433,4 +435,63 @@ impl<B: Blk> Decodable for StateInfo<B> {
             _ => Err(DecoderError::RlpInconsistentLengthAndData),
         }
     }
+}
+
+// impl Encodable and Decodable trait for FetchedFullBlock
+impl Encodable for FetchedFullBlock {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        s.begin_list(3)
+            .append(&self.height)
+            .append(&self.block_hash.to_vec())
+            .append(&self.full_block.to_vec());
+    }
+}
+
+impl Decodable for FetchedFullBlock {
+    fn decode(r: &Rlp) -> Result<Self, DecoderError> {
+        match r.prototype()? {
+            Prototype::List(3) => {
+                let height: Height = r.val_at(0)?;
+                let tmp: Vec<u8> = r.val_at(1)?;
+                let block_hash = Hash::from(tmp);
+                let tmp: Vec<u8> = r.val_at(2)?;
+                let full_block = Bytes::from(tmp);
+                Ok(FetchedFullBlock {
+                    height,
+                    block_hash,
+                    full_block,
+                })
+            }
+            _ => Err(DecoderError::RlpInconsistentLengthAndData),
+        }
+    }
+}
+
+#[test]
+fn test_codec() {
+    use crate::types::TestBlock;
+
+    test_rlp::<Stage>();
+    test_rlp::<StateInfo<TestBlock>>();
+    test_rlp::<Aggregates>();
+    test_rlp::<Choke>();
+    test_rlp::<ChokeQC>();
+    test_rlp::<FetchedFullBlock>();
+    test_rlp::<PreCommitQC>();
+    test_rlp::<PreVoteQC>();
+    test_rlp::<Proposal<TestBlock>>();
+    test_rlp::<SignedChoke>();
+    test_rlp::<SignedPreCommit>();
+    test_rlp::<SignedPreVote>();
+    test_rlp::<SignedProposal<TestBlock>>();
+    test_rlp::<UpdateFrom>();
+    test_rlp::<Vote>();
+    test_rlp::<ChokeQC>();
+}
+
+fn test_rlp<T: Debug + Default + PartialEq + Eq + Decodable + Encodable>() {
+    let data = T::default();
+    let encode = rlp::encode(&data);
+    let decode = rlp::decode(&encode).unwrap();
+    assert_eq!(data, decode);
 }

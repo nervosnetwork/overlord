@@ -620,3 +620,49 @@ impl<T: std::fmt::Display> std::fmt::Display for DisplayVec<T> {
         Ok(())
     }
 }
+
+/// for test
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TestBlock {
+    pub pre_hash:    Hash,
+    pub height:      Height,
+    pub exec_height: Height,
+    pub pre_proof:   Proof,
+}
+
+impl TestBlock {
+    pub fn genesis_block() -> Self {
+        TestBlock::default()
+    }
+}
+
+impl Blk for TestBlock {
+    fn fixed_encode(&self) -> Result<Bytes, Box<dyn std::error::Error + Send>> {
+        Ok(bincode::serialize(self).map(Bytes::from).unwrap())
+    }
+
+    fn fixed_decode(data: &Bytes) -> Result<Self, Box<dyn std::error::Error + Send>> {
+        Ok(bincode::deserialize(data.as_ref()).unwrap())
+    }
+
+    fn get_block_hash(&self) -> Hash {
+        use crate::{Crypto, DefaultCrypto};
+        DefaultCrypto::hash(&self.fixed_encode().unwrap())
+    }
+
+    fn get_pre_hash(&self) -> Hash {
+        self.pre_hash.clone()
+    }
+
+    fn get_height(&self) -> Height {
+        self.height
+    }
+
+    fn get_exec_height(&self) -> Height {
+        self.exec_height
+    }
+
+    fn get_proof(&self) -> Proof {
+        self.pre_proof.clone()
+    }
+}

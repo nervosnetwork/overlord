@@ -543,15 +543,12 @@ fn update_max_vote_weight(max_weight: &mut CumWeight, cum_weight: CumWeight) {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::types::Proof;
-    use crate::{Crypto, DefaultCrypto};
+    use crate::types::TestBlock;
     use bytes::Bytes;
-    use serde::{Deserialize, Serialize};
-    use std::error::Error;
 
     #[test]
     fn test_cabinet() {
-        let mut cabinet = Cabinet::<Block>::default();
+        let mut cabinet = Cabinet::<TestBlock>::default();
 
         let mut signed_pre_vote = SignedPreVote::default();
         check_vote(
@@ -598,12 +595,12 @@ mod test {
         assert_eq!(cabinet.0.len(), 1);
     }
 
-    fn check_insert<T: Clone + Into<Capsule<Block>>>(grid: &mut Cabinet<Block>, data: &T) {
+    fn check_insert<T: Clone + Into<Capsule<TestBlock>>>(grid: &mut Cabinet<TestBlock>, data: &T) {
         assert_eq!(grid.insert(0, 0, data.clone().into()).unwrap(), None);
     }
 
     fn check_vote<V: Vote>(
-        grid: &mut Cabinet<Block>,
+        grid: &mut Cabinet<TestBlock>,
         vote: &mut V,
         vote_type: VoteType,
         opt_hash: Option<Hash>,
@@ -634,7 +631,7 @@ mod test {
         );
     }
 
-    trait Vote: Sized + Clone + Default + Into<Capsule<Block>> {
+    trait Vote: Sized + Clone + Default + Into<Capsule<TestBlock>> {
         fn set(&mut self, round: Round, weight: Weight, voter: Address);
     }
 
@@ -659,50 +656,6 @@ mod test {
             self.choke.round = round;
             self.vote_weight = weight;
             self.voter = voter;
-        }
-    }
-
-    #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-    struct Block {
-        pub pre_hash:    Hash,
-        pub height:      Height,
-        pub exec_height: Height,
-        pub pre_proof:   Proof,
-    }
-
-    impl Block {
-        fn genesis_block() -> Self {
-            Block::default()
-        }
-    }
-
-    impl Blk for Block {
-        fn fixed_encode(&self) -> Result<Bytes, Box<dyn Error + Send>> {
-            Ok(bincode::serialize(self).map(Bytes::from).unwrap())
-        }
-
-        fn fixed_decode(data: &Bytes) -> Result<Self, Box<dyn Error + Send>> {
-            Ok(bincode::deserialize(data.as_ref()).unwrap())
-        }
-
-        fn get_block_hash(&self) -> Hash {
-            DefaultCrypto::hash(&self.fixed_encode().unwrap())
-        }
-
-        fn get_pre_hash(&self) -> Hash {
-            self.pre_hash.clone()
-        }
-
-        fn get_height(&self) -> Height {
-            self.height
-        }
-
-        fn get_exec_height(&self) -> Height {
-            self.exec_height
-        }
-
-        fn get_proof(&self) -> Proof {
-            self.pre_proof.clone()
         }
     }
 }

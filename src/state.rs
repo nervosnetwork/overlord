@@ -59,15 +59,6 @@ impl<B: Blk> StateInfo<B> {
 
     pub fn handle_signed_proposal(&mut self, sp: &SignedProposal<B>) -> OverlordResult<()> {
         let next_stage = self.filter_stage(sp)?;
-        if next_stage.round > self.stage.round {
-            let qc = sp
-                .proposal
-                .lock
-                .as_ref()
-                .expect("Unreachable! Have checked lock exists before");
-            self.handle_pre_vote_qc(qc, sp.proposal.block.clone())?;
-            return Err(OverlordError::debug_high());
-        }
         if self.stage.update_stage(next_stage) {
             self.from = Some(UpdateFrom::PreVoteQC(
                 sp.proposal
@@ -123,16 +114,6 @@ impl<B: Blk> StateInfo<B> {
         let next_stage = self.filter_stage(stage)?;
         self.stage.update_stage(next_stage);
         Ok(())
-    }
-
-    pub fn from_wal(wal: &Wal) -> OverlordResult<Self> {
-        let encode = wal.load_state()?;
-        decode(&encode).map_err(OverlordError::local_decode)
-    }
-
-    pub fn save_wal(&self, wal: &Wal) -> OverlordResult<()> {
-        let encode = encode(self);
-        wal.save_state(&Bytes::from(encode))
     }
 
     pub fn filter_stage<T: NextStage>(&self, msg: &T) -> OverlordResult<Stage> {

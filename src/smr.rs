@@ -71,9 +71,9 @@ where
         wal_path: &str,
     ) -> Self {
         let wal = Wal::new(wal_path);
-        let rst = StateInfo::<B>::from_wal(&wal);
+        let rst = wal.load_state();
         let state = if let Err(e) = rst {
-            warn!("Load wal failed! Try to recover state by the adapter, which face security risk if majority auth nodes lost their wal file at the same time");
+            error!("Load state from wal failed! Try to recover state by the adapter, which face security risk if majority auth nodes lost their wal file at the same time");
             recover_state_by_adapter(adapter).await
         } else {
             rst.unwrap()
@@ -100,6 +100,16 @@ where
             None
         };
 
+        let mut cabinet = Cabinet::default();
+        let rst = wal.load_full_blocks();
+        if let Ok(full_blocks) = rst {
+            full_blocks
+                .into_iter()
+                .for_each(|fb| cabinet.insert_full_block(fb));
+        } else {
+            error!("Load full_block from wal failed! Have security risk if majority auth nodes lost their wal file at the same time");
+        }
+
         let current_auth = AuthCell::new(auth_config, &auth_fixed_config.address);
         let last_auth: Option<AuthCell<B>> =
             last_config.map(|config| AuthCell::new(config.auth_config, &auth_fixed_config.address));
@@ -107,12 +117,12 @@ where
         SMR {
             wal,
             state,
+            cabinet,
             prepare,
+            phantom_s: PhantomData,
             adapter: Arc::<A>::clone(adapter),
-            cabinet: Cabinet::default(),
             auth: AuthManage::new(auth_fixed_config, current_auth, last_auth),
             agent: EventAgent::new(adapter, time_config, from_net, from_exec, to_exec),
-            phantom_s: PhantomData,
         }
     }
 
@@ -223,7 +233,7 @@ where
     async fn handle_propose_timeout(&mut self, stage: Stage) -> OverlordResult<()> {
         self.state.handle_timeout(&stage)?;
         self.agent.set_timeout(self.state.stage.clone());
-        self.state.save_wal(&self.wal)?;
+        self.wal.save_state(&self.state)?;
 
         let height = self.state.stage.height;
         let round = self.state.stage.round;
@@ -236,7 +246,7 @@ where
     async fn handle_pre_vote_timeout(&mut self, stage: Stage) -> OverlordResult<()> {
         self.state.handle_timeout(&stage)?;
         self.agent.set_timeout(self.state.stage.clone());
-        self.state.save_wal(&self.wal)?;
+        self.wal.save_state(&self.state)?;
 
         let height = self.state.stage.height;
         let round = self.state.stage.round;
@@ -254,7 +264,7 @@ where
     async fn handle_pre_commit_timeout(&mut self, stage: Stage) -> OverlordResult<()> {
         self.state.handle_timeout(&stage)?;
         self.agent.set_timeout(self.state.stage.clone());
-        self.state.save_wal(&self.wal)?;
+        self.wal.save_state(&self.state)?;
 
         let height = self.state.stage.height;
         let round = self.state.stage.round;
@@ -295,13 +305,16 @@ where
         self.check_block(&sp.proposal.block).await?;
         self.agent.request_full_block(sp.proposal.block.clone());
 
-        if sp.proposal.lock.is_none() && msg_r > self.state.stage.round {
+        if msg_r > self.state.stage.round {
+            if let Some(qc) = sp.proposal.lock {
+                self.handle_pre_vote_qc(qc).await?;
+            }
             return Err(OverlordError::debug_high());
         }
 
         self.state.handle_signed_proposal(&sp)?;
         self.agent.set_timeout(self.state.stage.clone());
-        self.state.save_wal(&self.wal)?;
+        self.wal.save_state(&self.state)?;
 
         self.auth.can_i_vote()?;
         let vote = self.auth.sign_pre_vote(sp.proposal.as_vote())?;
@@ -403,7 +416,7 @@ where
                 .expect("Unreachable! Lost a block which full block exist");
             self.state.handle_pre_vote_qc(&qc, block.clone())?;
             self.agent.set_timeout(self.state.stage.clone());
-            self.state.save_wal(&self.wal)?;
+            self.wal.save_state(&self.state)?;
 
             self.auth.can_i_vote()?;
             let vote = self.auth.sign_pre_commit(qc.vote.clone())?;
@@ -430,7 +443,7 @@ where
                 .get_block(msg_h, &qc.vote.block_hash)
                 .expect("Unreachable! Lost a block which full block exist");
             self.state.handle_pre_commit_qc(&qc, block.clone())?;
-            self.state.save_wal(&self.wal)?;
+            self.wal.save_state(&self.state)?;
             self.handle_commit().await?;
         }
         Ok(())
@@ -443,7 +456,7 @@ where
         self.filter_msg(msg_h, msg_r, &qc.clone().into())?;
         self.auth.verify_choke_qc(&qc)?;
         self.state.handle_choke_qc(&qc)?;
-        self.state.save_wal(&self.wal)?;
+        self.wal.save_state(&self.state)?;
         self.new_round().await
     }
 
@@ -491,7 +504,7 @@ where
 
     async fn next_height(&mut self) -> OverlordResult<()> {
         self.state.next_height();
-        self.state.save_wal(&self.wal)?;
+        self.wal.save_state(&self.state)?;
         self.agent.next_height();
         self.new_round().await
     }

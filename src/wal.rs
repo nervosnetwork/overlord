@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use bytes::Bytes;
 use derive_more::Display;
 
-use crate::state::Step;
+use crate::state::{StateInfo, Step};
 use crate::types::{FetchedFullBlock, UpdateFrom};
 use crate::{Blk, Hash, Height, OverlordError, OverlordResult, Round};
 
@@ -36,28 +36,52 @@ impl Wal {
         }
     }
 
-    pub fn save_state(&self, state: &Bytes) -> OverlordResult<()> {
+    pub fn save_state<B: Blk>(&self, state: &StateInfo<B>) -> OverlordResult<()> {
+        let encode = rlp::encode(state);
         self.safe_save_file(
             self.state_dir_path.clone(),
             STATE_FILE_NAME.to_owned(),
-            state,
+            &encode,
         )
     }
 
-    pub fn load_state(&self) -> OverlordResult<Bytes> {
-        self.safe_load_file(self.state_dir_path.clone(), STATE_FILE_NAME.to_owned())
+    pub fn load_state<B: Blk>(&self) -> OverlordResult<StateInfo<B>> {
+        let encode =
+            self.safe_load_file(self.state_dir_path.clone(), STATE_FILE_NAME.to_owned())?;
+        rlp::decode(&encode).map_err(OverlordError::local_decode)
     }
 
     pub fn save_full_block(&self, fetch: &FetchedFullBlock) -> OverlordResult<()> {
         let dir = self.assemble_full_block_dir(fetch.height);
         let file_name = hex::encode(&fetch.block_hash) + ".wal";
-        self.safe_save_file(dir, file_name, &fetch.full_block)
+        self.safe_save_file(dir, file_name, &rlp::encode(fetch))
     }
 
-    pub fn load_full_block(&self, height: Height, block_hash: &Hash) -> OverlordResult<Bytes> {
-        let dir = self.assemble_full_block_dir(height);
-        let file_name = hex::encode(block_hash) + ".wal";
-        self.safe_load_file(dir, file_name)
+    pub fn load_full_blocks(&self) -> OverlordResult<Vec<FetchedFullBlock>> {
+        let mut vec = vec![];
+
+        let mut full_block_path = self.wal_dir_path.clone();
+        full_block_path.push(FULL_BLOCK_SUB_DIR);
+        ensure_dir_exists(&full_block_path);
+        println!("full_block_path. {:?}", full_block_path);
+
+        for dir_entry in fs::read_dir(full_block_path).map_err(OverlordError::local_wal)? {
+            let folder = dir_entry.map_err(OverlordError::local_wal)?.path();
+            println!("folder. {:?}", folder);
+            for file_entry in fs::read_dir(folder).map_err(OverlordError::local_wal)? {
+                let file_path = file_entry.map_err(OverlordError::local_wal)?.path();
+                println!("file_path. {:?}", file_path);
+                let mut file = open_file(file_path)?;
+                let mut read_buf = Vec::new();
+                let _ = file
+                    .read_to_end(&mut read_buf)
+                    .map_err(OverlordError::local_wal)?;
+                let fetch: FetchedFullBlock =
+                    rlp::decode(&read_buf).map_err(OverlordError::local_decode)?;
+                vec.push(fetch);
+            }
+        }
+        Ok(vec)
     }
 
     pub fn remove_full_blocks(&self, height: Height) -> OverlordResult<()> {
@@ -97,12 +121,7 @@ impl Wal {
         let mut wal_file_path = dir;
         wal_file_path.push(file_name);
 
-        fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(&wal_file_path)
-            .map_err(OverlordError::local_wal)
+        open_file(wal_file_path)
     }
 
     fn safe_save_file(&self, dir: PathBuf, file_name: String, data: &[u8]) -> OverlordResult<()> {
@@ -137,30 +156,40 @@ fn ensure_dir_exists(dir: &PathBuf) {
     }
 }
 
+fn open_file(file_path: PathBuf) -> OverlordResult<fs::File> {
+    fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .open(&file_path)
+        .map_err(OverlordError::local_wal)
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{Crypto, DefaultCrypto};
+    use crate::types::TestBlock;
+    use crate::{Crypto, DefaultCrypto, Proof};
     use rand::random;
 
     #[test]
-    fn test_default_wal() {
+    fn test_wal() {
         let wal = Wal::new("./wal/");
-        let state = Bytes::from(gen_random_bytes(100));
+        let state = StateInfo::<TestBlock>::default();
         wal.save_state(&state).unwrap();
         let load_state = wal.load_state().unwrap();
         assert_eq!(state, load_state);
 
         let full_block = Bytes::from(gen_random_bytes(1000));
         let hash = DefaultCrypto::hash(&full_block);
-        wal.save_full_block(&FetchedFullBlock::new(10, hash.clone(), full_block.clone()))
-            .unwrap();
-        let load_full_block = wal.load_full_block(10, &hash).unwrap();
-        assert_eq!(full_block, load_full_block);
+        let fetch = FetchedFullBlock::new(10, hash.clone(), full_block.clone());
+        wal.save_full_block(&fetch).unwrap();
+        let fetches = wal.load_full_blocks().unwrap();
+        assert_eq!(fetch, fetches[0]);
 
         wal.save_full_block(&FetchedFullBlock::new(11, hash, full_block))
             .unwrap();
-        wal.remove_full_blocks(10).unwrap();
+        wal.remove_full_blocks(11).unwrap();
     }
 
     fn gen_random_bytes(len: usize) -> Vec<u8> {
