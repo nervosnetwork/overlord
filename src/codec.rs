@@ -415,6 +415,8 @@ impl<B: Blk> Decodable for StateInfo<B> {
                 let lock: Option<PreVoteQC> = r.val_at(1)?;
                 let pre_commit_qc: Option<PreCommitQC> = r.val_at(2)?;
                 let from: Option<UpdateFrom> = r.val_at(3)?;
+                let tmp: Vec<u8> = r.val_at(4)?;
+                let address = Address::from(tmp);
                 let tmp: Option<Vec<u8>> = r.val_at(4)?;
                 let block = if let Some(v) = tmp {
                     Some(
@@ -425,6 +427,7 @@ impl<B: Blk> Decodable for StateInfo<B> {
                     None
                 };
                 Ok(StateInfo {
+                    address,
                     stage,
                     lock,
                     pre_commit_qc,

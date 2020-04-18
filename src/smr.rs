@@ -71,6 +71,8 @@ where
         to_exec: UnboundedSender<ExecRequest>,
         wal_path: &str,
     ) -> Self {
+        let address = &auth_fixed_config.address.clone();
+
         let wal = Wal::new(wal_path);
         let rst = wal.load_state();
 
@@ -78,10 +80,11 @@ where
         let state;
         if let Err(e) = rst {
             error!("Load state from wal failed! Try to recover state by the adapter, which face security risk if majority auth nodes lost their wal file at the same time");
-            state = recover_state_by_adapter(adapter).await;
+            state = recover_state_by_adapter(adapter, address.clone()).await;
             last_commit_height = state.stage.height;
         } else {
             state = rst.unwrap();
+            assert_eq!(state.address, address, "Load wal with other address");
             last_commit_height = state.stage.height - 1;
         };
 
@@ -114,11 +117,10 @@ where
             error!("Load full_block from wal failed! Have security risk if majority auth nodes lost their wal file at the same time");
         }
 
-        let current_auth = AuthCell::new(auth_config, &auth_fixed_config.address);
+        let current_auth = AuthCell::new(auth_config, &address);
         let last_auth: Option<AuthCell<B>> =
-            last_config.map(|config| AuthCell::new(config.auth_config, &auth_fixed_config.address));
+            last_config.map(|config| AuthCell::new(config.auth_config, &address));
 
-        let address = &auth_fixed_config.address.clone();
         SMR {
             wal,
             state,
@@ -652,11 +654,12 @@ where
 
 async fn recover_state_by_adapter<A: Adapter<B, S>, B: Blk, S: St>(
     adapter: &Arc<A>,
+    address: Address,
 ) -> StateInfo<B> {
     let height = adapter.get_latest_height(Context::default()).await.expect(
         "Cannot get the latest height from the adapter! It's meaningless to continue running",
     );
-    StateInfo::from_commit_height(height)
+    StateInfo::from_commit_height(height, address)
 }
 
 async fn recover_propose_prepare_and_config<A: Adapter<B, S>, B: Blk, S: St>(

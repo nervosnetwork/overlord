@@ -38,8 +38,8 @@ use std::collections::BTreeMap;
     "from.clone().map_or(\"None\".to_owned(), |from| format!(\"{}\", from))"
 )]
 pub struct StateInfo<B: Blk> {
-    // current info
-    pub stage: Stage,
+    pub address: Address,
+    pub stage:   Stage,
 
     pub lock:          Option<PreVoteQC>,
     pub block:         Option<B>,
@@ -48,8 +48,9 @@ pub struct StateInfo<B: Blk> {
 }
 
 impl<B: Blk> StateInfo<B> {
-    pub fn from_commit_height(commit_height: Height) -> Self {
+    pub fn from_commit_height(commit_height: Height, my_address: Address) -> Self {
         StateInfo {
+            address:       my_address,
             stage:         Stage::new(commit_height, INIT_ROUND, Step::Commit),
             lock:          None,
             pre_commit_qc: None,
