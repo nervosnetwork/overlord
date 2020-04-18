@@ -64,7 +64,7 @@ where
         let (exec_sender, exec_receiver) = unbounded();
 
         adapter
-            .register_network(Context::default(), net_sender)
+            .register_network(Context::default(), net_sender.clone())
             .await;
         let auth_fixed_config = AuthFixedConfig::new(common_ref, pri_key, address);
 
@@ -73,6 +73,7 @@ where
             auth_fixed_config,
             adapter,
             net_receiver,
+            net_sender,
             exec_receiver,
             smr_sender,
             wal_path,

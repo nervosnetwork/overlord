@@ -67,6 +67,7 @@ where
         auth_fixed_config: AuthFixedConfig,
         adapter: &Arc<A>,
         from_net: UnboundedReceiver<(Context, OverlordMsg<B>)>,
+        to_net: UnboundedSender<(Context, OverlordMsg<B>)>,
         from_exec: UnboundedReceiver<ExecResult<S>>,
         to_exec: UnboundedSender<ExecRequest>,
         wal_path: &str,
@@ -135,6 +136,7 @@ where
                 adapter,
                 time_config,
                 from_net,
+                to_net,
                 from_exec,
                 to_exec,
             ),
@@ -727,6 +729,7 @@ pub struct EventAgent<A: Adapter<B, S>, B: Blk, S: St> {
     fetch_set:   HashSet<Hash>,
 
     from_net: UnboundedReceiver<WrappedOverlordMsg<B>>,
+    to_net:   UnboundedSender<WrappedOverlordMsg<B>>,
 
     from_exec: UnboundedReceiver<ExecResult<S>>,
     to_exec:   UnboundedSender<ExecRequest>,
@@ -744,6 +747,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         adapter: &Arc<A>,
         time_config: TimeConfig,
         from_net: UnboundedReceiver<(Context, OverlordMsg<B>)>,
+        to_net: UnboundedSender<(Context, OverlordMsg<B>)>,
         from_exec: UnboundedReceiver<ExecResult<S>>,
         to_exec: UnboundedSender<ExecRequest>,
     ) -> Self {
@@ -756,6 +760,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
             start_time: Instant::now(),
             time_config,
             from_net,
+            to_net,
             from_exec,
             to_exec,
             from_fetch,
@@ -775,13 +780,23 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
     }
 
     async fn transmit(&self, to: Address, msg: OverlordMsg<B>) -> OverlordResult<()> {
-        self.adapter
-            .transmit(Context::default(), to, msg)
-            .await
-            .map_err(OverlordError::net_transmit)
+        if self.address == to {
+            self.to_net
+                .unbounded_send((Context::default(), msg))
+                .expect("Net Channel is down! It's meaningless to continue running");
+            Ok(())
+        } else {
+            self.adapter
+                .transmit(Context::default(), to, msg)
+                .await
+                .map_err(OverlordError::net_transmit)
+        }
     }
 
     async fn broadcast(&self, msg: OverlordMsg<B>) -> OverlordResult<()> {
+        self.to_net
+            .unbounded_send((Context::default(), msg.clone()))
+            .expect("Net Channel is down! It's meaningless to continue running");
         self.adapter
             .broadcast(Context::default(), msg)
             .await
