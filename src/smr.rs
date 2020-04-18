@@ -314,11 +314,11 @@ where
         let msg_h = sp.proposal.height;
         let msg_r = sp.proposal.round;
 
-        self.filter_msg(msg_h, msg_r, &sp.clone().into())?;
+        self.filter_msg(msg_h, msg_r, (&sp).into())?;
         // only msg of current height will go down
         self.check_proposal(&sp.proposal)?;
         self.auth.verify_signed_proposal(&sp)?;
-        self.cabinet.insert(msg_h, msg_r, sp.clone().into())?;
+        self.cabinet.insert(msg_h, msg_r, (&sp).into())?;
 
         self.check_block(&sp.proposal.block).await?;
         self.agent.request_full_block(sp.proposal.block.clone());
@@ -345,9 +345,9 @@ where
         let msg_h = sv.vote.height;
         let msg_r = sv.vote.round;
 
-        self.filter_msg(msg_h, msg_r, &sv.clone().into())?;
+        self.filter_msg(msg_h, msg_r, (&sv).into())?;
         self.auth.verify_signed_pre_vote(&sv)?;
-        if let Some(sum_w) = self.cabinet.insert(msg_h, msg_r, sv.clone().into())? {
+        if let Some(sum_w) = self.cabinet.insert(msg_h, msg_r, (&sv).into())? {
             if self.auth.current_auth.beyond_majority(sum_w.cum_weight) {
                 let votes = self
                     .cabinet
@@ -371,9 +371,9 @@ where
         let msg_h = sv.vote.height;
         let msg_r = sv.vote.round;
 
-        self.filter_msg(msg_h, msg_r, &sv.clone().into())?;
+        self.filter_msg(msg_h, msg_r, (&sv).into())?;
         self.auth.verify_signed_pre_commit(&sv)?;
-        if let Some(sum_w) = self.cabinet.insert(msg_h, msg_r, sv.clone().into())? {
+        if let Some(sum_w) = self.cabinet.insert(msg_h, msg_r, (&sv).into())? {
             if self.auth.current_auth.beyond_majority(sum_w.cum_weight) {
                 let votes = self
                     .cabinet
@@ -397,9 +397,9 @@ where
         let msg_h = sc.choke.height;
         let msg_r = sc.choke.round;
 
-        self.filter_msg(msg_h, msg_r, &sc.clone().into())?;
+        self.filter_msg(msg_h, msg_r, (&sc).into())?;
         self.auth.verify_signed_choke(&sc)?;
-        if let Some(sum_w) = self.cabinet.insert(msg_h, msg_r, sc.clone().into())? {
+        if let Some(sum_w) = self.cabinet.insert(msg_h, msg_r, (&sc).into())? {
             if self.auth.current_auth.beyond_majority(sum_w.cum_weight) {
                 let votes = self
                     .cabinet
@@ -422,9 +422,9 @@ where
         let msg_h = qc.vote.height;
         let msg_r = qc.vote.round;
 
-        self.filter_msg(msg_h, msg_r, &qc.clone().into())?;
+        self.filter_msg(msg_h, msg_r, (&qc).into())?;
         self.auth.verify_pre_vote_qc(&qc)?;
-        self.cabinet.insert(msg_h, msg_r, qc.clone().into())?;
+        self.cabinet.insert(msg_h, msg_r, (&qc).into())?;
         if self
             .cabinet
             .get_full_block(msg_h, &qc.vote.block_hash)
@@ -450,9 +450,9 @@ where
         let msg_h = qc.vote.height;
         let msg_r = qc.vote.round;
 
-        self.filter_msg(msg_h, msg_r, &qc.clone().into())?;
+        self.filter_msg(msg_h, msg_r, (&qc).into())?;
         self.auth.verify_pre_commit_qc(&qc)?;
-        self.cabinet.insert(msg_h, msg_r, qc.clone().into())?;
+        self.cabinet.insert(msg_h, msg_r, (&qc).into())?;
         if self
             .cabinet
             .get_full_block(msg_h, &qc.vote.block_hash)
@@ -473,7 +473,7 @@ where
         let msg_h = qc.choke.height;
         let msg_r = qc.choke.round;
 
-        self.filter_msg(msg_h, msg_r, &qc.clone().into())?;
+        self.filter_msg(msg_h, msg_r, (&qc).into())?;
         self.auth.verify_choke_qc(&qc)?;
         self.state.handle_choke_qc(&qc)?;
         self.wal.save_state(&self.state)?;
@@ -629,7 +629,7 @@ where
         &mut self,
         height: Height,
         round: Round,
-        capsule: &Capsule<B>,
+        capsule: Capsule<B>,
     ) -> OverlordResult<()> {
         let my_height = self.state.stage.height;
         let my_round = self.state.stage.round;

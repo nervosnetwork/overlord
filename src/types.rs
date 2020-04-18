@@ -45,9 +45,9 @@ pub enum OverlordMsg<B: Blk> {
 }
 
 impl_from!(
-    OverlordMsg,
+    OverlordMsg<B: Blk>,
     [
-        tag SignedProposal,
+        SignedProposal<B>,
         SignedPreVote,
         SignedPreCommit,
         SignedChoke,
@@ -55,7 +55,7 @@ impl_from!(
         PreCommitQC,
         SignedHeight,
         SyncRequest,
-        tag SyncResponse
+        SyncResponse<B>,
     ]
 );
 

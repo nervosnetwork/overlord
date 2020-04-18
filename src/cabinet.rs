@@ -14,35 +14,32 @@ use crate::{Adapter, Address, Blk, Hash, Height, OverlordError, OverlordResult, 
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, Display)]
-pub enum Capsule<B: Blk> {
+pub enum Capsule<'a, B: Blk> {
     #[display(fmt = "signed_proposal: {}", _0)]
-    SignedProposal(SignedProposal<B>),
+    SignedProposal(&'a SignedProposal<B>),
     #[display(fmt = "signed_pre_vote: {}", _0)]
-    SignedPreVote(SignedPreVote),
+    SignedPreVote(&'a SignedPreVote),
     #[display(fmt = "signed_pre_commit: {}", _0)]
-    SignedPreCommit(SignedPreCommit),
+    SignedPreCommit(&'a SignedPreCommit),
     #[display(fmt = "signed_choke: {}", _0)]
-    SignedChoke(SignedChoke),
+    SignedChoke(&'a SignedChoke),
     #[display(fmt = "pre_vote_qc: {}", _0)]
-    PreVoteQC(PreVoteQC),
+    PreVoteQC(&'a PreVoteQC),
     #[display(fmt = "pre_commit_qc: {}", _0)]
-    PreCommitQC(PreCommitQC),
+    PreCommitQC(&'a PreCommitQC),
     #[display(fmt = "choke_qc: {}", _0)]
-    ChokeQC(ChokeQC),
+    ChokeQC(&'a ChokeQC),
 }
 
-impl_from!(
-    Capsule,
-    [
-        tag SignedProposal,
-        SignedPreVote,
-        SignedPreCommit,
-        SignedChoke,
-        PreVoteQC,
-        PreCommitQC,
-        ChokeQC
-    ]
-);
+impl_from!(Capsule<'a, B: Blk>, [
+    SignedProposal<B>,
+    SignedPreVote,
+    SignedPreCommit,
+    SignedChoke,
+    PreVoteQC,
+    PreCommitQC,
+    ChokeQC,
+]);
 
 #[derive(Default)]
 pub struct Cabinet<B: Blk>(BTreeMap<Height, Drawer<B>>);
@@ -68,27 +65,27 @@ impl<B: Blk> Cabinet<B> {
             for mut grid in grids {
                 if let Some(sp) = grid.take_signed_proposal() {
                     if next_auth.verify_signed_proposal(&sp).is_ok() {
-                        let _ = self.insert(sp.proposal.height, sp.proposal.round, sp.into());
+                        let _ = self.insert(sp.proposal.height, sp.proposal.round, (&sp).into());
                     }
                 }
                 if let Some(qc) = grid.get_pre_vote_qc() {
                     if next_auth.verify_pre_vote_qc(&qc).is_ok() {
-                        let _ = self.insert(qc.vote.height, qc.vote.round, qc.into());
+                        let _ = self.insert(qc.vote.height, qc.vote.round, (&qc).into());
                     }
                 }
                 if let Some(qc) = grid.get_pre_commit_qc() {
                     if next_auth.verify_pre_commit_qc(&qc).is_ok() {
-                        let _ = self.insert(qc.vote.height, qc.vote.round, qc.into());
+                        let _ = self.insert(qc.vote.height, qc.vote.round, (&qc).into());
                     }
                 }
                 for sv in grid.get_signed_pre_votes() {
                     if next_auth.verify_signed_pre_vote(&sv).is_ok() {
-                        let _ = self.insert(sv.vote.height, sv.vote.round, sv.into());
+                        let _ = self.insert(sv.vote.height, sv.vote.round, (&sv).into());
                     }
                 }
                 for sv in grid.get_signed_pre_commits() {
                     if next_auth.verify_signed_pre_commit(&sv).is_ok() {
-                        let _ = self.insert(sv.vote.height, sv.vote.round, sv.into());
+                        let _ = self.insert(sv.vote.height, sv.vote.round, (&sv).into());
                     }
                 }
             }
@@ -210,7 +207,7 @@ struct Drawer<B: Blk> {
 
 impl<B: Blk> Drawer<B> {
     fn insert(&mut self, round: Round, data: Capsule<B>) -> OverlordResult<Option<CumWeight>> {
-        match &data {
+        match data {
             Capsule::SignedProposal(sp) => self.insert_block(&sp.proposal),
             Capsule::PreVoteQC(qc) => self.insert_pre_vote_qc(qc),
             Capsule::PreCommitQC(qc) => self.insert_pre_commit_qc(qc),
@@ -393,15 +390,17 @@ impl<B: Blk> Grid<B> {
     fn insert(&mut self, data: Capsule<B>) -> OverlordResult<Option<CumWeight>> {
         match data {
             Capsule::SignedProposal(signed_proposal) => {
-                self.insert_signed_proposal(signed_proposal)
+                self.insert_signed_proposal(signed_proposal.clone())
             }
-            Capsule::SignedPreVote(signed_pre_vote) => self.insert_signed_pre_vote(signed_pre_vote),
+            Capsule::SignedPreVote(signed_pre_vote) => {
+                self.insert_signed_pre_vote(signed_pre_vote.clone())
+            }
             Capsule::SignedPreCommit(signed_pre_commit) => {
-                self.insert_signed_pre_commit(signed_pre_commit)
+                self.insert_signed_pre_commit(signed_pre_commit.clone())
             }
-            Capsule::SignedChoke(signed_choke) => self.insert_signed_choke(signed_choke),
-            Capsule::PreVoteQC(pre_vote_qc) => self.insert_pre_vote_qc(pre_vote_qc),
-            Capsule::PreCommitQC(pre_commit_qc) => self.insert_pre_commit_qc(pre_commit_qc),
+            Capsule::SignedChoke(signed_choke) => self.insert_signed_choke(signed_choke.clone()),
+            Capsule::PreVoteQC(pre_vote_qc) => self.insert_pre_vote_qc(pre_vote_qc.clone()),
+            Capsule::PreCommitQC(pre_commit_qc) => self.insert_pre_commit_qc(pre_commit_qc.clone()),
             _ => unreachable!(),
         }
     }
@@ -537,125 +536,5 @@ fn update_vote_weight_map(
 fn update_max_vote_weight(max_weight: &mut CumWeight, cum_weight: CumWeight) {
     if max_weight.cum_weight < cum_weight.cum_weight {
         *max_weight = cum_weight;
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use crate::types::TestBlock;
-    use bytes::Bytes;
-
-    #[test]
-    fn test_cabinet() {
-        let mut cabinet = Cabinet::<TestBlock>::default();
-
-        let mut signed_pre_vote = SignedPreVote::default();
-        check_vote(
-            &mut cabinet,
-            &mut signed_pre_vote,
-            VoteType::PreVote,
-            Some(Hash::default()),
-        );
-
-        let mut signed_pre_commit = SignedPreCommit::default();
-        check_vote(
-            &mut cabinet,
-            &mut signed_pre_commit,
-            VoteType::PreCommit,
-            Some(Hash::default()),
-        );
-
-        let mut signed_choke = SignedChoke::default();
-        check_vote(&mut cabinet, &mut signed_choke, VoteType::Choke, None);
-
-        let signed_proposal = SignedProposal::default();
-        check_insert(&mut cabinet, &signed_proposal);
-        assert_eq!(cabinet.take_signed_proposal(0, 0).unwrap(), signed_proposal);
-
-        let pre_vote_qc = PreVoteQC::default();
-        check_insert(&mut cabinet, &pre_vote_qc);
-        assert_eq!(cabinet.get_pre_vote_qc(0, 0).unwrap(), pre_vote_qc);
-
-        let pre_commit_qc = PreCommitQC::default();
-        check_insert(&mut cabinet, &pre_commit_qc);
-        assert_eq!(cabinet.get_pre_commit_qc(0, 0).unwrap(), pre_commit_qc);
-
-        // test pop
-        assert!(!cabinet.0.is_empty());
-        let grids = cabinet.pop(0).unwrap();
-        assert!(cabinet.0.is_empty());
-        assert_eq!(grids.len(), 2);
-
-        // test remove
-        cabinet.insert(98, 0, pre_commit_qc.clone().into()).unwrap();
-        cabinet.insert(99, 0, pre_commit_qc.clone().into()).unwrap();
-        cabinet.insert(100, 0, pre_commit_qc.into()).unwrap();
-        cabinet.next_height(100);
-        assert_eq!(cabinet.0.len(), 1);
-    }
-
-    fn check_insert<T: Clone + Into<Capsule<TestBlock>>>(grid: &mut Cabinet<TestBlock>, data: &T) {
-        assert_eq!(grid.insert(0, 0, data.clone().into()).unwrap(), None);
-    }
-
-    fn check_vote<V: Vote>(
-        grid: &mut Cabinet<TestBlock>,
-        vote: &mut V,
-        vote_type: VoteType,
-        opt_hash: Option<Hash>,
-    ) {
-        vote.set(0, 10, Bytes::from("wcc"));
-        assert_eq!(
-            grid.insert(0, 0, vote.clone().into()).unwrap(),
-            Some(CumWeight::new(10, vote_type.clone(), 0, opt_hash.clone()))
-        );
-
-        assert!(grid.insert(0, 0, vote.clone().into()).is_err());
-        vote.set(0, 12, Bytes::from("wcc"));
-        assert!(grid.insert(0, 0, vote.clone().into()).is_err());
-        vote.set(0, 4, Bytes::from("zyc"));
-        assert_eq!(
-            grid.insert(0, 0, vote.clone().into()).unwrap(),
-            Some(CumWeight::new(14, vote_type.clone(), 0, opt_hash.clone()))
-        );
-        vote.set(1, 21, Bytes::from("yjy"));
-        assert_eq!(
-            grid.insert(0, 1, vote.clone().into()).unwrap(),
-            Some(CumWeight::new(21, vote_type.clone(), 1, opt_hash.clone()))
-        );
-        vote.set(0, 5, Bytes::from("zy"));
-        assert_eq!(
-            grid.insert(0, 0, vote.clone().into()).unwrap(),
-            Some(CumWeight::new(21, vote_type, 1, opt_hash))
-        );
-    }
-
-    trait Vote: Sized + Clone + Default + Into<Capsule<TestBlock>> {
-        fn set(&mut self, round: Round, weight: Weight, voter: Address);
-    }
-
-    impl Vote for SignedPreVote {
-        fn set(&mut self, round: Round, weight: Weight, voter: Address) {
-            self.vote.round = round;
-            self.vote_weight = weight;
-            self.voter = voter;
-        }
-    }
-
-    impl Vote for SignedPreCommit {
-        fn set(&mut self, round: Round, weight: Weight, voter: Address) {
-            self.vote.round = round;
-            self.vote_weight = weight;
-            self.voter = voter;
-        }
-    }
-
-    impl Vote for SignedChoke {
-        fn set(&mut self, round: Round, weight: Weight, voter: Address) {
-            self.choke.round = round;
-            self.vote_weight = weight;
-            self.voter = voter;
-        }
     }
 }
