@@ -15,7 +15,7 @@ use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::{select, StreamExt, TryFutureExt};
 use futures::{FutureExt, SinkExt};
 use futures_timer::Delay;
-use log::{error, warn};
+use log::{debug, error, info, warn};
 
 use crate::auth::{AuthCell, AuthFixedConfig, AuthManage};
 use crate::cabinet::{Cabinet, Capsule};
@@ -28,11 +28,7 @@ use crate::types::{
     Choke, ChokeQC, FetchedFullBlock, PreCommitQC, PreVoteQC, Proposal, SignedChoke,
     SignedPreCommit, SignedPreVote, SignedProposal, UpdateFrom, Vote,
 };
-use crate::{
-    Adapter, Address, Blk, CommonHex, ExecResult, Hash, Height, HeightRange, OverlordConfig,
-    OverlordError, OverlordMsg, OverlordResult, PriKeyHex, Proof, Round, St, TimeConfig, Wal,
-    INIT_ROUND,
-};
+use crate::{Adapter, Address, Blk, CommonHex, ExecResult, Hash, Height, HeightRange, OverlordConfig, OverlordError, OverlordMsg, OverlordResult, PriKeyHex, Proof, Round, St, TimeConfig, TinyHex, Wal, INIT_ROUND, INIT_HEIGHT};
 
 const POWER_CAP: u32 = 5;
 const TIME_DIVISOR: u64 = 10;
@@ -72,23 +68,26 @@ where
     ) -> Self {
         let wal = Wal::new(wal_path);
         let rst = wal.load_state();
-        let state = if let Err(e) = rst {
+
+        let last_commit_height;
+        let state;
+        if let Err(e) = rst {
             error!("Load state from wal failed! Try to recover state by the adapter, which face security risk if majority auth nodes lost their wal file at the same time");
-            recover_state_by_adapter(adapter).await
+            state = recover_state_by_adapter(adapter).await;
+            last_commit_height = state.stage.height;
         } else {
-            rst.unwrap()
+            state = rst.unwrap();
+            last_commit_height = state.stage.height - 1;
         };
 
-        let height = state.stage.height;
-
-        let prepare = recover_propose_prepare_and_config(adapter, height).await;
+        let prepare = recover_propose_prepare_and_config(adapter, last_commit_height).await;
         let last_exec_result = prepare
             .exec_results
             .get(&prepare.exec_height)
             .expect("Unreachable! Cannot get last exec result");
         let auth_config = last_exec_result.consensus_config.auth_config.clone();
         let time_config = last_exec_result.consensus_config.time_config.clone();
-        let last_config = if height > 0 {
+        let last_config = if last_commit_height > 0 {
             Some(
                 get_exec_result(adapter, state.stage.height - 1)
                     .await
@@ -127,27 +126,32 @@ where
     }
 
     pub async fn run(mut self) {
+        self.agent.set_timeout(self.state.stage.clone());
+
         loop {
             select! {
                 opt = self.agent.from_net.next() => {
-                    if let Err(e) = self.handle_msg(opt.expect("Net Channel is down! It's meaningless to continue running")).await {
+                    let msg = opt.expect("Net Channel is down! It's meaningless to continue running");
+                    if let Err(e) = self.handle_msg(msg.clone()).await {
                         // self.adapter.handle_error()
-                        error!("{}", e);
+                        error!("<{}> {} ###### {}", self.auth.fixed_config.address.tiny_hex(), e, msg.1);
                     }
                 }
                 opt = self.agent.from_exec.next() => {
                     self.handle_exec_result(opt.expect("Exec Channel is down! It's meaningless to continue running"));
                 }
                 opt = self.agent.from_fetch.next() => {
-                    if let Err(e) = self.handle_fetch(opt.expect("Fetch Channel is down! It's meaningless to continue running")).await {
+                    let fetch = opt.expect("Fetch Channel is down! It's meaningless to continue running");
+                    if let Err(e) = self.handle_fetch(fetch).await {
                         // self.adapter.handle_error()
-                        error!("{}", e);
+                        error!("<{}> {}", self.auth.fixed_config.address.tiny_hex(), e);
                     }
                 }
                 opt = self.agent.from_timeout.next() => {
-                    if let Err(e) = self.handle_timeout(opt.expect("Timeout Channel is down! It's meaningless to continue running")).await {
+                    let timeout = opt.expect("Timeout Channel is down! It's meaningless to continue running");
+                    if let Err(e) = self.handle_timeout(timeout.clone()).await {
                         // self.adapter.handle_error()
-                        error!("{}", e);
+                        error!("<{}> {} ###### {}", self.auth.fixed_config.address.tiny_hex(), e, timeout);
                     }
                 }
             }
@@ -637,33 +641,33 @@ async fn recover_state_by_adapter<A: Adapter<B, S>, B: Blk, S: St>(
     let height = adapter.get_latest_height(Context::default()).await.expect(
         "Cannot get the latest height from the adapter! It's meaningless to continue running",
     );
-    StateInfo::from_height(height)
+    StateInfo::from_commit_height(height)
 }
 
 async fn recover_propose_prepare_and_config<A: Adapter<B, S>, B: Blk, S: St>(
     adapter: &Arc<A>,
-    latest_height: Height,
+    last_commit_height: Height,
 ) -> ProposePrepare<S> {
-    let (block, proof) = get_block_with_proof(adapter, latest_height)
+    let (block, proof) = get_block_with_proof(adapter, last_commit_height)
         .await
         .unwrap()
         .unwrap();
     let hash = block.get_block_hash();
-    let exec_height = block.get_exec_height();
+    let last_exec_height = block.get_exec_height();
     let mut exec_results = vec![];
 
-    let start_height = if exec_height == 0 {
-        exec_height
+    let start_height = if last_exec_height == 0 {
+        last_exec_height
     } else {
-        exec_height + 1
+        last_exec_height + 1
     };
 
-    for h in start_height..=latest_height {
+    for h in start_height..=last_commit_height {
         let exec_result = get_exec_result(adapter, h).await.unwrap().unwrap();
         exec_results.push(exec_result.clone());
     }
 
-    ProposePrepare::new(latest_height, exec_results, proof, hash)
+    ProposePrepare::new(last_commit_height, exec_results, proof, hash)
 }
 
 async fn get_block_with_proof<A: Adapter<B, S>, B: Blk, S: St>(
@@ -813,6 +817,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         let opt = self.compute_timeout(&stage);
         if let Some(interval) = opt {
             let timeout_info = TimeoutInfo::new(interval, stage.into(), self.to_timeout.clone());
+            debug!("set timeout: {}", timeout_info);
             tokio::spawn(async move {
                 timeout_info.await;
             });
@@ -844,7 +849,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
             )),
             Step::Commit => {
                 let cost = Instant::now() - self.start_time;
-                cost.checked_sub(Duration::from_millis(config.interval))
+                Duration::from_millis(config.interval).checked_sub(cost)
             }
         }
     }

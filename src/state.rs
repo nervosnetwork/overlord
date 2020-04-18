@@ -11,6 +11,7 @@ use bytes::Bytes;
 use creep::Context;
 use derive_more::Display;
 use futures::channel::mpsc::UnboundedReceiver;
+use log::info;
 use rlp::{decode, encode, DecoderError};
 
 use crate::auth::AuthManage;
@@ -23,7 +24,7 @@ use crate::types::{
 };
 use crate::{
     Adapter, Address, Blk, BlockState, CommonHex, ExecResult, Hash, Height, OverlordConfig,
-    OverlordError, OverlordMsg, OverlordResult, PriKeyHex, Proof, Round, St, TimeConfig, Wal,
+    OverlordError, OverlordMsg, OverlordResult, PriKeyHex, Proof, Round, St, TimeConfig, TinyHex, Wal,
     INIT_ROUND,
 };
 use std::collections::BTreeMap;
@@ -47,9 +48,9 @@ pub struct StateInfo<B: Blk> {
 }
 
 impl<B: Blk> StateInfo<B> {
-    pub fn from_height(height: Height) -> Self {
+    pub fn from_commit_height(commit_height: Height) -> Self {
         StateInfo {
-            stage:         Stage::new(height, INIT_ROUND, Step::Propose),
+            stage:         Stage::new(commit_height, INIT_ROUND, Step::Commit),
             lock:          None,
             pre_commit_qc: None,
             block:         None,
@@ -170,6 +171,7 @@ impl Stage {
     }
 
     pub fn next_height(&mut self) {
+        info!("goto new height {}", self.height + 1);
         self.height += 1;
         self.round = INIT_ROUND;
         self.step = Step::Propose;
@@ -177,7 +179,7 @@ impl Stage {
 
     // if round jump return true
     pub fn update_stage(&mut self, stage: Stage) -> bool {
-        assert!(*self >= stage);
+        // assert!(*self < stage, "self {}, update {}", self, stage);
         let is_jump = stage.round > self.round;
         *self = stage;
         is_jump
@@ -299,7 +301,7 @@ impl From<u8> for Step {
     fmt = "exec_height: {}, pre_proof: {}, pre_hash: {}",
     exec_height,
     pre_proof,
-    "hex::encode(pre_hash.clone())"
+    "pre_hash.tiny_hex()"
 )]
 pub struct ProposePrepare<S: St> {
     pub exec_height:  Height,
@@ -360,4 +362,17 @@ impl<S: St> ProposePrepare<S> {
             .map(|(height, exec_result)| exec_result.block_states.clone())
             .collect()
     }
+}
+
+#[test]
+fn test_stage_cmp() {
+    let stage_0 = Stage::new(10, 0, Step::Propose);
+    let stage_1 = Stage::new(10, 0, Step::Propose);
+    assert_eq!(stage_0, stage_1);
+    let stage_2 = Stage::new(10, 0, Step::PreVote);
+    assert!(stage_2 > stage_1);
+    let stage_3 = Stage::new(10, 1, Step::Propose);
+    assert!(stage_3 > stage_2);
+    let stage_4 = Stage::new(9, 1, Step::Commit);
+    assert!(stage_4 < stage_3);
 }

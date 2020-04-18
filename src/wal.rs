@@ -12,7 +12,7 @@ use derive_more::Display;
 
 use crate::state::{StateInfo, Step};
 use crate::types::{FetchedFullBlock, UpdateFrom};
-use crate::{Blk, Hash, Height, OverlordError, OverlordResult, Round};
+use crate::{Blk, Hash, Height, OverlordError, OverlordResult, Round, TinyHex};
 
 const STATE_SUB_DIR: &str = "state";
 const STATE_FILE_NAME: &str = "state.wal";
@@ -53,7 +53,7 @@ impl Wal {
 
     pub fn save_full_block(&self, fetch: &FetchedFullBlock) -> OverlordResult<()> {
         let dir = self.assemble_full_block_dir(fetch.height);
-        let file_name = hex::encode(&fetch.block_hash) + ".wal";
+        let file_name = fetch.block_hash.tiny_hex() + ".wal";
         self.safe_save_file(dir, file_name, &rlp::encode(fetch))
     }
 

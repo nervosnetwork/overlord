@@ -8,7 +8,7 @@ use std::sync::Arc;
 use bit_vec::BitVec;
 use bytes::Bytes;
 use derive_more::Display;
-use log::warn;
+use log::{warn, debug};
 use prime_tools::get_primes_less_than_x;
 use rlp::{encode, Encodable};
 
@@ -110,11 +110,6 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
     }
 
     pub fn aggregate_pre_votes(&self, pre_votes: Vec<SignedPreVote>) -> OverlordResult<PreVoteQC> {
-        assert!(
-            pre_votes.is_empty(),
-            "Unreachable! pre_votes is empty while aggregate chokes!"
-        );
-
         let mut pair_list = vec![];
         let mut signatures = HashMap::new();
         pre_votes.iter().for_each(|pre_vote| {
@@ -136,11 +131,6 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         &self,
         pre_commits: Vec<SignedPreCommit>,
     ) -> OverlordResult<PreCommitQC> {
-        assert!(
-            pre_commits.is_empty(),
-            "Unreachable! pre_commits is empty while aggregate chokes!"
-        );
-
         let mut pair_list = vec![];
         let mut signatures = HashMap::new();
         pre_commits.iter().for_each(|pre_commit| {

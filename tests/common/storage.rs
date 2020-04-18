@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use overlord::{Address, Height, HeightRange, Proof};
+use overlord::{Address, Height, HeightRange, Proof, TinyHex};
 use parking_lot::RwLock;
 
 use crate::common::block::Block;
@@ -29,7 +29,7 @@ impl Storage {
                 block_exists,
                 &block,
                 "{} save a byzantine block {}",
-                hex::encode(&to),
+                to.tiny_hex(),
                 block
             );
         } else {
@@ -73,7 +73,7 @@ impl Storage {
         if height <= latest_height {
             println!(
                 "{} save lower block of height {}, while it's latest_height is {}",
-                hex::encode(&address),
+                address.tiny_hex(),
                 height,
                 latest_height
             );
@@ -82,7 +82,7 @@ impl Storage {
         if height > latest_height + 1 {
             panic!(
                 "{} save higher block of height {}, while it's latest_height is {}",
-                hex::encode(&address),
+                address.tiny_hex(),
                 height,
                 latest_height
             );

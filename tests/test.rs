@@ -10,7 +10,7 @@ use crate::common::platform::Platform;
 #[tokio::test(threaded_scheduler)]
 async fn test_4_nodes() {
     let _ = env_logger::builder()
-        .filter_level(LevelFilter::Warn)
+        .filter_level(LevelFilter::Debug)
         .is_test(true)
         .try_init();
     let platform = Platform::new(4);

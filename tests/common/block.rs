@@ -6,18 +6,18 @@ use overlord::crypto::{hex_to_address, KeyPairs};
 use overlord::types::SelectMode;
 use overlord::{
     AuthConfig, Blk, Crypto, DefaultCrypto, Hash, Height, Node, OverlordConfig, Proof, St,
-    TimeConfig,
+    TimeConfig, TinyHex
 };
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, Display, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
     fmt = "{{ pre_hash: {}, height: {}, exec_height: {}, pre_proof: {}, state_root: {}, tx: {} }}",
-    "hex::encode(pre_hash)",
+    "pre_hash.tiny_hex()",
     height,
     exec_height,
     pre_proof,
-    "hex::encode(state_root)",
+    "state_root.tiny_hex()",
     tx
 )]
 pub struct Block {
@@ -115,7 +115,6 @@ pub struct FullBlock {
 #[test]
 fn test_block_serialization() {
     let block = Block::default();
-    println! {"{:?}", block};
     let encode = block.fixed_encode().unwrap();
     let decode = Block::fixed_decode(&encode).unwrap();
     assert_eq!(decode, block);

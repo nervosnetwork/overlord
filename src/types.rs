@@ -61,9 +61,8 @@ impl_from!(
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq)]
 #[display(
-    fmt = "{{ proposal: {}， signature: {} }}",
+    fmt = "{}",
     proposal,
-    "hex::encode(signature)"
 )]
 pub struct SignedProposal<B: Blk> {
     pub proposal:  Proposal<B>,
@@ -84,9 +83,9 @@ impl<B: Blk> SignedProposal<B> {
     fmt = "{{ height: {}, round: {}, block_hash: {}, lock: {}, proposer: {} }}",
     height,
     round,
-    "hex::encode(block_hash)",
+    "block_hash.tiny_hex()",
     "lock.clone().map_or(\"None\".to_owned(), |lock| format!(\"{}\", lock))",
-    "hex::encode(proposer)"
+    "proposer.tiny_hex()"
 )]
 pub struct Proposal<B: Blk> {
     pub height:     Height,
@@ -130,7 +129,7 @@ impl<B: Blk> Proposal<B> {
     fmt = "{{ height: {}, round: {}, block_hash: {} }}",
     height,
     round,
-    "hex::encode(block_hash)"
+    "block_hash.tiny_hex()"
 )]
 pub struct Vote {
     pub height:     Height,
@@ -162,11 +161,10 @@ impl Vote {
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash)]
 #[display(
-    fmt = "{{ vote: {}, vote_weight: {}, voter: {}, signature: {},  }}",
+    fmt = "{{ vote: {}, vote_weight: {}, voter: {} }}",
     vote,
     vote_weight,
-    "hex::encode(voter)",
-    "hex::encode(signature)"
+    "voter.tiny_hex()"
 )]
 pub struct SignedPreVote {
     pub vote:        Vote,
@@ -188,11 +186,10 @@ impl SignedPreVote {
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash)]
 #[display(
-    fmt = "{{ vote: {}, vote_weight: {}, voter: {}, signature: {} }}",
+    fmt = "{{ vote: {}, vote_weight: {}, voter: {} }}",
     vote,
     vote_weight,
-    "hex::encode(voter)",
-    "hex::encode(signature)"
+    "voter.tiny_hex()"
 )]
 pub struct SignedPreCommit {
     pub vote:        Vote,
@@ -213,7 +210,7 @@ impl SignedPreCommit {
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[display(fmt = "{{ vote: {}, aggregates: {} }}", vote, aggregates)]
+#[display(fmt = "{}", vote)]
 pub struct PreVoteQC {
     pub vote:       Vote,
     pub aggregates: Aggregates,
@@ -226,7 +223,7 @@ impl PreVoteQC {
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[display(fmt = "{{ vote: {}, aggregates: {} }}", vote, aggregates)]
+#[display(fmt = "{}", vote)]
 pub struct PreCommitQC {
     pub vote:       Vote,
     pub aggregates: Aggregates,
@@ -242,9 +239,8 @@ pub type Proof = PreCommitQC;
 
 #[derive(Clone, Debug, Default, Display, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[display(
-    fmt = "{{ address_bitmap: {}, signature: {} }}",
-    "hex::encode(address_bitmap)",
-    "hex::encode(signature)"
+    fmt = "{}",
+    "address_bitmap.tiny_hex()"
 )]
 pub struct Aggregates {
     pub address_bitmap: Bytes,
@@ -262,12 +258,11 @@ impl Aggregates {
 
 #[derive(Clone, Debug, Default, Display, PartialEq, Eq, Hash)]
 #[display(
-    fmt = "{{ choke: {}, vote_weight: {}, from: {}, voter: {}, signature: {} }}",
+    fmt = "{{ choke: {}, vote_weight: {}, from: {}, voter: {} }}",
     choke,
     vote_weight,
     "from.clone().map_or(\"None\".to_owned(), |from| format!(\"{}\", from))",
-    "hex::encode(voter)",
-    "hex::encode(signature)"
+    "voter.tiny_hex()"
 )]
 pub struct SignedChoke {
     pub choke:       Choke,
@@ -309,7 +304,7 @@ impl Choke {
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[display(fmt = "{{ choke: {}, aggregates: {} }}", choke, aggregates)]
+#[display(fmt = "{}", choke)]
 pub struct ChokeQC {
     pub choke:      Choke,
     pub aggregates: Aggregates,
@@ -323,11 +318,11 @@ impl ChokeQC {
 
 #[derive(Clone, Debug, Display, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum UpdateFrom {
-    #[display(fmt = "UpdateFrom::PreVoteQC ( {} )", _0)]
+    #[display(fmt = "pre_vote_qc: {}", _0)]
     PreVoteQC(PreVoteQC),
-    #[display(fmt = "UpdateFrom::PreCommitQC ( {} )", _0)]
+    #[display(fmt = "pre_commit_qc: {}", _0)]
     PreCommitQC(PreCommitQC),
-    #[display(fmt = "UpdateFrom::ChokeQC ( {} )", _0)]
+    #[display(fmt = "choke_qc: {}", _0)]
     ChokeQC(ChokeQC),
 }
 
@@ -339,10 +334,9 @@ impl Default for UpdateFrom {
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
-    fmt = "{{ height: {}, address: {}, signature: {} }}",
+    fmt = "{{ height: {}, address: {} }}",
     height,
-    "hex::encode(address)",
-    "hex::encode(signature)"
+    "address.tiny_hex()"
 )]
 pub struct SignedHeight {
     pub height:    Height,
@@ -352,11 +346,10 @@ pub struct SignedHeight {
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
-    fmt = "{{ request_id: {}, request_range: {}, requester: {}, signature: {} }}",
-    "hex::encode(request_id)",
+    fmt = "{{ request_id: {}, request_range: {}, requester: {} }}",
+    "request_id.tiny_hex()",
     request_range,
-    "hex::encode(requester)",
-    "hex::encode(signature)"
+    "requester.tiny_hex()"
 )]
 pub struct SyncRequest {
     pub request_id:    Hash,
@@ -367,10 +360,9 @@ pub struct SyncRequest {
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
-    fmt = "{{ request_id: {}, responder: {}, signature: {} }}",
-    "hex::encode(request_id)",
-    "hex::encode(responder)",
-    "hex::encode(signature)"
+    fmt = "{{ request_id: {}, responder: {} }}",
+    "request_id.tiny_hex()",
+    "responder.tiny_hex()"
 )]
 pub struct SyncResponse<B: Blk> {
     pub request_id:        Hash,
@@ -399,7 +391,7 @@ impl HeightRange {
 #[display(
     fmt = "{{ height: {}, block_hash: {}}}",
     height,
-    "hex::encode(block_hash)"
+    "block_hash.tiny_hex()"
 )]
 pub struct FetchedFullBlock {
     pub height:     Height,
@@ -501,7 +493,7 @@ pub struct TimeConfig {
 impl Default for TimeConfig {
     fn default() -> TimeConfig {
         TimeConfig {
-            interval:         3000,
+            interval:         100,
             propose_ratio:    15,
             pre_vote_ratio:   10,
             pre_commit_ratio: 7,
@@ -513,7 +505,7 @@ impl Default for TimeConfig {
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
     fmt = "{{ address: {}, propose_w: {}, vote_w: {} }}",
-    "hex::encode(address)",
+    "address.tiny_hex()",
     propose_weight,
     vote_weight
 )]
@@ -583,7 +575,7 @@ impl From<u8> for VoteType {
     cum_weight,
     vote_type,
     round,
-    "block_hash.clone().map_or(\"None\".to_owned(), hex::encode)"
+    "block_hash.clone().map_or(\"None\".to_owned(), |hash| hash.tiny_hex())"
 )]
 pub struct CumWeight {
     pub cum_weight: Weight,
@@ -605,6 +597,18 @@ impl CumWeight {
             round,
             block_hash,
         }
+    }
+}
+
+pub trait TinyHex {
+    fn tiny_hex(&self) -> String;
+}
+
+impl TinyHex for Bytes {
+    fn tiny_hex(&self) -> String {
+        let mut hex = hex::encode(self);
+        hex.truncate(8);
+        hex
     }
 }
 

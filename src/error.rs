@@ -7,7 +7,7 @@ use derive_more::Display;
 use rlp::DecoderError;
 
 use crate::cabinet::Capsule;
-use crate::{Address, Blk, Hash, Height};
+use crate::{Address, Blk, Hash, Height, TinyHex};
 
 pub type OverlordResult<T> = Result<T, OverlordError>;
 
@@ -41,7 +41,7 @@ pub enum ErrorInfo {
     MultiVersion,
     #[display(fmt = "get block failed: {}", _0)]
     GetBlock(Box<dyn Error + Send>),
-    #[display(fmt = "fetch full block of {} failed", "hex::encode(_0.clone())")]
+    #[display(fmt = "fetch full block of {} failed", "_0.tiny_hex()")]
     FetchFullBlock(Hash),
     #[display(fmt = "exec block failed {}", _0)]
     Exec(Box<dyn Error + Send>),
