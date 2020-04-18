@@ -152,7 +152,7 @@ where
                     let msg = opt.expect("Net Channel is down! It's meaningless to continue running");
                     if let Err(e) = self.handle_msg(msg.clone()).await {
                         // self.adapter.handle_error()
-                        error!("<{}> {} ###### {}", self.address.tiny_hex(), e, msg.1);
+                        error!("<{}> [Error] {} \n\tmessage: {} \n\t state : {}\n", self.address.tiny_hex(), e, msg.1, self.state);
                     }
                 }
                 opt = self.agent.from_exec.next() => {
@@ -162,14 +162,14 @@ where
                     let fetch = opt.expect("Fetch Channel is down! It's meaningless to continue running");
                     if let Err(e) = self.handle_fetch(fetch).await {
                         // self.adapter.handle_error()
-                        error!("<{}> {}", self.address.tiny_hex(), e);
+                        error!("<{}> [Error] {}\n", self.address.tiny_hex(), e);
                     }
                 }
                 opt = self.agent.from_timeout.next() => {
                     let timeout = opt.expect("Timeout Channel is down! It's meaningless to continue running");
                     if let Err(e) = self.handle_timeout(timeout.clone()).await {
                         // self.adapter.handle_error()
-                        error!("<{}> {} ###### {}", self.address.tiny_hex(), e, timeout);
+                        error!("<{}> [Error] {} \n\ttimeout: {} \n\t state : {}\n", self.address.tiny_hex(), e, timeout, self.state);
                     }
                 }
             }
@@ -780,6 +780,13 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
     }
 
     async fn transmit(&self, to: Address, msg: OverlordMsg<B>) -> OverlordResult<()> {
+        info!(
+            "<{}> [Transmit] -> {}\n\tmessage: {} \n",
+            self.address.tiny_hex(),
+            to.tiny_hex(),
+            msg
+        );
+
         if self.address == to {
             self.to_net
                 .unbounded_send((Context::default(), msg))
@@ -794,6 +801,12 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
     }
 
     async fn broadcast(&self, msg: OverlordMsg<B>) -> OverlordResult<()> {
+        info!(
+            "<{}> [Broadcast] \n\tmessage: {} \n",
+            self.address.tiny_hex(),
+            msg
+        );
+
         self.to_net
             .unbounded_send((Context::default(), msg.clone()))
             .expect("Net Channel is down! It's meaningless to continue running");
@@ -851,7 +864,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         if let Some(interval) = opt {
             let timeout_info = TimeoutInfo::new(interval, stage.into(), self.to_timeout.clone());
             info!(
-                "<{}> [OverlordInfo] set timeout: {}",
+                "<{}> [SET TIMEOUT]\n\t{}\n",
                 self.address.tiny_hex(),
                 timeout_info
             );

@@ -3,6 +3,7 @@
 #![allow(dead_code)]
 
 use std::cmp::{Ord, Ordering, PartialOrd};
+use std::collections::BTreeMap;
 use std::error::Error;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -15,9 +16,10 @@ use log::info;
 use rlp::{decode, encode, DecoderError};
 
 use crate::auth::AuthManage;
-use crate::cabinet::Cabinet;
+use crate::cabinet::{Cabinet, Capsule};
 use crate::exec::Exec;
 use crate::smr::EventAgent;
+use crate::timeout::TimeoutEvent;
 use crate::types::{
     Choke, ChokeQC, PreCommitQC, PreVoteQC, Proposal, SignedChoke, SignedPreCommit, SignedPreVote,
     SignedProposal, UpdateFrom,
@@ -27,7 +29,6 @@ use crate::{
     OverlordError, OverlordMsg, OverlordResult, PriKeyHex, Proof, Round, St, TimeConfig, TinyHex,
     Wal, INIT_ROUND,
 };
-use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Display, Default, Eq, PartialEq)]
 #[display(
@@ -61,6 +62,8 @@ impl<B: Blk> StateInfo<B> {
 
     pub fn handle_signed_proposal(&mut self, sp: &SignedProposal<B>) -> OverlordResult<()> {
         let next_stage = self.filter_stage(sp)?;
+
+        let old_stage = self.clone();
         if self.stage.update_stage(next_stage) {
             self.from = Some(UpdateFrom::PreVoteQC(
                 sp.proposal
@@ -70,11 +73,14 @@ impl<B: Blk> StateInfo<B> {
             ));
         }
         self.update_lock(&sp.proposal)?;
+        self.log_state_update_of_msg(old_stage, sp.into());
         Ok(())
     }
 
     pub fn handle_pre_vote_qc(&mut self, pre_vote_qc: &PreVoteQC, block: B) -> OverlordResult<()> {
         let next_stage = self.filter_stage(pre_vote_qc)?;
+
+        let old_stage = self.clone();
         if self.stage.update_stage(next_stage) {
             self.from = Some(UpdateFrom::PreVoteQC(pre_vote_qc.clone()));
         }
@@ -85,6 +91,7 @@ impl<B: Blk> StateInfo<B> {
             self.lock = Some(pre_vote_qc.clone());
             self.block = Some(block);
         }
+        self.log_state_update_of_msg(old_stage, pre_vote_qc.into());
         Ok(())
     }
 
@@ -94,6 +101,8 @@ impl<B: Blk> StateInfo<B> {
         block: B,
     ) -> OverlordResult<()> {
         let next_stage = self.filter_stage(pre_commit_qc)?;
+
+        let old_stage = self.clone();
         if self.stage.update_stage(next_stage) {
             self.from = Some(UpdateFrom::PreCommitQC(pre_commit_qc.clone()));
         }
@@ -101,20 +110,28 @@ impl<B: Blk> StateInfo<B> {
             self.pre_commit_qc = Some(pre_commit_qc.clone());
             self.block = Some(block);
         }
+        self.log_state_update_of_msg(old_stage, pre_commit_qc.into());
         Ok(())
     }
 
     pub fn handle_choke_qc(&mut self, choke_qc: &ChokeQC) -> OverlordResult<()> {
         let next_stage = self.filter_stage(choke_qc)?;
+
+        let old_stage = self.clone();
         if self.stage.update_stage(next_stage) {
             self.from = Some(UpdateFrom::ChokeQC(choke_qc.clone()));
         }
+        self.log_state_update_of_msg(old_stage, choke_qc.into());
         Ok(())
     }
 
     pub fn handle_timeout(&mut self, stage: &Stage) -> OverlordResult<()> {
         let next_stage = self.filter_stage(stage)?;
+
+        let old_stage = self.clone();
         self.stage.update_stage(next_stage);
+        self.log_state_update_of_timeout(old_stage, stage.clone().into());
+
         Ok(())
     }
 
@@ -151,6 +168,26 @@ impl<B: Blk> StateInfo<B> {
         self.pre_commit_qc = None;
         self.block = None;
         self.from = None;
+    }
+
+    fn log_state_update_of_msg(&self, old_state: StateInfo<B>, msg: Capsule<B>) {
+        info!(
+            "<{}> [Message] \n\tmessage: {} \n\tbefore : {} \n\tupdated: {}\n",
+            self.address.tiny_hex(),
+            msg,
+            old_state,
+            self
+        );
+    }
+
+    fn log_state_update_of_timeout(&self, old_state: StateInfo<B>, timeout: TimeoutEvent) {
+        info!(
+            "<{}> [Timeout] \n\ttimeout: {} \n\tbefore : {} \n\tupdated: {}\n",
+            self.address.tiny_hex(),
+            timeout,
+            old_state,
+            self
+        );
     }
 }
 
