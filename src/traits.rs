@@ -19,7 +19,7 @@ use crate::types::{
 use crate::PriKeyHex;
 
 #[async_trait]
-pub trait Adapter<B: Blk, S: St>: 'static + Send + Sync + Unpin {
+pub trait Adapter<B: Blk, S: St>: 'static + Send + Sync {
     type CryptoImpl: Crypto;
 
     async fn create_block(
@@ -85,7 +85,7 @@ pub trait Adapter<B: Blk, S: St>: 'static + Send + Sync + Unpin {
 }
 
 /// should ensure the same serialization results in different environments
-pub trait Blk: 'static + Clone + Debug + Default + PartialEq + Eq + Send + Sync + Unpin {
+pub trait Blk: 'static + Clone + Debug + Default + PartialEq + Eq + Send + Sync {
     fn fixed_encode(&self) -> Result<Bytes, Box<dyn Error + Send>>;
 
     fn fixed_decode(data: &Bytes) -> Result<Self, Box<dyn Error + Send>>;
@@ -101,7 +101,7 @@ pub trait Blk: 'static + Clone + Debug + Default + PartialEq + Eq + Send + Sync 
     fn get_proof(&self) -> Proof;
 }
 
-pub trait St: 'static + Clone + Debug + Default + Send + Sync + Unpin {}
+pub trait St: 'static + Clone + Debug + Default + Send + Sync {}
 
 /// provide DefaultCrypto
 pub trait Crypto: Send {

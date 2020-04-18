@@ -332,10 +332,7 @@ where
             return Err(OverlordError::debug_high());
         }
 
-        // info!("<{}> [OverlordInfo] state: {} ,before  {}", self.address.tiny_hex(), self.state,
-        // sp);
         self.state.handle_signed_proposal(&sp)?;
-        // info!("<{}> [OverlordInfo] state: {} ,after ", self.address.tiny_hex(), self.state);
         self.agent.set_timeout(self.state.stage.clone());
         self.wal.save_state(&self.state)?;
 
