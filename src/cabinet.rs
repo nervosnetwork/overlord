@@ -190,6 +190,12 @@ impl<B: Blk> Cabinet<B> {
             .get(&height)
             .and_then(|drawer| drawer.get_pre_commit_qc(round))
     }
+
+    pub fn get_choke_qc(&self, height: Height, round: Round) -> Option<ChokeQC> {
+        self.0
+            .get(&height)
+            .and_then(|drawer| drawer.get_choke_qc(round))
+    }
 }
 
 #[derive(Default)]
@@ -320,6 +326,10 @@ impl<B: Blk> Drawer<B> {
             .get(&round)
             .and_then(|grid| grid.get_pre_commit_qc())
     }
+
+    fn get_choke_qc(&self, round: Round) -> Option<ChokeQC> {
+        self.grids.get(&round).and_then(|grid| grid.get_choke_qc())
+    }
 }
 
 #[derive(Clone, Default)]
@@ -341,6 +351,7 @@ pub struct Grid<B: Blk> {
 
     pre_vote_qc:   Option<PreVoteQC>,
     pre_commit_qc: Option<PreCommitQC>,
+    choke_qc:      Option<ChokeQC>,
 }
 
 impl<B: Blk> Grid<B> {
@@ -379,6 +390,10 @@ impl<B: Blk> Grid<B> {
         self.pre_commit_qc.clone()
     }
 
+    pub fn get_choke_qc(&self) -> Option<ChokeQC> {
+        self.choke_qc.clone()
+    }
+
     fn get_signed_pre_votes_by_hash(&self, block_hash: &Hash) -> Option<Vec<SignedPreVote>> {
         self.pre_vote_sets.get(block_hash).cloned()
     }
@@ -401,7 +416,7 @@ impl<B: Blk> Grid<B> {
             Capsule::SignedChoke(signed_choke) => self.insert_signed_choke(signed_choke.clone()),
             Capsule::PreVoteQC(pre_vote_qc) => self.insert_pre_vote_qc(pre_vote_qc.clone()),
             Capsule::PreCommitQC(pre_commit_qc) => self.insert_pre_commit_qc(pre_commit_qc.clone()),
-            _ => unreachable!(),
+            Capsule::ChokeQC(choke_qc) => self.insert_choke_qc(choke_qc.clone()),
         }
     }
 
@@ -500,12 +515,15 @@ impl<B: Blk> Grid<B> {
         Ok(None)
     }
 
-    fn insert_pre_commit_qc(
-        &mut self,
-        pre_commit_qc: PreCommitQC,
-    ) -> OverlordResult<Option<CumWeight>> {
-        check_exist(self.pre_commit_qc.as_ref(), &pre_commit_qc)?;
-        self.pre_commit_qc = Some(pre_commit_qc);
+    fn insert_pre_commit_qc(&mut self, qc: PreCommitQC) -> OverlordResult<Option<CumWeight>> {
+        check_exist(self.pre_commit_qc.as_ref(), &qc)?;
+        self.pre_commit_qc = Some(qc);
+        Ok(None)
+    }
+
+    fn insert_choke_qc(&mut self, qc: ChokeQC) -> OverlordResult<Option<CumWeight>> {
+        check_exist(self.choke_qc.as_ref(), &qc)?;
+        self.choke_qc = Some(qc);
         Ok(None)
     }
 }
