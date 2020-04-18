@@ -24,8 +24,8 @@ use crate::types::{
 };
 use crate::{
     Adapter, Address, Blk, BlockState, CommonHex, ExecResult, Hash, Height, OverlordConfig,
-    OverlordError, OverlordMsg, OverlordResult, PriKeyHex, Proof, Round, St, TimeConfig, TinyHex, Wal,
-    INIT_ROUND,
+    OverlordError, OverlordMsg, OverlordResult, PriKeyHex, Proof, Round, St, TimeConfig, TinyHex,
+    Wal, INIT_ROUND,
 };
 use std::collections::BTreeMap;
 

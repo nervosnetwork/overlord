@@ -7,6 +7,7 @@ use overlord::crypto::{KeyPair, KeyPairs};
 use overlord::types::SelectMode;
 use overlord::{
     gen_key_pairs, Address, AuthConfig, Node, OverlordConfig, OverlordServer, Proof, TimeConfig,
+    TinyHex,
 };
 
 use crate::common::adapter::OverlordAdapter;
@@ -67,13 +68,14 @@ impl Platform {
 
             let common_ref_clone = common_ref.clone();
             let pri_key = key_pair.private_key.clone();
+            let tiny_address = address.tiny_hex();
             tokio::spawn(async move {
                 OverlordServer::run(
                     common_ref_clone,
                     pri_key,
                     address,
                     &adapter,
-                    &("wal/tests/".to_owned() + &key_pair.address),
+                    &("wal/tests/".to_owned() + &tiny_address),
                 )
                 .await;
             });

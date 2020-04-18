@@ -28,7 +28,11 @@ use crate::types::{
     Choke, ChokeQC, FetchedFullBlock, PreCommitQC, PreVoteQC, Proposal, SignedChoke,
     SignedPreCommit, SignedPreVote, SignedProposal, UpdateFrom, Vote,
 };
-use crate::{Adapter, Address, Blk, CommonHex, ExecResult, Hash, Height, HeightRange, OverlordConfig, OverlordError, OverlordMsg, OverlordResult, PriKeyHex, Proof, Round, St, TimeConfig, TinyHex, Wal, INIT_ROUND, INIT_HEIGHT};
+use crate::{
+    Adapter, Address, Blk, CommonHex, ExecResult, Hash, Height, HeightRange, OverlordConfig,
+    OverlordError, OverlordMsg, OverlordResult, PriKeyHex, Proof, Round, St, TimeConfig, TinyHex,
+    Wal, INIT_HEIGHT, INIT_ROUND,
+};
 
 const POWER_CAP: u32 = 5;
 const TIME_DIVISOR: u64 = 10;
@@ -40,6 +44,7 @@ pub type WrappedOverlordMsg<B> = (Context, OverlordMsg<B>);
 
 /// State Machine Replica
 pub struct SMR<A: Adapter<B, S>, B: Blk, S: St> {
+    address: Address,
     state:   StateInfo<B>,
     prepare: ProposePrepare<S>,
 
@@ -113,15 +118,24 @@ where
         let last_auth: Option<AuthCell<B>> =
             last_config.map(|config| AuthCell::new(config.auth_config, &auth_fixed_config.address));
 
+        let address = &auth_fixed_config.address.clone();
         SMR {
             wal,
             state,
             cabinet,
             prepare,
             phantom_s: PhantomData,
+            address: address.clone(),
             adapter: Arc::<A>::clone(adapter),
             auth: AuthManage::new(auth_fixed_config, current_auth, last_auth),
-            agent: EventAgent::new(adapter, time_config, from_net, from_exec, to_exec),
+            agent: EventAgent::new(
+                address.clone(),
+                adapter,
+                time_config,
+                from_net,
+                from_exec,
+                to_exec,
+            ),
         }
     }
 
@@ -134,7 +148,7 @@ where
                     let msg = opt.expect("Net Channel is down! It's meaningless to continue running");
                     if let Err(e) = self.handle_msg(msg.clone()).await {
                         // self.adapter.handle_error()
-                        error!("<{}> {} ###### {}", self.auth.fixed_config.address.tiny_hex(), e, msg.1);
+                        error!("<{}> {} ###### {}", self.address.tiny_hex(), e, msg.1);
                     }
                 }
                 opt = self.agent.from_exec.next() => {
@@ -144,14 +158,14 @@ where
                     let fetch = opt.expect("Fetch Channel is down! It's meaningless to continue running");
                     if let Err(e) = self.handle_fetch(fetch).await {
                         // self.adapter.handle_error()
-                        error!("<{}> {}", self.auth.fixed_config.address.tiny_hex(), e);
+                        error!("<{}> {}", self.address.tiny_hex(), e);
                     }
                 }
                 opt = self.agent.from_timeout.next() => {
                     let timeout = opt.expect("Timeout Channel is down! It's meaningless to continue running");
                     if let Err(e) = self.handle_timeout(timeout.clone()).await {
                         // self.adapter.handle_error()
-                        error!("<{}> {} ###### {}", self.auth.fixed_config.address.tiny_hex(), e, timeout);
+                        error!("<{}> {} ###### {}", self.address.tiny_hex(), e, timeout);
                     }
                 }
             }
@@ -316,11 +330,13 @@ where
             return Err(OverlordError::debug_high());
         }
 
+        // info!("<{}> [OverlordInfo] state: {} ,before  {}", self.address.tiny_hex(), self.state,
+        // sp);
         self.state.handle_signed_proposal(&sp)?;
+        // info!("<{}> [OverlordInfo] state: {} ,after ", self.address.tiny_hex(), self.state);
         self.agent.set_timeout(self.state.stage.clone());
         self.wal.save_state(&self.state)?;
 
-        self.auth.can_i_vote()?;
         let vote = self.auth.sign_pre_vote(sp.proposal.as_vote())?;
         self.agent.transmit(sp.proposal.proposer, vote.into()).await
     }
@@ -419,10 +435,10 @@ where
                 .get_block(msg_h, &qc.vote.block_hash)
                 .expect("Unreachable! Lost a block which full block exist");
             self.state.handle_pre_vote_qc(&qc, block.clone())?;
+
             self.agent.set_timeout(self.state.stage.clone());
             self.wal.save_state(&self.state)?;
 
-            self.auth.can_i_vote()?;
             let vote = self.auth.sign_pre_commit(qc.vote.clone())?;
             let leader = self.auth.get_leader(msg_h, msg_r);
             self.agent.transmit(leader, vote.into()).await?;
@@ -586,7 +602,6 @@ where
     async fn create_signed_proposal(&self) -> OverlordResult<SignedProposal<B>> {
         let height = self.state.stage.height;
         let round = self.state.stage.round;
-        let proposer = self.auth.fixed_config.address.clone();
         let proposal = if let Some(lock) = &self.state.lock {
             let block = self
                 .state
@@ -600,12 +615,12 @@ where
                 block.clone(),
                 hash,
                 Some(lock.clone()),
-                proposer,
+                self.address.clone(),
             )
         } else {
             let block = self.create_block().await?;
             let hash = block.get_block_hash();
-            Proposal::new(height, round, block, hash, None, proposer)
+            Proposal::new(height, round, block, hash, None, self.address.clone())
         };
         self.auth.sign_proposal(proposal)
     }
@@ -705,6 +720,7 @@ async fn get_exec_result<A: Adapter<B, S>, B: Blk, S: St>(
 }
 
 pub struct EventAgent<A: Adapter<B, S>, B: Blk, S: St> {
+    address:     Address,
     adapter:     Arc<A>,
     time_config: TimeConfig,
     start_time:  Instant, // start time of current height
@@ -724,6 +740,7 @@ pub struct EventAgent<A: Adapter<B, S>, B: Blk, S: St> {
 
 impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
     fn new(
+        address: Address,
         adapter: &Arc<A>,
         time_config: TimeConfig,
         from_net: UnboundedReceiver<(Context, OverlordMsg<B>)>,
@@ -733,6 +750,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         let (to_fetch, from_fetch) = unbounded();
         let (to_timeout, from_timeout) = unbounded();
         EventAgent {
+            address,
             adapter: Arc::<A>::clone(adapter),
             fetch_set: HashSet::new(),
             start_time: Instant::now(),
@@ -817,7 +835,11 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         let opt = self.compute_timeout(&stage);
         if let Some(interval) = opt {
             let timeout_info = TimeoutInfo::new(interval, stage.into(), self.to_timeout.clone());
-            debug!("set timeout: {}", timeout_info);
+            info!(
+                "<{}> [OverlordInfo] set timeout: {}",
+                self.address.tiny_hex(),
+                timeout_info
+            );
             tokio::spawn(async move {
                 timeout_info.await;
             });

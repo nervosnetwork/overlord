@@ -8,7 +8,7 @@ use std::sync::Arc;
 use bit_vec::BitVec;
 use bytes::Bytes;
 use derive_more::Display;
-use log::{warn, debug};
+use log::{debug, warn};
 use prime_tools::get_primes_less_than_x;
 use rlp::{encode, Encodable};
 
@@ -231,6 +231,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
     }
 
     fn sign(&self, hash: &Hash) -> OverlordResult<Signature> {
+        self.can_i_vote()?;
         A::CryptoImpl::sign(self.fixed_config.pri_key.clone(), hash)
             .map_err(OverlordError::local_crypto)
     }

@@ -6,7 +6,7 @@ use overlord::crypto::{hex_to_address, KeyPairs};
 use overlord::types::SelectMode;
 use overlord::{
     AuthConfig, Blk, Crypto, DefaultCrypto, Hash, Height, Node, OverlordConfig, Proof, St,
-    TimeConfig, TinyHex
+    TimeConfig, TinyHex,
 };
 use serde::{Deserialize, Serialize};
 

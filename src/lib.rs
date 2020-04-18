@@ -23,7 +23,7 @@ pub use error::{OverlordError, OverlordResult};
 pub use traits::{Adapter, Blk, Crypto, St};
 pub use types::{
     Address, AuthConfig, BlockState, CommonHex, ExecResult, Hash, Height, HeightRange, Node,
-    OverlordConfig, OverlordMsg, Proof, Round, Signature, TimeConfig, TinyHex
+    OverlordConfig, OverlordMsg, Proof, Round, Signature, TimeConfig, TinyHex,
 };
 
 use std::marker::PhantomData;

@@ -60,10 +60,7 @@ impl_from!(
 );
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq)]
-#[display(
-    fmt = "{}",
-    proposal,
-)]
+#[display(fmt = "{}", proposal)]
 pub struct SignedProposal<B: Blk> {
     pub proposal:  Proposal<B>,
     pub signature: Signature,
@@ -238,10 +235,7 @@ impl PreCommitQC {
 pub type Proof = PreCommitQC;
 
 #[derive(Clone, Debug, Default, Display, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[display(
-    fmt = "{}",
-    "address_bitmap.tiny_hex()"
-)]
+#[display(fmt = "{}", "address_bitmap.tiny_hex()")]
 pub struct Aggregates {
     pub address_bitmap: Bytes,
     pub signature:      Signature,
@@ -333,11 +327,7 @@ impl Default for UpdateFrom {
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[display(
-    fmt = "{{ height: {}, address: {} }}",
-    height,
-    "address.tiny_hex()"
-)]
+#[display(fmt = "{{ height: {}, address: {} }}", height, "address.tiny_hex()")]
 pub struct SignedHeight {
     pub height:    Height,
     pub address:   Address,
