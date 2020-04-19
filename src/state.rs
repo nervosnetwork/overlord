@@ -20,10 +20,7 @@ use crate::cabinet::{Cabinet, Capsule};
 use crate::exec::Exec;
 use crate::smr::EventAgent;
 use crate::timeout::TimeoutEvent;
-use crate::types::{
-    Choke, ChokeQC, PreCommitQC, PreVoteQC, Proposal, SignedChoke, SignedPreCommit, SignedPreVote,
-    SignedProposal, UpdateFrom,
-};
+use crate::types::{Choke, ChokeQC, PreCommitQC, PreVoteQC, Proposal, SignedChoke, SignedPreCommit, SignedPreVote, SignedProposal, UpdateFrom, Aggregates, Vote};
 use crate::{
     Adapter, Address, Blk, BlockState, CommonHex, ExecResult, Hash, Height, OverlordConfig,
     OverlordError, OverlordMsg, OverlordResult, PriKeyHex, Proof, Round, St, TimeConfig, TinyHex,
@@ -102,21 +99,21 @@ impl<B: Blk> StateInfo<B> {
 
     pub fn handle_pre_commit_qc(
         &mut self,
-        pre_commit_qc: &PreCommitQC,
+        qc: &PreCommitQC,
         block: B,
         from: &Address,
     ) -> OverlordResult<()> {
-        let next_stage = self.filter_stage(pre_commit_qc)?;
+        let next_stage = self.filter_stage(qc)?;
 
         let old_stage = self.clone();
         if self.stage.update_stage(next_stage) {
-            self.from = Some(UpdateFrom::PreCommitQC(pre_commit_qc.clone()));
+            self.from = Some(UpdateFrom::PreCommitQC(qc.clone()));
         }
-        if !pre_commit_qc.vote.is_empty_vote() {
-            self.pre_commit_qc = Some(pre_commit_qc.clone());
+        if !qc.vote.is_empty_vote() {
+            self.pre_commit_qc = Some(qc.clone());
             self.block = Some(block);
         }
-        self.log_state_update_of_msg(old_stage, from, pre_commit_qc.into());
+        self.log_state_update_of_msg(old_stage, from, qc.into());
         Ok(())
     }
 
@@ -143,7 +140,9 @@ impl<B: Blk> StateInfo<B> {
 
     pub fn filter_stage<T: NextStage>(&self, msg: &T) -> OverlordResult<Stage> {
         let next_stage = msg.next_stage();
-        if next_stage < self.stage || (next_stage == self.stage && self.stage.step != Step::Brake) {
+        if next_stage < self.stage {
+            return Err(OverlordError::debug_under_stage());
+        } else if next_stage == self.stage && self.stage.step != Step::Brake {
             return Err(OverlordError::debug_under_stage());
         }
         Ok(next_stage)
@@ -284,7 +283,7 @@ impl NextStage for PreCommitQC {
         if self.vote.is_empty_vote() {
             Stage::new(self.vote.height, self.vote.round, Step::Brake)
         } else {
-            Stage::new(self.vote.height, self.vote.round, Step::Commit)
+            Stage::new(self.vote.height, Round::max_value(), Step::Commit)
         }
     }
 }
@@ -424,4 +423,7 @@ fn test_stage_cmp() {
     assert!(stage_3 > stage_2);
     let stage_4 = Stage::new(9, 1, Step::Commit);
     assert!(stage_4 < stage_3);
+    let vote = Vote::new(10, 0, Bytes::from("1111"));
+    let pre_commit_qc = PreCommitQC::new(vote, Aggregates::default());
+    assert!(pre_commit_qc.next_stage() > stage_4);
 }

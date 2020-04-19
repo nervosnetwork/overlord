@@ -712,10 +712,17 @@ where
         if height < my_height {
             return Err(OverlordError::debug_old());
         } else if height == my_height && round < my_round {
-            if let Capsule::SignedProposal(_) = capsule {
-                return Ok(());
+            return match capsule {
+                Capsule::SignedProposal(_) => Ok(()),
+                Capsule::PreCommitQC(qc) => {
+                    if qc.vote.is_empty_vote() {
+                        Err(OverlordError::debug_old())
+                    }else {
+                        Ok(())
+                    }
+                },
+                _ => Err(OverlordError::debug_old())
             }
-            return Err(OverlordError::debug_old());
         } else if height > my_height + HEIGHT_WINDOW || round > my_round + ROUND_WINDOW {
             return Err(OverlordError::net_much_high());
         } else if height > my_height {
