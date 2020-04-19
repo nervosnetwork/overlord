@@ -582,8 +582,10 @@ where
             self.prepare
         );
 
-        // if self is leader, should not wait for interval timeout. This is different from previous
-        // design.
+        // If self is leader, should not wait for interval timeout.
+        // This is the exact opposite of the previous design.
+        // So the time_config should also be changed.
+        // make sure ( pre_vote_timeout >= propose_timeout + interval )
         if !self.auth.am_i_leader(next_height, INIT_ROUND)
             && self.agent.set_timeout(self.state.stage.clone())
         {
@@ -717,12 +719,12 @@ where
                 Capsule::PreCommitQC(qc) => {
                     if qc.vote.is_empty_vote() {
                         Err(OverlordError::debug_old())
-                    }else {
+                    } else {
                         Ok(())
                     }
-                },
-                _ => Err(OverlordError::debug_old())
-            }
+                }
+                _ => Err(OverlordError::debug_old()),
+            };
         } else if height > my_height + HEIGHT_WINDOW || round > my_round + ROUND_WINDOW {
             return Err(OverlordError::net_much_high());
         } else if height > my_height {

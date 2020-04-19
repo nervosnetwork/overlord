@@ -20,7 +20,10 @@ use crate::cabinet::{Cabinet, Capsule};
 use crate::exec::Exec;
 use crate::smr::EventAgent;
 use crate::timeout::TimeoutEvent;
-use crate::types::{Choke, ChokeQC, PreCommitQC, PreVoteQC, Proposal, SignedChoke, SignedPreCommit, SignedPreVote, SignedProposal, UpdateFrom, Aggregates, Vote};
+use crate::types::{
+    Aggregates, Choke, ChokeQC, PreCommitQC, PreVoteQC, Proposal, SignedChoke, SignedPreCommit,
+    SignedPreVote, SignedProposal, UpdateFrom, Vote,
+};
 use crate::{
     Adapter, Address, Blk, BlockState, CommonHex, ExecResult, Hash, Height, OverlordConfig,
     OverlordError, OverlordMsg, OverlordResult, PriKeyHex, Proof, Round, St, TimeConfig, TinyHex,
