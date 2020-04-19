@@ -368,12 +368,43 @@ pub struct SyncRequest {
     pub signature:     Signature,
 }
 
+impl SyncRequest {
+    pub fn new(request_range: HeightRange, requester: Address, signature: Signature) -> Self {
+        SyncRequest {
+            request_range,
+            requester,
+            signature,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[display(fmt = "{{ responder: {} }}", "responder.tiny_hex()")]
+#[display(
+    fmt = "{{ request_range: {}, responder: {} }}",
+    request_range,
+    "responder.tiny_hex()"
+)]
 pub struct SyncResponse<B: Blk> {
+    pub request_range:     HeightRange,
     pub block_with_proofs: Vec<(B, Proof)>,
     pub responder:         Address,
     pub signature:         Signature,
+}
+
+impl<B: Blk> SyncResponse<B> {
+    pub fn new(
+        request_range: HeightRange,
+        block_with_proofs: Vec<(B, Proof)>,
+        responder: Address,
+        signature: Signature,
+    ) -> Self {
+        SyncResponse {
+            request_range,
+            block_with_proofs,
+            responder,
+            signature,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Display, PartialEq, Eq, Serialize, Deserialize)]

@@ -20,7 +20,7 @@ use log::{debug, error, info, warn};
 use crate::auth::{AuthCell, AuthFixedConfig, AuthManage};
 use crate::cabinet::{Cabinet, Capsule};
 use crate::error::{ErrorInfo, ErrorKind};
-use crate::exec::ExecRequest;
+use crate::exec::{Exec, ExecRequest};
 use crate::state::Step::Propose;
 use crate::state::{ProposePrepare, Stage, StateInfo, Step};
 use crate::sync::{Sync, BLOCK_BATCH, CLEAR_TIMEOUT_RATIO, HEIGHT_RATIO, SYNC_TIMEOUT_RATIO};
@@ -28,7 +28,7 @@ use crate::timeout::TimeoutEvent::HeightTimeout;
 use crate::timeout::{TimeoutEvent, TimeoutInfo};
 use crate::types::{
     Choke, ChokeQC, FetchedFullBlock, PreCommitQC, PreVoteQC, Proposal, SignedChoke, SignedHeight,
-    SignedPreCommit, SignedPreVote, SignedProposal, UpdateFrom, Vote,
+    SignedPreCommit, SignedPreVote, SignedProposal, SyncRequest, SyncResponse, UpdateFrom, Vote,
 };
 use crate::{
     Adapter, Address, Blk, CommonHex, ExecResult, Hash, Height, HeightRange, OverlordConfig,
@@ -214,10 +214,16 @@ where
             OverlordMsg::PreCommitQC(pre_commit_qc) => {
                 self.handle_pre_commit_qc(pre_commit_qc, true).await?;
             }
-            OverlordMsg::SignedHeight(signed_height) => {}
-            _ => {
-                // ToDo: synchronization
+            OverlordMsg::SignedHeight(signed_height) => {
+                self.handle_signed_height(signed_height).await?;
             }
+            OverlordMsg::SyncRequest(request) => {
+                self.handle_sync_request(request).await?;
+            }
+            OverlordMsg::SyncResponse(response) => {
+                self.handle_sync_response(response).await?;
+            }
+            _ => {}
         }
 
         Ok(())
@@ -262,32 +268,18 @@ where
 
     async fn handle_timeout(&mut self, timeout_event: TimeoutEvent) -> OverlordResult<()> {
         match timeout_event {
-            TimeoutEvent::ProposeTimeout(stage) => {
-                self.handle_propose_timeout(stage).await?;
-            }
-            TimeoutEvent::PreVoteTimeout(stage) => {
-                self.handle_pre_vote_timeout(stage).await?;
-            }
-            TimeoutEvent::PreCommitTimeout(stage) => {
-                self.handle_pre_commit_timeout(stage).await?;
-            }
-            TimeoutEvent::BrakeTimeout(stage) => {
-                self.handle_brake_timeout(stage).await?;
-            }
-            TimeoutEvent::NextHeightTimeout(stage) => {
-                self.handle_next_height_timeout(stage).await?;
-            }
-            TimeoutEvent::HeightTimeout => {
-                self.agent.set_height_timeout(self.state.stage.height);
-            }
-            TimeoutEvent::SyncTimeout(request_id) => {
-                self.handle_sync_timeout(request_id).await?;
-            }
+            TimeoutEvent::ProposeTimeout(stage) => self.handle_propose_timeout(stage).await,
+            TimeoutEvent::PreVoteTimeout(stage) => self.handle_pre_vote_timeout(stage).await,
+            TimeoutEvent::PreCommitTimeout(stage) => self.handle_pre_commit_timeout(stage).await,
+            TimeoutEvent::BrakeTimeout(stage) => self.handle_brake_timeout(stage).await,
+            TimeoutEvent::NextHeightTimeout(stage) => self.handle_next_height_timeout(stage).await,
+            TimeoutEvent::HeightTimeout => self.handle_height_timeout().await,
+            TimeoutEvent::SyncTimeout(request_id) => self.sync.handle_sync_timeout(request_id),
             TimeoutEvent::ClearTimeout(address) => {
-                self.handle_clear_timeout(address).await?;
+                self.sync.handle_clear_timeout(&address);
+                Ok(())
             }
         }
-        Ok(())
     }
 
     async fn handle_propose_timeout(&mut self, stage: Stage) -> OverlordResult<()> {
@@ -549,7 +541,8 @@ where
             self.state
                 .handle_pre_commit_qc(&qc, block.clone(), &leader)?;
             self.wal.save_state(&self.state)?;
-            self.handle_commit().await?;
+            let exec_result = self.get_exec_block().await;
+            self.handle_commit(exec_result).await?;
         }
         Ok(())
     }
@@ -571,7 +564,7 @@ where
         self.new_round().await
     }
 
-    async fn handle_commit(&mut self) -> OverlordResult<()> {
+    async fn get_exec_block(&mut self) -> ExecResult<S> {
         let proof = self
             .state
             .pre_commit_qc
@@ -593,11 +586,15 @@ where
             .as_ref()
             .expect("Unreachable! Lost commit block when commit")
             .get_exec_height();
+
         let next_height = height + 1;
 
-        let commit_exec_result =
-            self.prepare
-                .handle_commit(commit_hash, proof.clone(), commit_exec_h, next_height);
+        self.prepare
+            .handle_commit(commit_hash, proof.clone(), commit_exec_h, next_height)
+    }
+
+    async fn handle_commit(&mut self, commit_exec_result: ExecResult<S>) -> OverlordResult<()> {
+        let next_height = self.state.stage.height + 1;
         self.auth
             .handle_commit(commit_exec_result.consensus_config.auth_config);
         self.cabinet.handle_commit(next_height, &self.auth);
@@ -622,16 +619,81 @@ where
         self.next_height().await
     }
 
-    async fn handle_signed_height(&mut self) -> OverlordResult<()> {
+    async fn handle_signed_height(&mut self, signed_height: SignedHeight) -> OverlordResult<()> {
+        let my_height = self.state.stage.height;
+        if signed_height.height <= my_height || self.state.stage.step != Step::Brake {
+            return Err(OverlordError::debug_old());
+        }
+
+        self.auth.verify_signed_height(&signed_height)?;
+        self.sync.handle_signed_height(&signed_height)?;
+        self.agent.set_sync_timeout(self.sync.request_id);
+        let range = HeightRange::new(my_height, BLOCK_BATCH);
+        let request = self.auth.sign_sync_request(range)?;
+        self.agent
+            .transmit(signed_height.address.clone(), request.into())
+            .await
+    }
+
+    async fn handle_sync_request(&mut self, request: SyncRequest) -> OverlordResult<()> {
+        if request.request_range.from >= self.state.stage.height {
+            return Err(OverlordError::byz_req_high());
+        }
+
+        self.sync.handle_sync_request(&request)?;
+        let blocks = self
+            .adapter
+            .get_block_with_proofs(Context::default(), request.request_range.clone())
+            .await
+            .map_err(OverlordError::local_get_block)?;
+        let response = self
+            .auth
+            .sign_sync_response(request.request_range.clone(), blocks)?;
+        self.agent
+            .transmit(request.requester, response.into())
+            .await
+    }
+
+    async fn handle_sync_response(&mut self, response: SyncResponse<B>) -> OverlordResult<()> {
+        if response.request_range.to < self.state.stage.height {
+            return Err(OverlordError::debug_old());
+        }
+        self.auth.verify_sync_response(&response)?;
+
+        // todo: make sure block_with_proofs is order by height
+        for (block, proof) in response.block_with_proofs {
+            if block.get_height() == self.state.stage.height {
+                self.check_block(&block).await?;
+                self.auth.verify_pre_commit_qc(&proof)?;
+                let full_block = self
+                    .adapter
+                    .fetch_full_block(Context::default(), block.clone())
+                    .map_err(|_| OverlordError::net_fetch(block.get_block_hash()))
+                    .await?;
+                let exec_result = self
+                    .adapter
+                    .save_and_exec_block_with_proof(
+                        Context::default(),
+                        block.get_height(),
+                        full_block,
+                        proof,
+                    )
+                    .await
+                    .expect("Execution is down! It's meaningless to continue running");
+                self.handle_commit(exec_result).await?;
+            }
+        }
+
         Ok(())
     }
 
-    async fn handle_sync_timeout(&mut self, request_id: u64) -> OverlordResult<()> {
-        Ok(())
-    }
+    async fn handle_height_timeout(&mut self) -> OverlordResult<()> {
+        self.agent.set_height_timeout(self.state.stage.height);
 
-    async fn handle_clear_timeout(&mut self, address: Address) -> OverlordResult<()> {
-        Ok(())
+        let height = self.state.stage.height;
+        let signed_height = self.auth.sign_height(height)?;
+        // todo: can optimized by transmit a random peer instead of broadcast
+        self.agent.broadcast(signed_height.into()).await
     }
 
     async fn next_height(&mut self) -> OverlordResult<()> {

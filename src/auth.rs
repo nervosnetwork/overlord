@@ -19,7 +19,8 @@ use crate::types::{
     SignedProposal, SyncRequest, SyncResponse, UpdateFrom, Vote, VoteType, Weight,
 };
 use crate::{
-    Adapter, Address, AuthConfig, Blk, CommonHex, Crypto, Hash, Height, Round, Signature, St,
+    Adapter, Address, AuthConfig, Blk, CommonHex, Crypto, Hash, Height, HeightRange, Round,
+    Signature, St,
 };
 use crate::{OverlordError, OverlordResult};
 
@@ -224,6 +225,47 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
             self.fixed_config.address.clone(),
             signature,
         ))
+    }
+
+    pub fn verify_signed_height(&self, signed_height: &SignedHeight) -> OverlordResult<()> {
+        let height_vec = signed_height.height.to_be_bytes()[0..].to_vec();
+        let hash = A::CryptoImpl::hash(&Bytes::from(height_vec));
+        self.verify_signature(&signed_height.address, &hash, &signed_height.signature)
+    }
+
+    pub fn sign_sync_request(&self, range: HeightRange) -> OverlordResult<SyncRequest> {
+        let hash = A::CryptoImpl::hash(&Bytes::from(rlp::encode(&range)));
+        let signature = self.sign(&hash, false)?;
+        Ok(SyncRequest::new(
+            range,
+            self.fixed_config.address.clone(),
+            signature,
+        ))
+    }
+
+    pub fn verify_sync_request(&self, request: SyncRequest) -> OverlordResult<()> {
+        let hash = A::CryptoImpl::hash(&Bytes::from(rlp::encode(&request.request_range)));
+        self.verify_signature(&request.requester, &hash, &request.signature)
+    }
+
+    pub fn sign_sync_response(
+        &self,
+        range: HeightRange,
+        blocks: Vec<(B, Proof)>,
+    ) -> OverlordResult<SyncResponse<B>> {
+        let hash = A::CryptoImpl::hash(&Bytes::from(rlp::encode(&range)));
+        let signature = self.sign(&hash, false)?;
+        Ok(SyncResponse::new(
+            range,
+            blocks,
+            self.fixed_config.address.clone(),
+            signature,
+        ))
+    }
+
+    pub fn verify_sync_response(&self, response: &SyncResponse<B>) -> OverlordResult<()> {
+        let hash = A::CryptoImpl::hash(&Bytes::from(rlp::encode(&response.request_range)));
+        self.verify_signature(&response.responder, &hash, &response.signature)
     }
 
     pub fn am_i_leader(&self, height: Height, round: Round) -> bool {

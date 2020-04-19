@@ -5,8 +5,8 @@ use rlp::{Decodable, DecoderError, Encodable, Prototype, Rlp, RlpStream};
 
 use crate::state::{Stage, StateInfo, Step};
 use crate::types::{
-    Aggregates, Choke, ChokeQC, FetchedFullBlock, PreCommitQC, PreVoteQC, Proposal, SignedChoke,
-    SignedPreCommit, SignedPreVote, SignedProposal, UpdateFrom, Vote, Weight,
+    Aggregates, Choke, ChokeQC, FetchedFullBlock, HeightRange, PreCommitQC, PreVoteQC, Proposal,
+    SignedChoke, SignedPreCommit, SignedPreVote, SignedProposal, UpdateFrom, Vote, Weight,
 };
 use crate::{Address, Blk, Hash, Height, Round, Signature};
 
@@ -471,6 +471,26 @@ impl Decodable for FetchedFullBlock {
     }
 }
 
+// impl Encodable and Decodable trait for HeightRange
+impl Encodable for HeightRange {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        s.begin_list(2).append(&self.from).append(&self.to);
+    }
+}
+
+impl Decodable for HeightRange {
+    fn decode(r: &Rlp) -> Result<Self, DecoderError> {
+        match r.prototype()? {
+            Prototype::List(2) => {
+                let from = r.val_at(0)?;
+                let to = r.val_at(1)?;
+                Ok(HeightRange { from, to })
+            }
+            _ => Err(DecoderError::RlpInconsistentLengthAndData),
+        }
+    }
+}
+
 #[test]
 fn test_codec() {
     use crate::types::TestBlock;
@@ -491,6 +511,7 @@ fn test_codec() {
     test_rlp::<UpdateFrom>();
     test_rlp::<Vote>();
     test_rlp::<ChokeQC>();
+    test_rlp::<HeightRange>();
 }
 
 fn test_rlp<T: Debug + Default + PartialEq + Eq + Decodable + Encodable>() {

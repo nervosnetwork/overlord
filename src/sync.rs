@@ -52,8 +52,6 @@ impl Sync {
         if self.black_list.contains(&request.requester) {
             return Err(OverlordError::net_blacklist());
         }
-        self.request_id += 1;
-        self.state = SyncStat::On;
         self.black_list.insert(request.requester.clone());
         Ok(())
     }
@@ -66,6 +64,7 @@ impl Sync {
             return Err(OverlordError::net_blacklist());
         }
         self.state = SyncStat::On;
+        self.request_id += 1;
         self.black_list.insert(signed_height.address.clone());
         Ok(())
     }

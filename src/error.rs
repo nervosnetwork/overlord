@@ -81,6 +81,8 @@ pub enum ErrorInfo {
     InBlockList,
     #[display(fmt = "on sync")]
     OnSync,
+    #[display(fmt = "request higher block")]
+    RequestHigher,
 }
 
 #[derive(Debug, Display)]
@@ -305,6 +307,13 @@ impl OverlordError {
         OverlordError {
             kind: ErrorKind::Debug,
             info: ErrorInfo::OnSync,
+        }
+    }
+
+    pub fn byz_req_high() -> Self {
+        OverlordError {
+            kind: ErrorKind::Byzantine,
+            info: ErrorInfo::RequestHigher,
         }
     }
 }
