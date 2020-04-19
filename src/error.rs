@@ -75,6 +75,8 @@ pub enum ErrorInfo {
     CreateBlock(Box<dyn Error + Send>),
     #[display(fmt = "lock empty vote in proposal")]
     EmptyLock,
+    #[display(fmt = "exec behind consensus to much")]
+    BehindMuch,
 }
 
 #[derive(Debug, Display)]
@@ -271,6 +273,13 @@ impl OverlordError {
         OverlordError {
             kind: ErrorKind::Byzantine,
             info: ErrorInfo::EmptyLock,
+        }
+    }
+
+    pub fn local_behind() -> Self {
+        OverlordError {
+            kind: ErrorKind::LocalError,
+            info: ErrorInfo::BehindMuch,
         }
     }
 }

@@ -349,8 +349,9 @@ impl From<u8> for Step {
     "pre_hash.tiny_hex()"
 )]
 pub struct ProposePrepare<S: St> {
-    pub exec_height:  Height,
-    pub exec_results: BTreeMap<Height, ExecResult<S>>,
+    pub max_exec_behind: u64,
+    pub exec_height:     Height,
+    pub exec_results:    BTreeMap<Height, ExecResult<S>>,
 
     pub pre_proof: Proof, /* proof for the previous block which will be involved in the
                            * next block */
@@ -359,6 +360,7 @@ pub struct ProposePrepare<S: St> {
 
 impl<S: St> ProposePrepare<S> {
     pub fn new(
+        max_exec_behind: u64,
         exec_height: Height,
         exec_results: Vec<ExecResult<S>>,
         pre_proof: Proof,
@@ -369,6 +371,7 @@ impl<S: St> ProposePrepare<S> {
             .map(|rst| (rst.block_states.height, rst))
             .collect();
         ProposePrepare {
+            max_exec_behind,
             exec_height,
             exec_results,
             pre_proof,
@@ -402,6 +405,7 @@ impl<S: St> ProposePrepare<S> {
             })
             .clone();
         self.exec_results = self.exec_results.split_off(&commit_exec_h);
+        self.max_exec_behind = commit_exec_result.consensus_config.max_exec_behind;
         commit_exec_result
     }
 

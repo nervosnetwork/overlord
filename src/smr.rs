@@ -645,6 +645,9 @@ where
 
     async fn check_block(&self, block: &B) -> OverlordResult<()> {
         let exec_h = block.get_exec_height();
+        if block.get_height() > exec_h + self.prepare.max_exec_behind {
+            return Err(OverlordError::byz_block());
+        }
         if self.prepare.exec_height < exec_h {
             return Err(OverlordError::warn_block());
         }
@@ -661,6 +664,9 @@ where
     async fn create_block(&self) -> OverlordResult<B> {
         let height = self.state.stage.height;
         let exec_height = self.prepare.exec_height;
+        if height > exec_height + self.prepare.max_exec_behind {
+            return Err(OverlordError::local_behind());
+        }
         let pre_hash = self.prepare.pre_hash.clone();
         let pre_proof = self.prepare.pre_proof.clone();
         let block_states = self.prepare.get_block_states_list(exec_height);
@@ -790,12 +796,21 @@ async fn recover_propose_prepare_and_config<A: Adapter<B, S>, B: Blk, S: St>(
         last_exec_height + 1
     };
 
+    let mut max_exec_behind = 5;
+
     for h in start_height..=last_commit_height {
         let exec_result = get_exec_result(adapter, h).await.unwrap().unwrap();
-        exec_results.push(exec_result.clone());
+        max_exec_behind = exec_result.consensus_config.max_exec_behind;
+        exec_results.push(exec_result);
     }
 
-    ProposePrepare::new(last_commit_height, exec_results, proof, hash)
+    ProposePrepare::new(
+        max_exec_behind,
+        last_commit_height,
+        exec_results,
+        proof,
+        hash,
+    )
 }
 
 async fn get_block_with_proof<A: Adapter<B, S>, B: Blk, S: St>(
