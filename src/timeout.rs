@@ -16,15 +16,15 @@ use std::sync::mpsc::RecvTimeoutError::Timeout;
 
 #[derive(Clone, Debug, Display)]
 pub enum TimeoutEvent {
-    #[display(fmt = "ProposeTimeout( {} )", _0)]
+    #[display(fmt = "propose_timeout: {}", _0)]
     ProposeTimeout(Stage),
-    #[display(fmt = "PreVoteTimeout( {} )", _0)]
+    #[display(fmt = "pre_vote_timeout: {}", _0)]
     PreVoteTimeout(Stage),
-    #[display(fmt = "PreCommitTimeout( {} )", _0)]
+    #[display(fmt = "pre_commit_timeout: {}", _0)]
     PreCommitTimeout(Stage),
-    #[display(fmt = "BrakeTimeout( {} )", _0)]
+    #[display(fmt = "brake_timeout: {}", _0)]
     BrakeTimeout(Stage),
-    #[display(fmt = "HeightTimeout( {} )", _0)]
+    #[display(fmt = "next_height_timeout: {}", _0)]
     NextHeightTimeout(Stage),
 }
 

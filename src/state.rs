@@ -32,7 +32,7 @@ use crate::{
 
 #[derive(Clone, Debug, Display, Default, Eq, PartialEq)]
 #[display(
-    fmt = "stage: {}, lock: {}, pre_commit_qc: {}, from: {}",
+    fmt = "{{ stage: {}, lock: {}, pre_commit_qc: {}, from: {} }}",
     stage,
     "lock.clone().map_or(\"None\".to_owned(), |lock| format!(\"{}\", lock))",
     "pre_commit_qc.clone().map_or(\"None\".to_owned(), |qc| format!(\"{}\", qc))",
@@ -73,25 +73,30 @@ impl<B: Blk> StateInfo<B> {
             ));
         }
         self.update_lock(&sp.proposal)?;
-        self.log_state_update_of_msg(old_stage, sp.into());
+        self.log_state_update_of_msg(old_stage, &sp.proposal.proposer, sp.into());
         Ok(())
     }
 
-    pub fn handle_pre_vote_qc(&mut self, pre_vote_qc: &PreVoteQC, block: B) -> OverlordResult<()> {
-        let next_stage = self.filter_stage(pre_vote_qc)?;
+    pub fn handle_pre_vote_qc(
+        &mut self,
+        qc: &PreVoteQC,
+        block: B,
+        from: &Address,
+    ) -> OverlordResult<()> {
+        let next_stage = self.filter_stage(qc)?;
 
         let old_stage = self.clone();
         if self.stage.update_stage(next_stage) {
-            self.from = Some(UpdateFrom::PreVoteQC(pre_vote_qc.clone()));
+            self.from = Some(UpdateFrom::PreVoteQC(qc.clone()));
         }
-        if pre_vote_qc.vote.is_empty_vote() {
+        if qc.vote.is_empty_vote() {
             self.lock = None;
             self.block = None;
         } else {
-            self.lock = Some(pre_vote_qc.clone());
+            self.lock = Some(qc.clone());
             self.block = Some(block);
         }
-        self.log_state_update_of_msg(old_stage, pre_vote_qc.into());
+        self.log_state_update_of_msg(old_stage, from, qc.into());
         Ok(())
     }
 
@@ -99,6 +104,7 @@ impl<B: Blk> StateInfo<B> {
         &mut self,
         pre_commit_qc: &PreCommitQC,
         block: B,
+        from: &Address,
     ) -> OverlordResult<()> {
         let next_stage = self.filter_stage(pre_commit_qc)?;
 
@@ -110,7 +116,7 @@ impl<B: Blk> StateInfo<B> {
             self.pre_commit_qc = Some(pre_commit_qc.clone());
             self.block = Some(block);
         }
-        self.log_state_update_of_msg(old_stage, pre_commit_qc.into());
+        self.log_state_update_of_msg(old_stage, from, pre_commit_qc.into());
         Ok(())
     }
 
@@ -121,7 +127,7 @@ impl<B: Blk> StateInfo<B> {
         if self.stage.update_stage(next_stage) {
             self.from = Some(UpdateFrom::ChokeQC(choke_qc.clone()));
         }
-        self.log_state_update_of_msg(old_stage, choke_qc.into());
+        self.log_state_update_of_msg(old_stage, &self.address, choke_qc.into());
         Ok(())
     }
 
@@ -170,10 +176,11 @@ impl<B: Blk> StateInfo<B> {
         self.from = None;
     }
 
-    fn log_state_update_of_msg(&self, old_state: StateInfo<B>, msg: Capsule<B>) {
+    fn log_state_update_of_msg(&self, old_state: StateInfo<B>, from: &Address, msg: Capsule<B>) {
         info!(
-            "[MESSAGE] \n\t<{}> <=\t{} \n\tbefore : {} \n\tupdated: {}\n",
+            "[RECEIVE] \n\t<{}> <- {}\n\t<message> {} \n\t<before> {} \n\t<update> {}\n",
             self.address.tiny_hex(),
+            from.tiny_hex(),
             msg,
             old_state,
             self
@@ -182,7 +189,7 @@ impl<B: Blk> StateInfo<B> {
 
     fn log_state_update_of_timeout(&self, old_state: StateInfo<B>, timeout: TimeoutEvent) {
         info!(
-            "[TIMEOUT] \n\t<{}> <-\t{} \n\tbefore : {} \n\tupdated: {}\n",
+            "[TIMEOUT]\n\t<{}> <- timeout\n\t<timeout> {} \n\t<before> {} \n\t<update> {}\n",
             self.address.tiny_hex(),
             timeout,
             old_state,
@@ -192,7 +199,7 @@ impl<B: Blk> StateInfo<B> {
 }
 
 #[derive(Clone, Debug, Display, Default, Eq, PartialEq)]
-#[display(fmt = "height: {}, round: {}, step: {}", height, round, step)]
+#[display(fmt = "{{ height: {}, round: {}, step: {} }}", height, round, step)]
 pub struct Stage {
     pub height: Height,
     pub round:  Round,

@@ -60,7 +60,11 @@ impl_from!(
 );
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq)]
-#[display(fmt = "{}", proposal)]
+#[display(
+    fmt = "{{ proposal: {}, signature: {} }}",
+    proposal,
+    "signature.tiny_hex()"
+)]
 pub struct SignedProposal<B: Blk> {
     pub proposal:  Proposal<B>,
     pub signature: Signature,
@@ -158,10 +162,11 @@ impl Vote {
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash)]
 #[display(
-    fmt = "{{ vote: {}, vote_weight: {}, voter: {} }}",
+    fmt = "{{ vote: {}, vote_weight: {}, voter: {}, signature: {} }}",
     vote,
     vote_weight,
-    "voter.tiny_hex()"
+    "voter.tiny_hex()",
+    "signature.tiny_hex()"
 )]
 pub struct SignedPreVote {
     pub vote:        Vote,
@@ -183,10 +188,11 @@ impl SignedPreVote {
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash)]
 #[display(
-    fmt = "{{ vote: {}, vote_weight: {}, voter: {} }}",
+    fmt = "{{ vote: {}, vote_weight: {}, voter: {}, signature: {} }}",
     vote,
     vote_weight,
-    "voter.tiny_hex()"
+    "voter.tiny_hex()",
+    "signature.tiny_hex()"
 )]
 pub struct SignedPreCommit {
     pub vote:        Vote,
@@ -207,7 +213,7 @@ impl SignedPreCommit {
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[display(fmt = "{}", vote)]
+#[display(fmt = "{{ vote: {}, aggregates: {} }}", vote, aggregates)]
 pub struct PreVoteQC {
     pub vote:       Vote,
     pub aggregates: Aggregates,
@@ -220,7 +226,7 @@ impl PreVoteQC {
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[display(fmt = "{}", vote)]
+#[display(fmt = "{{ vote: {}, aggregates: {} }}", vote, aggregates)]
 pub struct PreCommitQC {
     pub vote:       Vote,
     pub aggregates: Aggregates,
@@ -235,7 +241,11 @@ impl PreCommitQC {
 pub type Proof = PreCommitQC;
 
 #[derive(Clone, Debug, Default, Display, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[display(fmt = "{}", "address_bitmap.tiny_hex()")]
+#[display(
+    fmt = "{{ bitmap: {}, signature: {} }}",
+    "address_bitmap.tiny_hex()",
+    "signature.tiny_hex()"
+)]
 pub struct Aggregates {
     pub address_bitmap: Bytes,
     pub signature:      Signature,
@@ -252,11 +262,12 @@ impl Aggregates {
 
 #[derive(Clone, Debug, Default, Display, PartialEq, Eq, Hash)]
 #[display(
-    fmt = "{{ choke: {}, vote_weight: {}, from: {}, voter: {} }}",
+    fmt = "{{ choke: {}, vote_weight: {}, from: {}, voter: {}, signature: {} }}",
     choke,
     vote_weight,
     "from.clone().map_or(\"None\".to_owned(), |from| format!(\"{}\", from))",
-    "voter.tiny_hex()"
+    "voter.tiny_hex()",
+    "signature.tiny_hex()"
 )]
 pub struct SignedChoke {
     pub choke:       Choke,
@@ -298,7 +309,7 @@ impl Choke {
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[display(fmt = "{}", choke)]
+#[display(fmt = "{{ choke: {}, aggregates: {} }}", choke, aggregates)]
 pub struct ChokeQC {
     pub choke:      Choke,
     pub aggregates: Aggregates,
@@ -362,7 +373,7 @@ pub struct SyncResponse<B: Blk> {
 }
 
 #[derive(Clone, Debug, Default, Display, PartialEq, Eq, Serialize, Deserialize)]
-#[display(fmt = "{{ from: {}, to: {} }}", from, to)]
+#[display(fmt = "[{}, {})", from, to)]
 pub struct HeightRange {
     pub from: Height,
     pub to:   Height,
@@ -411,7 +422,7 @@ pub struct ExecResult<S: St> {
 }
 
 #[derive(Clone, Debug, Display, Default)]
-#[display(fmt = "{{ height: {}, state: {:?} }}", height, state)]
+#[display(fmt = "{{ {} -> state: {:?} }}", height, state)]
 pub struct BlockState<S: St> {
     pub height: Height,
     pub state:  S,

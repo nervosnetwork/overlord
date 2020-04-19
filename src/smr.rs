@@ -152,7 +152,8 @@ where
                     let msg = opt.expect("Net Channel is down! It's meaningless to continue running");
                     if let Err(e) = self.handle_msg(msg.clone()).await {
                         // self.adapter.handle_error()
-                        error!("<{}> [Error] {} \n\tmessage: {} \n\t state : {}\n", self.address.tiny_hex(), e, msg.1, self.state);
+                        let sender = self.extract_sender(&msg.1);
+                        error!("[RECEIVE]\n\t<{}> <- {}\n\t<message> {}\n\t{}\n\t<state> {}\n", self.address.tiny_hex(), sender.tiny_hex(), msg.1, e, self.state);
                     }
                 }
                 opt = self.agent.from_exec.next() => {
@@ -162,14 +163,14 @@ where
                     let fetch = opt.expect("Fetch Channel is down! It's meaningless to continue running");
                     if let Err(e) = self.handle_fetch(fetch).await {
                         // self.adapter.handle_error()
-                        error!("<{}> [Error] {}\n", self.address.tiny_hex(), e);
+                        error!("[FETCH]\n\t<{}> <- full block\n\t{}\n", self.address.tiny_hex(), e);
                     }
                 }
                 opt = self.agent.from_timeout.next() => {
                     let timeout = opt.expect("Timeout Channel is down! It's meaningless to continue running");
                     if let Err(e) = self.handle_timeout(timeout.clone()).await {
                         // self.adapter.handle_error()
-                        error!("<{}> [Error] {} \n\ttimeout: {} \n\t state : {}\n", self.address.tiny_hex(), e, timeout, self.state);
+                        error!("[TIMEOUT]\n\t<{}> <- timeout\n\t<timeout> {}\n\t{}\n\t<state> {}\n", self.address.tiny_hex(), timeout, e, self.state);
                     }
                 }
             }
@@ -218,7 +219,11 @@ where
         if fetch.height < self.state.stage.height {
             return Err(OverlordError::debug_old());
         }
-        info!("[FETCH]\n\t<{}> <-\t{}\n", self.address.tiny_hex(), fetch);
+        info!(
+            "[FETCH]\n\t<{}> <- full block\n\t<message> full_block: {}\n",
+            self.address.tiny_hex(),
+            fetch
+        );
         self.cabinet.insert_full_block(fetch.clone());
         self.wal.save_full_block(&fetch)?;
 
@@ -348,13 +353,18 @@ where
         let msg_r = sv.vote.round;
 
         self.filter_msg(msg_h, msg_r, (&sv).into())?;
+        if self.cabinet.get_pre_vote_qc(msg_h, msg_r).is_some() {
+            return Err(OverlordError::debug_old());
+        }
+
         self.auth.verify_signed_pre_vote(&sv)?;
         if let Some(sum_w) = self.cabinet.insert(msg_h, msg_r, (&sv).into())? {
-            debug!(
-                "[WEIGHT SUM]\n\t<{}> <=> {}\n\tmessage: signed_pre_vote: {}\n",
+            info!(
+                "[RECEIVE]\n\t<{}> <- {}\n\t<message> signed_pre_vote: {}\n\t<weight> cumulative_weight: {}\n",
                 self.address.tiny_hex(),
-                sum_w,
-                sv
+                sv.voter.tiny_hex(),
+                sv,
+                sum_w
             );
             if self.auth.current_auth.beyond_majority(sum_w.cum_weight) {
                 let votes = self
@@ -380,13 +390,18 @@ where
         let msg_r = sv.vote.round;
 
         self.filter_msg(msg_h, msg_r, (&sv).into())?;
+        if self.cabinet.get_pre_commit_qc(msg_h, msg_r).is_some() {
+            return Err(OverlordError::debug_old());
+        }
+
         self.auth.verify_signed_pre_commit(&sv)?;
         if let Some(sum_w) = self.cabinet.insert(msg_h, msg_r, (&sv).into())? {
-            debug!(
-                "<{}> [Weight_SUM] {}\n\tmessage: signed_pre_commit {}\n",
+            info!(
+                "[RECEIVE]\n\t<{}> <- {}\n\t<message> signed_pre_commit: {}\n\t<weight> cumulative_weight: {}\n",
                 self.address.tiny_hex(),
-                sum_w,
-                sv
+                sv.voter.tiny_hex(),
+                sv,
+                sum_w
             );
             if self.auth.current_auth.beyond_majority(sum_w.cum_weight) {
                 let votes = self
@@ -412,13 +427,18 @@ where
         let msg_r = sc.choke.round;
 
         self.filter_msg(msg_h, msg_r, (&sc).into())?;
+        if self.cabinet.get_choke_qc(msg_h, msg_r).is_some() {
+            return Err(OverlordError::debug_old());
+        }
+
         self.auth.verify_signed_choke(&sc)?;
         if let Some(sum_w) = self.cabinet.insert(msg_h, msg_r, (&sc).into())? {
-            debug!(
-                "<{}> [Weight_SUM] {}\n\tmessage: signed_choke: {}\n",
+            info!(
+                "[RECEIVE]\n\t<{}> <- {}\n\t<message> signed_choke: {}\n\t<weight> cumulative_weight: {}\n",
                 self.address.tiny_hex(),
-                sum_w,
-                &sc
+                sc.voter.tiny_hex(),
+                sc,
+                sum_w
             );
             if self.auth.current_auth.beyond_majority(sum_w.cum_weight) {
                 let chokes = self
@@ -455,13 +475,13 @@ where
                 .cabinet
                 .get_block(msg_h, &qc.vote.block_hash)
                 .expect("Unreachable! Lost a block which full block exist");
-            self.state.handle_pre_vote_qc(&qc, block.clone())?;
+            let leader = self.auth.get_leader(msg_h, msg_r);
+            self.state.handle_pre_vote_qc(&qc, block.clone(), &leader)?;
 
             self.agent.set_timeout(self.state.stage.clone());
             self.wal.save_state(&self.state)?;
 
             let vote = self.auth.sign_pre_commit(qc.vote.clone())?;
-            let leader = self.auth.get_leader(msg_h, msg_r);
             self.agent.transmit(leader, vote.into()).await?;
         }
         Ok(())
@@ -483,7 +503,9 @@ where
                 .cabinet
                 .get_block(msg_h, &qc.vote.block_hash)
                 .expect("Unreachable! Lost a block which full block exist");
-            self.state.handle_pre_commit_qc(&qc, block.clone())?;
+            let leader = self.auth.get_leader(msg_h, msg_r);
+            self.state
+                .handle_pre_commit_qc(&qc, block.clone(), &leader)?;
             self.wal.save_state(&self.state)?;
             self.handle_commit().await?;
         }
@@ -669,6 +691,21 @@ where
         }
         Ok(())
     }
+
+    fn extract_sender(&self, msg: &OverlordMsg<B>) -> Address {
+        match msg {
+            OverlordMsg::SignedProposal(sp) => sp.proposal.proposer.clone(),
+            OverlordMsg::SignedPreVote(sv) => sv.voter.clone(),
+            OverlordMsg::SignedPreCommit(sv) => sv.voter.clone(),
+            OverlordMsg::SignedChoke(sc) => sc.voter.clone(),
+            OverlordMsg::PreVoteQC(qc) => self.auth.get_leader(qc.vote.height, qc.vote.round),
+            OverlordMsg::PreCommitQC(qc) => self.auth.get_leader(qc.vote.height, qc.vote.round),
+            OverlordMsg::SignedHeight(sh) => sh.address.clone(),
+            OverlordMsg::SyncRequest(sq) => sq.requester.clone(),
+            OverlordMsg::SyncResponse(sp) => sp.responder.clone(),
+            OverlordMsg::Stop => unreachable!(),
+        }
+    }
 }
 
 async fn recover_state_by_adapter<A: Adapter<B, S>, B: Blk, S: St>(
@@ -801,7 +838,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
 
     async fn transmit(&self, to: Address, msg: OverlordMsg<B>) -> OverlordResult<()> {
         info!(
-            "[TRANSMIT]\n\t<{}> -> {}\tmessage: {} \n",
+            "[TRANSMIT]\n\t<{}> -> {}\n\t<message> {} \n",
             self.address.tiny_hex(),
             to.tiny_hex(),
             msg
@@ -822,7 +859,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
 
     async fn broadcast(&self, msg: OverlordMsg<B>) -> OverlordResult<()> {
         info!(
-            "[BROADCAST]\n\t<{}> =>\tmessage: {} \n",
+            "[BROADCAST]\n\t<{}> =>|\n\t<message> {} \n",
             self.address.tiny_hex(),
             msg
         );
@@ -884,7 +921,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         if let Some(interval) = opt {
             let timeout_info = TimeoutInfo::new(interval, stage.into(), self.to_timeout.clone());
             info!(
-                "[SET TIMEOUT]\n\t<{}> {}, interval: {:?}\n",
+                "[SET]\n\t<{}> set timeout\n\t<timeout> {},\n\t<interval> {:?}\n",
                 self.address.tiny_hex(),
                 timeout_info,
                 interval
