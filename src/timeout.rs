@@ -10,9 +10,8 @@ use futures::{FutureExt, SinkExt};
 use futures_timer::Delay;
 
 use crate::state::{Stage, Step};
-use crate::types::TimeConfig;
-use crate::Height;
-use std::sync::mpsc::RecvTimeoutError::Timeout;
+use crate::types::{TimeConfig, TinyHex};
+use crate::{Address, Height};
 
 #[derive(Clone, Debug, Display)]
 pub enum TimeoutEvent {
@@ -26,6 +25,12 @@ pub enum TimeoutEvent {
     BrakeTimeout(Stage),
     #[display(fmt = "next_height_timeout: {}", _0)]
     NextHeightTimeout(Stage),
+    #[display(fmt = "height_timeout")]
+    HeightTimeout,
+    #[display(fmt = "sync_timeout: {}", _0)]
+    SyncTimeout(u64),
+    #[display(fmt = "clear_timeout: {}", "_0.tiny_hex()")]
+    ClearTimeout(Address),
 }
 
 impl From<Stage> for TimeoutEvent {
@@ -43,9 +48,9 @@ impl From<Stage> for TimeoutEvent {
 #[derive(Debug, Display)]
 #[display(fmt = "{}", event)]
 pub struct TimeoutInfo {
-    delay:  Delay,
-    event:  TimeoutEvent,
-    to_smr: UnboundedSender<TimeoutEvent>,
+    pub delay: Delay,
+    event:     TimeoutEvent,
+    to_smr:    UnboundedSender<TimeoutEvent>,
 }
 
 impl Future for TimeoutInfo {
@@ -69,12 +74,12 @@ impl Future for TimeoutInfo {
 
 impl TimeoutInfo {
     pub fn new(
-        interval: Duration,
+        delay: Duration,
         event: TimeoutEvent,
         to_smr: UnboundedSender<TimeoutEvent>,
     ) -> Self {
         TimeoutInfo {
-            delay: Delay::new(interval),
+            delay: Delay::new(delay),
             event,
             to_smr,
         }

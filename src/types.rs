@@ -346,28 +346,31 @@ pub struct SignedHeight {
     pub signature: Signature,
 }
 
+impl SignedHeight {
+    pub fn new(height: Height, address: Address, signature: Signature) -> Self {
+        SignedHeight {
+            height,
+            address,
+            signature,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
-    fmt = "{{ request_id: {}, request_range: {}, requester: {} }}",
-    "request_id.tiny_hex()",
+    fmt = "{{ request_range: {}, requester: {} }}",
     request_range,
     "requester.tiny_hex()"
 )]
 pub struct SyncRequest {
-    pub request_id:    Hash,
     pub request_range: HeightRange,
     pub requester:     Address,
     pub signature:     Signature,
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[display(
-    fmt = "{{ request_id: {}, responder: {} }}",
-    "request_id.tiny_hex()",
-    "responder.tiny_hex()"
-)]
+#[display(fmt = "{{ responder: {} }}", "responder.tiny_hex()")]
 pub struct SyncResponse<B: Blk> {
-    pub request_id:        Hash,
     pub block_with_proofs: Vec<(B, Proof)>,
     pub responder:         Address,
     pub signature:         Signature,
@@ -467,7 +470,7 @@ impl Default for SelectMode {
     fmt = "{{ common_ref: {}, mode: {}, auth_list: {} }}",
     common_ref,
     mode,
-    "DisplayVec(auth_list.clone())"
+    "DisplayVec::new(&auth_list)"
 )]
 pub struct AuthConfig {
     pub common_ref: CommonHex,
@@ -614,12 +617,20 @@ impl TinyHex for Bytes {
     }
 }
 
-struct DisplayVec<T: std::fmt::Display>(Vec<T>);
+pub struct DisplayVec<'a, T: std::fmt::Display> {
+    inner: &'a [T],
+}
 
-impl<T: std::fmt::Display> std::fmt::Display for DisplayVec<T> {
+impl<'a, T: std::fmt::Display> DisplayVec<'a, T> {
+    pub fn new(vec: &'a [T]) -> Self {
+        DisplayVec { inner: vec }
+    }
+}
+
+impl<'a, T: std::fmt::Display> std::fmt::Display for DisplayVec<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         write!(f, "[ ")?;
-        for el in &self.0 {
+        for el in self.inner {
             write!(f, "{}, ", el)?;
         }
         write!(f, "]")?;

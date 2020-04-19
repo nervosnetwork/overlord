@@ -15,8 +15,8 @@ use rlp::{encode, Encodable};
 use crate::error::{ErrorInfo, ErrorKind};
 use crate::types::{
     Aggregates, Choke, ChokeQC, Node, PreCommitQC, PreVoteQC, PriKeyHex, Proof, Proposal,
-    PubKeyHex, SelectMode, SignedChoke, SignedPreCommit, SignedPreVote, SignedProposal, UpdateFrom,
-    Vote, VoteType, Weight,
+    PubKeyHex, SelectMode, SignedChoke, SignedHeight, SignedPreCommit, SignedPreVote,
+    SignedProposal, SyncRequest, SyncResponse, UpdateFrom, Vote, VoteType, Weight,
 };
 use crate::{
     Adapter, Address, AuthConfig, Blk, CommonHex, Crypto, Hash, Height, Round, Signature, St,
@@ -62,7 +62,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
 
     pub fn sign_proposal(&self, proposal: Proposal<B>) -> OverlordResult<SignedProposal<B>> {
         let hash = hash::<A, B, Proposal<B>, S>(&proposal);
-        let signature = self.sign(&hash)?;
+        let signature = self.sign(&hash, true)?;
         Ok(SignedProposal::new(proposal, signature))
     }
 
@@ -75,7 +75,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
 
     pub fn sign_pre_vote(&self, vote: Vote) -> OverlordResult<SignedPreVote> {
         let hash = hash_vote::<A, B, Vote, S>(&vote, VoteType::PreVote);
-        let signature = self.sign(&hash)?;
+        let signature = self.sign(&hash, true)?;
         Ok(SignedPreVote::new(
             vote,
             self.current_auth.vote_weight,
@@ -93,7 +93,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
 
     pub fn sign_pre_commit(&self, vote: Vote) -> OverlordResult<SignedPreCommit> {
         let hash = hash_vote::<A, B, Vote, S>(&vote, VoteType::PreCommit);
-        let signature = self.sign(&hash)?;
+        let signature = self.sign(&hash, true)?;
         Ok(SignedPreCommit::new(
             vote,
             self.current_auth.vote_weight,
@@ -154,7 +154,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         from: Option<UpdateFrom>,
     ) -> OverlordResult<SignedChoke> {
         let hash = hash_vote::<A, B, Choke, S>(&choke, VoteType::Choke);
-        let signature = self.sign(&hash)?;
+        let signature = self.sign(&hash, true)?;
         Ok(SignedChoke::new(
             choke,
             self.current_auth.vote_weight,
@@ -215,6 +215,17 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         }
     }
 
+    pub fn sign_height(&self, height: Height) -> OverlordResult<SignedHeight> {
+        let height_vec = height.to_be_bytes()[0..].to_vec();
+        let hash = A::CryptoImpl::hash(&Bytes::from(height_vec));
+        let signature = self.sign(&hash, false)?;
+        Ok(SignedHeight::new(
+            height,
+            self.fixed_config.address.clone(),
+            signature,
+        ))
+    }
+
     pub fn am_i_leader(&self, height: Height, round: Round) -> bool {
         self.fixed_config.address == self.current_auth.calculate_leader(height, round)
     }
@@ -223,15 +234,17 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         self.current_auth.calculate_leader(height, round)
     }
 
-    pub fn can_i_vote(&self) -> OverlordResult<()> {
+    pub fn am_i_auth(&self) -> OverlordResult<()> {
         if self.current_auth.vote_weight == 0 {
             return Err(OverlordError::debug_un_auth());
         }
         Ok(())
     }
 
-    fn sign(&self, hash: &Hash) -> OverlordResult<Signature> {
-        self.can_i_vote()?;
+    fn sign(&self, hash: &Hash, need_auth: bool) -> OverlordResult<Signature> {
+        if need_auth {
+            self.am_i_auth()?;
+        }
         A::CryptoImpl::sign(self.fixed_config.pri_key.clone(), hash)
             .map_err(OverlordError::local_crypto)
     }

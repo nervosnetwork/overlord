@@ -23,9 +23,11 @@ use crate::error::{ErrorInfo, ErrorKind};
 use crate::exec::ExecRequest;
 use crate::state::Step::Propose;
 use crate::state::{ProposePrepare, Stage, StateInfo, Step};
+use crate::sync::{Sync, BLOCK_BATCH, CLEAR_TIMEOUT_RATIO, HEIGHT_RATIO, SYNC_TIMEOUT_RATIO};
+use crate::timeout::TimeoutEvent::HeightTimeout;
 use crate::timeout::{TimeoutEvent, TimeoutInfo};
 use crate::types::{
-    Choke, ChokeQC, FetchedFullBlock, PreCommitQC, PreVoteQC, Proposal, SignedChoke,
+    Choke, ChokeQC, FetchedFullBlock, PreCommitQC, PreVoteQC, Proposal, SignedChoke, SignedHeight,
     SignedPreCommit, SignedPreVote, SignedProposal, UpdateFrom, Vote,
 };
 use crate::{
@@ -47,6 +49,7 @@ pub struct SMR<A: Adapter<B, S>, B: Blk, S: St> {
     address: Address,
     state:   StateInfo<B>,
     prepare: ProposePrepare<S>,
+    sync:    Sync,
 
     adapter: Arc<A>,
     wal:     Wal,
@@ -139,6 +142,7 @@ where
             prepare,
             phantom_s: PhantomData,
             address: address.clone(),
+            sync: Sync::default(),
             adapter: Arc::<A>::clone(adapter),
             auth: AuthManage::new(auth_fixed_config, current_auth, last_auth),
             agent: EventAgent::new(
@@ -154,7 +158,8 @@ where
     }
 
     pub async fn run(mut self) {
-        self.agent.set_timeout(self.state.stage.clone());
+        self.agent.set_step_timeout(self.state.stage.clone());
+        self.agent.set_height_timeout(self.state.stage.height);
 
         loop {
             select! {
@@ -209,6 +214,7 @@ where
             OverlordMsg::PreCommitQC(pre_commit_qc) => {
                 self.handle_pre_commit_qc(pre_commit_qc, true).await?;
             }
+            OverlordMsg::SignedHeight(signed_height) => {}
             _ => {
                 // ToDo: synchronization
             }
@@ -271,13 +277,22 @@ where
             TimeoutEvent::NextHeightTimeout(stage) => {
                 self.handle_next_height_timeout(stage).await?;
             }
+            TimeoutEvent::HeightTimeout => {
+                self.agent.set_height_timeout(self.state.stage.height);
+            }
+            TimeoutEvent::SyncTimeout(request_id) => {
+                self.handle_sync_timeout(request_id).await?;
+            }
+            TimeoutEvent::ClearTimeout(address) => {
+                self.handle_clear_timeout(address).await?;
+            }
         }
         Ok(())
     }
 
     async fn handle_propose_timeout(&mut self, stage: Stage) -> OverlordResult<()> {
         self.state.handle_timeout(&stage)?;
-        self.agent.set_timeout(self.state.stage.clone());
+        self.agent.set_step_timeout(self.state.stage.clone());
         self.wal.save_state(&self.state)?;
 
         let height = self.state.stage.height;
@@ -290,7 +305,7 @@ where
 
     async fn handle_pre_vote_timeout(&mut self, stage: Stage) -> OverlordResult<()> {
         self.state.handle_timeout(&stage)?;
-        self.agent.set_timeout(self.state.stage.clone());
+        self.agent.set_step_timeout(self.state.stage.clone());
         self.wal.save_state(&self.state)?;
 
         let height = self.state.stage.height;
@@ -308,7 +323,7 @@ where
 
     async fn handle_pre_commit_timeout(&mut self, stage: Stage) -> OverlordResult<()> {
         self.state.handle_timeout(&stage)?;
-        self.agent.set_timeout(self.state.stage.clone());
+        self.agent.set_step_timeout(self.state.stage.clone());
         self.wal.save_state(&self.state)?;
 
         let height = self.state.stage.height;
@@ -322,7 +337,7 @@ where
 
     async fn handle_brake_timeout(&mut self, stage: Stage) -> OverlordResult<()> {
         self.state.handle_timeout(&stage)?;
-        self.agent.set_timeout(self.state.stage.clone());
+        self.agent.set_step_timeout(self.state.stage.clone());
 
         let height = self.state.stage.height;
         let round = self.state.stage.round;
@@ -358,7 +373,7 @@ where
         }
 
         self.state.handle_signed_proposal(&sp)?;
-        self.agent.set_timeout(self.state.stage.clone());
+        self.agent.set_step_timeout(self.state.stage.clone());
         self.wal.save_state(&self.state)?;
 
         let vote = self.auth.sign_pre_vote(sp.proposal.as_vote())?;
@@ -499,7 +514,7 @@ where
             let leader = self.auth.get_leader(msg_h, msg_r);
             self.state.handle_pre_vote_qc(&qc, block.clone(), &leader)?;
 
-            self.agent.set_timeout(self.state.stage.clone());
+            self.agent.set_step_timeout(self.state.stage.clone());
             self.wal.save_state(&self.state)?;
 
             let vote = self.auth.sign_pre_commit(qc.vote.clone())?;
@@ -600,11 +615,23 @@ where
         // So the time_config should also be changed.
         // make sure ( pre_vote_timeout >= propose_timeout + interval )
         if !self.auth.am_i_leader(next_height, INIT_ROUND)
-            && self.agent.set_timeout(self.state.stage.clone())
+            && self.agent.set_step_timeout(self.state.stage.clone())
         {
             return Ok(());
         }
         self.next_height().await
+    }
+
+    async fn handle_signed_height(&mut self) -> OverlordResult<()> {
+        Ok(())
+    }
+
+    async fn handle_sync_timeout(&mut self, request_id: u64) -> OverlordResult<()> {
+        Ok(())
+    }
+
+    async fn handle_clear_timeout(&mut self, address: Address) -> OverlordResult<()> {
+        Ok(())
     }
 
     async fn next_height(&mut self) -> OverlordResult<()> {
@@ -625,7 +652,7 @@ where
         let h = self.state.stage.height;
         let r = self.state.stage.round;
 
-        self.agent.set_timeout(self.state.stage.clone());
+        self.agent.set_step_timeout(self.state.stage.clone());
 
         if self.auth.am_i_leader(h, r) {
             let signed_proposal = self.create_signed_proposal().await?;
@@ -998,22 +1025,55 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
             .expect("Exec Channel is down! It's meaningless to continue running");
     }
 
-    fn set_timeout(&self, stage: Stage) -> bool {
+    fn set_step_timeout(&self, stage: Stage) -> bool {
         let opt = self.compute_timeout(&stage);
-        if let Some(interval) = opt {
-            let timeout_info = TimeoutInfo::new(interval, stage.into(), self.to_timeout.clone());
-            info!(
-                "[SET]\n\t<{}> set timeout\n\t<timeout> {},\n\t<interval> {:?}\n",
-                self.address.tiny_hex(),
-                timeout_info,
-                interval
-            );
-            tokio::spawn(async move {
-                timeout_info.await;
-            });
+        if let Some(delay) = opt {
+            let timeout_info = TimeoutInfo::new(delay, stage.into(), self.to_timeout.clone());
+            self.set_timeout(timeout_info);
             return true;
         }
         false
+    }
+
+    fn set_height_timeout(&self, height: Height) {
+        let delay = Duration::from_millis(self.time_config.interval * HEIGHT_RATIO / TIME_DIVISOR);
+        let timeout_info =
+            TimeoutInfo::new(delay, TimeoutEvent::HeightTimeout, self.to_timeout.clone());
+        self.set_timeout(timeout_info);
+    }
+
+    fn set_sync_timeout(&self, request_id: u64) {
+        let delay =
+            Duration::from_millis(self.time_config.interval * SYNC_TIMEOUT_RATIO / TIME_DIVISOR);
+        let timeout_info = TimeoutInfo::new(
+            delay,
+            TimeoutEvent::SyncTimeout(request_id),
+            self.to_timeout.clone(),
+        );
+        self.set_timeout(timeout_info);
+    }
+
+    fn set_clear_timeout(&self, address: Address) {
+        let delay =
+            Duration::from_millis(self.time_config.interval * CLEAR_TIMEOUT_RATIO / TIME_DIVISOR);
+        let timeout_info = TimeoutInfo::new(
+            delay,
+            TimeoutEvent::ClearTimeout(address),
+            self.to_timeout.clone(),
+        );
+        self.set_timeout(timeout_info);
+    }
+
+    fn set_timeout(&self, timeout_info: TimeoutInfo) {
+        info!(
+            "[SET]\n\t<{}> set timeout\n\t<timeout> {},\n\t<delay> {:?}\n",
+            self.address.tiny_hex(),
+            timeout_info,
+            timeout_info.delay,
+        );
+        tokio::spawn(async move {
+            timeout_info.await;
+        });
     }
 
     fn compute_timeout(&self, stage: &Stage) -> Option<Duration> {

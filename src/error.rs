@@ -77,6 +77,10 @@ pub enum ErrorInfo {
     EmptyLock,
     #[display(fmt = "exec behind consensus to much")]
     BehindMuch,
+    #[display(fmt = "in block list")]
+    InBlockList,
+    #[display(fmt = "on sync")]
+    OnSync,
 }
 
 #[derive(Debug, Display)]
@@ -280,6 +284,27 @@ impl OverlordError {
         OverlordError {
             kind: ErrorKind::LocalError,
             info: ErrorInfo::BehindMuch,
+        }
+    }
+
+    pub fn net_blacklist() -> Self {
+        OverlordError {
+            kind: ErrorKind::Network,
+            info: ErrorInfo::InBlockList,
+        }
+    }
+
+    pub fn net_on_sync() -> Self {
+        OverlordError {
+            kind: ErrorKind::Network,
+            info: ErrorInfo::OnSync,
+        }
+    }
+
+    pub fn debug_on_sync() -> Self {
+        OverlordError {
+            kind: ErrorKind::Debug,
+            info: ErrorInfo::OnSync,
         }
     }
 }

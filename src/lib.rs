@@ -15,6 +15,7 @@ mod codec;
 mod exec;
 mod smr;
 mod state;
+mod sync;
 mod timeout;
 mod wal;
 
