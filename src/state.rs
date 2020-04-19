@@ -216,7 +216,6 @@ impl Stage {
     }
 
     pub fn next_height(&mut self) {
-        info!("goto new height {}", self.height + 1);
         self.height += 1;
         self.round = INIT_ROUND;
         self.step = Step::Propose;
@@ -394,9 +393,14 @@ impl<S: St> ProposePrepare<S> {
         let commit_exec_result = self
             .exec_results
             .get(&commit_exec_h)
-            .expect("Unreachable! Cannot get commit exec result when commit")
+            .unwrap_or_else(|| {
+                panic!(
+                    "Unreachable! Cannot get commit exec result of height {} when commit",
+                    commit_exec_h
+                )
+            })
             .clone();
-        self.exec_results = self.exec_results.split_off(&next_height);
+        self.exec_results = self.exec_results.split_off(&commit_exec_h);
         commit_exec_result
     }
 

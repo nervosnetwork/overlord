@@ -10,7 +10,7 @@ use log::LevelFilter;
 use crate::common::platform::Platform;
 
 #[tokio::test(threaded_scheduler)]
-async fn test_4_nodes() {
+async fn test_1_node() {
     let _ = env_logger::builder()
         .format(|buf, record| {
             writeln!(
@@ -24,7 +24,7 @@ async fn test_4_nodes() {
         .filter_level(LevelFilter::Debug)
         .is_test(true)
         .try_init();
-    let platform = Platform::new(4);
+    let platform = Platform::new(1);
     platform.run();
-    thread::sleep(Duration::from_secs(20000));
+    thread::sleep(Duration::from_secs(100));
 }

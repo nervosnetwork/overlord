@@ -79,14 +79,17 @@ where
 
         let last_commit_height;
         let state;
+        let from;
         if let Err(e) = rst {
-            error!("Load state from wal failed! Try to recover state by the adapter, which face security risk if majority auth nodes lost their wal file at the same time");
+            warn!("Load state from wal failed! Try to recover state by the adapter, which face security risk if majority auth nodes lost their wal file at the same time");
             state = recover_state_by_adapter(adapter, address.clone()).await;
             last_commit_height = state.stage.height;
+            from = "wal";
         } else {
             state = rst.unwrap();
             assert_eq!(state.address, address, "Load wal with other address");
             last_commit_height = state.stage.height - 1;
+            from = "adapter"
         };
 
         let prepare = recover_propose_prepare_and_config(adapter, last_commit_height).await;
@@ -122,6 +125,13 @@ where
         let last_auth: Option<AuthCell<B>> =
             last_config.map(|config| AuthCell::new(config.auth_config, &address));
 
+        info!(
+            "[LOAD]\n\t<{}> <- {}\n\t<state> {}\n\t<prepare> {}\n",
+            address.tiny_hex(),
+            from,
+            state,
+            prepare
+        );
         SMR {
             wal,
             state,
@@ -208,6 +218,12 @@ where
     }
 
     fn handle_exec_result(&mut self, exec_result: ExecResult<S>) {
+        info!(
+            "[EXEC]\n\t<{}> <- exec result\n\t<message> exec_result: {}\n\t<prepare> {}",
+            self.address.tiny_hex(),
+            exec_result,
+            self.prepare
+        );
         self.prepare.handle_exec_result(exec_result);
     }
 
@@ -379,7 +395,6 @@ where
                     .expect("Unreachable! Lost signed_pre_votes while beyond majority");
                 let pre_vote_qc = self.auth.aggregate_pre_votes(votes)?;
                 self.agent.broadcast(pre_vote_qc.clone().into()).await?;
-                self.handle_pre_vote_qc(pre_vote_qc).await?;
             }
         }
         Ok(())
@@ -416,7 +431,6 @@ where
                     .expect("Unreachable! Lost signed_pre_votes while beyond majority");
                 let pre_commit_qc = self.auth.aggregate_pre_commits(votes)?;
                 self.agent.broadcast(pre_commit_qc.clone().into()).await?;
-                self.handle_pre_commit_qc(pre_commit_qc).await?;
             }
         }
         Ok(())
@@ -520,6 +534,12 @@ where
         self.auth.verify_choke_qc(&qc)?;
         self.state.handle_choke_qc(&qc)?;
         self.wal.save_state(&self.state)?;
+        info!(
+            "[ROUND]\n\t<{}> -> new round: {}\n\t<state> {}\n",
+            self.address.tiny_hex(),
+            self.state.stage.round,
+            self.state
+        );
         self.new_round().await
     }
 
@@ -546,6 +566,7 @@ where
             .expect("Unreachable! Lost commit block when commit")
             .get_exec_height();
         let next_height = height + 1;
+
         let commit_exec_result =
             self.prepare
                 .handle_commit(commit_hash, proof.clone(), commit_exec_h, next_height);
@@ -554,6 +575,12 @@ where
         self.cabinet.handle_commit(next_height, &self.auth);
         self.agent
             .handle_commit(commit_exec_result.consensus_config.time_config.clone());
+        info!(
+            "[COMMIT]\n\t<{}> commit\n\t<state> {}\n\t<prepare> {}\n",
+            self.address.tiny_hex(),
+            self.state,
+            self.prepare
+        );
 
         // if self is leader, should not wait for interval timeout. This is different from previous
         // design.
@@ -567,6 +594,12 @@ where
 
     async fn next_height(&mut self) -> OverlordResult<()> {
         self.state.next_height();
+        info!(
+            "[HEIGHT]\n\t<{}> -> next height: {}\n\t<state> {}\n",
+            self.address.tiny_hex(),
+            self.state.stage.height,
+            self.state
+        );
         self.wal.save_state(&self.state)?;
         self.agent.next_height();
         self.new_round().await

@@ -81,10 +81,11 @@ impl<B: Blk> SignedProposal<B> {
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
-    fmt = "{{ height: {}, round: {}, block_hash: {}, lock: {}, proposer: {} }}",
+    fmt = "{{ height: {}, round: {}, block_hash: {}, block_exec_height: {}, lock: {}, proposer: {} }}",
     height,
     round,
     "block_hash.tiny_hex()",
+    "block.get_exec_height()",
     "lock.clone().map_or(\"None\".to_owned(), |lock| format!(\"{}\", lock))",
     "proposer.tiny_hex()"
 )]
@@ -494,7 +495,7 @@ pub struct TimeConfig {
 impl Default for TimeConfig {
     fn default() -> TimeConfig {
         TimeConfig {
-            interval:         1000,
+            interval:         100,
             propose_ratio:    15,
             pre_vote_ratio:   10,
             pre_commit_ratio: 7,
