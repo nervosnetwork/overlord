@@ -204,10 +204,10 @@ where
                 self.handle_signed_choke(signed_choke).await?;
             }
             OverlordMsg::PreVoteQC(pre_vote_qc) => {
-                self.handle_pre_vote_qc(pre_vote_qc).await?;
+                self.handle_pre_vote_qc(pre_vote_qc, true).await?;
             }
             OverlordMsg::PreCommitQC(pre_commit_qc) => {
-                self.handle_pre_commit_qc(pre_commit_qc).await?;
+                self.handle_pre_commit_qc(pre_commit_qc, true).await?;
             }
             _ => {
                 // ToDo: synchronization
@@ -235,19 +235,20 @@ where
         if fetch.height < self.state.stage.height {
             return Err(OverlordError::debug_old());
         }
+        self.cabinet.insert_full_block(fetch.clone());
+        self.wal.save_full_block(&fetch)?;
+
         info!(
             "[FETCH]\n\t<{}> <- full block\n\t<message> full_block: {}\n",
             self.address.tiny_hex(),
             fetch
         );
-        self.cabinet.insert_full_block(fetch.clone());
-        self.wal.save_full_block(&fetch)?;
 
         let hash = fetch.block_hash;
         if let Some(qc) = self.cabinet.get_pre_commit_qc_by_hash(fetch.height, &hash) {
-            self.handle_pre_commit_qc(qc).await?;
+            self.handle_pre_commit_qc(qc, false).await?;
         } else if let Some(qc) = self.cabinet.get_pre_vote_qc_by_hash(fetch.height, &hash) {
-            self.handle_pre_vote_qc(qc).await?;
+            self.handle_pre_vote_qc(qc, false).await?;
         }
 
         Ok(())
@@ -351,7 +352,7 @@ where
 
         if msg_r > self.state.stage.round {
             if let Some(qc) = sp.proposal.lock {
-                self.handle_pre_vote_qc(qc).await?;
+                self.handle_pre_vote_qc(qc, true).await?;
             }
             return Err(OverlordError::debug_high());
         }
@@ -464,8 +465,8 @@ where
                 self.handle_choke_qc(choke_qc).await?;
             } else if let Some(from) = sc.from {
                 match from {
-                    UpdateFrom::PreVoteQC(qc) => self.handle_pre_vote_qc(qc).await?,
-                    UpdateFrom::PreCommitQC(qc) => self.handle_pre_commit_qc(qc).await?,
+                    UpdateFrom::PreVoteQC(qc) => self.handle_pre_vote_qc(qc, true).await?,
+                    UpdateFrom::PreCommitQC(qc) => self.handle_pre_commit_qc(qc, true).await?,
                     UpdateFrom::ChokeQC(qc) => self.handle_choke_qc(qc).await?,
                 }
             }
@@ -473,13 +474,19 @@ where
         Ok(())
     }
 
-    async fn handle_pre_vote_qc(&mut self, qc: PreVoteQC) -> OverlordResult<()> {
+    async fn handle_pre_vote_qc(
+        &mut self,
+        qc: PreVoteQC,
+        exist_uncertain: bool,
+    ) -> OverlordResult<()> {
         let msg_h = qc.vote.height;
         let msg_r = qc.vote.round;
 
         self.filter_msg(msg_h, msg_r, (&qc).into())?;
         self.auth.verify_pre_vote_qc(&qc)?;
-        self.cabinet.insert(msg_h, msg_r, (&qc).into())?;
+        if exist_uncertain {
+            self.cabinet.insert(msg_h, msg_r, (&qc).into())?;
+        }
         if self
             .cabinet
             .get_full_block(msg_h, &qc.vote.block_hash)
@@ -501,13 +508,19 @@ where
         Ok(())
     }
 
-    async fn handle_pre_commit_qc(&mut self, qc: PreCommitQC) -> OverlordResult<()> {
+    async fn handle_pre_commit_qc(
+        &mut self,
+        qc: PreCommitQC,
+        exist_uncertain: bool,
+    ) -> OverlordResult<()> {
         let msg_h = qc.vote.height;
         let msg_r = qc.vote.round;
 
         self.filter_msg(msg_h, msg_r, (&qc).into())?;
         self.auth.verify_pre_commit_qc(&qc)?;
-        self.cabinet.insert(msg_h, msg_r, (&qc).into())?;
+        if exist_uncertain {
+            self.cabinet.insert(msg_h, msg_r, (&qc).into())?;
+        }
         if self
             .cabinet
             .get_full_block(msg_h, &qc.vote.block_hash)

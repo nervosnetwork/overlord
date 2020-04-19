@@ -343,10 +343,12 @@ impl From<u8> for Step {
 
 #[derive(Debug, Display)]
 #[display(
-    fmt = "exec_height: {}, pre_proof: {}, pre_hash: {}",
+    fmt = "exec_height: {}, exec_cache: {:?}, pre_proof: {}, pre_hash: {}, max_exec_behind: {}",
     exec_height,
+    "exec_results.keys()",
     pre_proof,
-    "pre_hash.tiny_hex()"
+    "pre_hash.tiny_hex()",
+    max_exec_behind
 )]
 pub struct ProposePrepare<S: St> {
     pub max_exec_behind: u64,
