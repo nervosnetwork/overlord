@@ -19,7 +19,7 @@ use log::{debug, error, info, warn};
 
 use crate::auth::{AuthCell, AuthFixedConfig, AuthManage};
 use crate::cabinet::{Cabinet, Capsule};
-use crate::error::ErrorInfo;
+use crate::error::{ErrorInfo, ErrorKind};
 use crate::exec::ExecRequest;
 use crate::state::Step::Propose;
 use crate::state::{ProposePrepare, Stage, StateInfo, Step};
@@ -161,9 +161,9 @@ where
                 opt = self.agent.from_net.next() => {
                     let msg = opt.expect("Net Channel is down! It's meaningless to continue running");
                     if let Err(e) = self.handle_msg(msg.clone()).await {
-                        // self.adapter.handle_error()
                         let sender = self.extract_sender(&msg.1);
-                        error!("[RECEIVE]\n\t<{}> <- {}\n\t<message> {}\n\t{}\n\t<state> {}\n", self.address.tiny_hex(), sender.tiny_hex(), msg.1, e, self.state);
+                        let content = format!("[RECEIVE]\n\t<{}> <- {}\n\t<message> {}\n\t{}\n\t<state> {}\n", self.address.tiny_hex(), sender.tiny_hex(), msg.1, e, self.state);
+                        self.handle_err(e, content).await;
                     }
                 }
                 opt = self.agent.from_exec.next() => {
@@ -172,15 +172,15 @@ where
                 opt = self.agent.from_fetch.next() => {
                     let fetch = opt.expect("Fetch Channel is down! It's meaningless to continue running");
                     if let Err(e) = self.handle_fetch(fetch).await {
-                        // self.adapter.handle_error()
-                        error!("[FETCH]\n\t<{}> <- full block\n\t{}\n", self.address.tiny_hex(), e);
+                        let content = format!("[FETCH]\n\t<{}> <- full block\n\t{}\n", self.address.tiny_hex(), e);
+                        self.handle_err(e, content).await;
                     }
                 }
                 opt = self.agent.from_timeout.next() => {
                     let timeout = opt.expect("Timeout Channel is down! It's meaningless to continue running");
                     if let Err(e) = self.handle_timeout(timeout.clone()).await {
-                        // self.adapter.handle_error()
-                        error!("[TIMEOUT]\n\t<{}> <- timeout\n\t<timeout> {}\n\t{}\n\t<state> {}\n", self.address.tiny_hex(), timeout, e, self.state);
+                        let content = format!("[TIMEOUT]\n\t<{}> <- timeout\n\t<timeout> {}\n\t{}\n\t<state> {}\n", self.address.tiny_hex(), timeout, e, self.state);
+                        self.handle_err(e, content).await;
                     }
                 }
             }
@@ -219,7 +219,7 @@ where
 
     fn handle_exec_result(&mut self, exec_result: ExecResult<S>) {
         info!(
-            "[EXEC]\n\t<{}> <- exec result\n\t<message> exec_result: {}\n\t<prepare> {}",
+            "[EXEC]\n\t<{}> <- exec result\n\t<message> exec_result: {}\n\t<prepare> {}\n",
             self.address.tiny_hex(),
             exec_result,
             self.prepare
@@ -746,6 +746,18 @@ where
             OverlordMsg::SyncRequest(sq) => sq.requester.clone(),
             OverlordMsg::SyncResponse(sp) => sp.responder.clone(),
             OverlordMsg::Stop => unreachable!(),
+        }
+    }
+
+    async fn handle_err(&self, e: OverlordError, content: String) {
+        match e.kind {
+            ErrorKind::Debug => debug!("{}", content),
+            ErrorKind::Warn => debug!("{}", content),
+            ErrorKind::LocalError => error!("{}", content),
+            _ => {
+                error!("{}", content);
+                self.adapter.handle_error(Context::default(), e).await;
+            }
         }
     }
 }

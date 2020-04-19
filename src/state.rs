@@ -143,12 +143,11 @@ impl<B: Blk> StateInfo<B> {
 
     pub fn filter_stage<T: NextStage>(&self, msg: &T) -> OverlordResult<Stage> {
         let next_stage = msg.next_stage();
-        if next_stage < self.stage {
-            return Err(OverlordError::debug_under_stage());
-        } else if next_stage == self.stage && self.stage.step != Step::Brake {
-            return Err(OverlordError::debug_under_stage());
+        if next_stage < self.stage || (next_stage == self.stage && self.stage.step != Step::Brake) {
+            Err(OverlordError::debug_under_stage())
+        } else {
+            Ok(next_stage)
         }
-        Ok(next_stage)
     }
 
     pub fn update_lock(&mut self, proposal: &Proposal<B>) -> OverlordResult<()> {

@@ -21,7 +21,7 @@ async fn test_1_node() {
                 record.args()
             )
         })
-        .filter_level(LevelFilter::Debug)
+        .filter_level(LevelFilter::Info)
         .is_test(true)
         .try_init();
     let platform = Platform::new(1);
