@@ -37,7 +37,7 @@ pub struct SMR<A: Adapter<B, S>, B: Blk, S: St> {
     address: Address,
     state:   StateInfo<B>,
     prepare: ProposePrepare<S>,
-    sync:    Sync,
+    sync:    Sync<B>,
 
     adapter: Arc<A>,
     wal:     Wal,
@@ -130,7 +130,7 @@ where
             prepare,
             phantom_s: PhantomData,
             address: address.clone(),
-            sync: Sync::default(),
+            sync: Sync::new(address.clone()),
             adapter: Arc::<A>::clone(adapter),
             auth: AuthManage::new(auth_fixed_config, current_auth, last_auth),
             agent: EventAgent::new(
@@ -219,7 +219,7 @@ where
 
     fn handle_exec_result(&mut self, exec_result: ExecResult<S>) {
         info!(
-            "[EXEC]\n\t<{}> <- exec result\n\t<message> exec_result: {}\n\t<prepare> {}\n\n",
+            "[EXEC]\n\t<{}> <- exec\n\t<response> exec_result: {}\n\t<prepare> {}\n\n",
             self.address.tiny_hex(),
             exec_result,
             self.prepare
@@ -239,7 +239,7 @@ where
         self.wal.save_full_block(&fetch)?;
 
         info!(
-            "[FETCH]\n\t<{}> <- full block\n\t<message> full_block: {}\n\n\n",
+            "[FETCH]\n\t<{}> <- full block\n\t<response> full_block: {}\n\n\n",
             self.address.tiny_hex(),
             fetch
         );
@@ -652,6 +652,7 @@ where
 
         let map: HashMap<Height, (B, Proof)> = response
             .block_with_proofs
+            .clone()
             .into_iter()
             .map(|(block, proof)| (block.get_height(), (block, proof)))
             .collect();
@@ -676,7 +677,7 @@ where
                 .expect("Execution is down! It's meaningless to continue running");
             self.handle_commit(exec_result).await?;
         }
-        self.sync.handle_sync_response::<B>();
+        self.sync.handle_sync_response(&response);
 
         Ok(())
     }
@@ -1059,6 +1060,12 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
             return;
         }
 
+        info!(
+            "[FETCH]\n\t<{}> -> full block\n\t<request> block_hash: {}\n\n\n",
+            self.address.tiny_hex(),
+            block_hash.tiny_hex()
+        );
+
         let adapter = Arc::<A>::clone(&self.adapter);
         let to_fetch = self.to_fetch.clone();
         let height = block.get_height();
@@ -1076,6 +1083,12 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
     }
 
     fn save_and_exec_block(&self, request: ExecRequest) {
+        info!(
+            "[EXEC]\n\t<{}> -> exec\n\t<request> exec_request: {}\n\n\n",
+            self.address.tiny_hex(),
+            request
+        );
+
         self.to_exec
             .unbounded_send(request)
             .expect("Exec Channel is down! It's meaningless to continue running");

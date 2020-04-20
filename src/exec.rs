@@ -3,11 +3,14 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use creep::Context;
+use derive_more::Display;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use futures::stream::StreamExt;
 
 use crate::{Adapter, Blk, ExecResult, Height, Proof, St};
 
+#[derive(Display)]
+#[display(fmt = "{{ height: {}, proof: {} }}", height, proof)]
 pub struct ExecRequest {
     height:     Height,
     full_block: Bytes,
