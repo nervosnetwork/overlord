@@ -117,7 +117,7 @@ where
             last_config.map(|config| AuthCell::new(config.auth_config, &address));
 
         info!(
-            "[LOAD]\n\t<{}> <- {}\n\t<state> {}\n\t<prepare> {}\n",
+            "[LOAD]\n\t<{}> <- {}\n\t<state> {}\n\t<prepare> {}\n\n",
             address.tiny_hex(),
             from,
             state,
@@ -165,7 +165,7 @@ where
                 opt = self.agent.from_fetch.next() => {
                     let fetch = opt.expect("Fetch Channel is down! It's meaningless to continue running");
                     if let Err(e) = self.handle_fetch(fetch).await {
-                        let content = format!("[FETCH]\n\t<{}> <- full block\n\t{}\n", self.address.tiny_hex(), e);
+                        let content = format!("[FETCH]\n\t<{}> <- full block\n\t{}\n\n\n", self.address.tiny_hex(), e);
                         self.handle_err(e, content).await;
                     }
                 }
@@ -219,7 +219,7 @@ where
 
     fn handle_exec_result(&mut self, exec_result: ExecResult<S>) {
         info!(
-            "[EXEC]\n\t<{}> <- exec result\n\t<message> exec_result: {}\n\t<prepare> {}\n",
+            "[EXEC]\n\t<{}> <- exec result\n\t<message> exec_result: {}\n\t<prepare> {}\n\n",
             self.address.tiny_hex(),
             exec_result,
             self.prepare
@@ -239,7 +239,7 @@ where
         self.wal.save_full_block(&fetch)?;
 
         info!(
-            "[FETCH]\n\t<{}> <- full block\n\t<message> full_block: {}\n",
+            "[FETCH]\n\t<{}> <- full block\n\t<message> full_block: {}\n\n\n",
             self.address.tiny_hex(),
             fetch
         );
@@ -372,7 +372,7 @@ where
         self.auth.verify_signed_pre_vote(&sv)?;
         if let Some(sum_w) = self.cabinet.insert(msg_h, msg_r, (&sv).into())? {
             info!(
-                "[RECEIVE]\n\t<{}> <- {}\n\t<message> signed_pre_vote: {}\n\t<weight> cumulative_weight: {}\n",
+                "[RECEIVE]\n\t<{}> <- {}\n\t<message> signed_pre_vote: {}\n\t<weight> cumulative_weight: {}\n\n",
                 self.address.tiny_hex(),
                 sv.voter.tiny_hex(),
                 sv,
@@ -408,7 +408,7 @@ where
         self.auth.verify_signed_pre_commit(&sv)?;
         if let Some(sum_w) = self.cabinet.insert(msg_h, msg_r, (&sv).into())? {
             info!(
-                "[RECEIVE]\n\t<{}> <- {}\n\t<message> signed_pre_commit: {}\n\t<weight> cumulative_weight: {}\n",
+                "[RECEIVE]\n\t<{}> <- {}\n\t<message> signed_pre_commit: {}\n\t<weight> cumulative_weight: {}\n\n",
                 self.address.tiny_hex(),
                 sv.voter.tiny_hex(),
                 sv,
@@ -444,7 +444,7 @@ where
         self.auth.verify_signed_choke(&sc)?;
         if let Some(sum_w) = self.cabinet.insert(msg_h, msg_r, (&sc).into())? {
             info!(
-                "[RECEIVE]\n\t<{}> <- {}\n\t<message> signed_choke: {}\n\t<weight> cumulative_weight: {}\n",
+                "[RECEIVE]\n\t<{}> <- {}\n\t<message> signed_choke: {}\n\t<weight> cumulative_weight: {}\n\n",
                 self.address.tiny_hex(),
                 sc.voter.tiny_hex(),
                 sc,
@@ -544,7 +544,7 @@ where
         self.state.handle_choke_qc(&qc)?;
         self.wal.save_state(&self.state)?;
         info!(
-            "[ROUND]\n\t<{}> -> new round: {}\n\t<state> {}\n",
+            "[ROUND]\n\t<{}> -> new round: {}\n\t<state> {}\n\n\n",
             self.address.tiny_hex(),
             self.state.stage.round,
             self.state
@@ -588,7 +588,7 @@ where
             .handle_commit(commit_exec_result.consensus_config.time_config.clone());
         self.wal.handle_commit(next_height)?;
         info!(
-            "[COMMIT]\n\t<{}> commit\n\t<state> {}\n\t<prepare> {}\n",
+            "[COMMIT]\n\t<{}> commit\n\t<state> {}\n\t<prepare> {}\n\n",
             self.address.tiny_hex(),
             self.state,
             self.prepare
@@ -693,7 +693,7 @@ where
     async fn next_height(&mut self) -> OverlordResult<()> {
         self.state.next_height();
         info!(
-            "[HEIGHT]\n\t<{}> -> next height: {}\n\t<state> {}\n",
+            "[HEIGHT]\n\t<{}> -> next height: {}\n\t<state> {}\n\n\n",
             self.address.tiny_hex(),
             self.state.stage.height,
             self.state
@@ -1003,7 +1003,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
 
     async fn transmit(&self, to: Address, msg: OverlordMsg<B>) -> OverlordResult<()> {
         info!(
-            "[TRANSMIT]\n\t<{}> -> {}\n\t<message> {} \n",
+            "[TRANSMIT]\n\t<{}> -> {}\n\t<message> {} \n\n\n",
             self.address.tiny_hex(),
             to.tiny_hex(),
             msg
@@ -1024,7 +1024,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
 
     async fn broadcast(&self, msg: OverlordMsg<B>) -> OverlordResult<()> {
         info!(
-            "[BROADCAST]\n\t<{}> =>|\n\t<message> {} \n",
+            "[BROADCAST]\n\t<{}> =>|\n\t<message> {} \n\n\n",
             self.address.tiny_hex(),
             msg
         );
@@ -1122,7 +1122,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
 
     fn set_timeout(&self, timeout_info: TimeoutInfo) {
         info!(
-            "[SET]\n\t<{}> set timeout\n\t<timeout> {},\n\t<delay> {:?}\n",
+            "[SET]\n\t<{}> set timeout\n\t<timeout> {},\n\t<delay> {:?}\n\n",
             self.address.tiny_hex(),
             timeout_info,
             timeout_info.delay,
