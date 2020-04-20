@@ -12,12 +12,11 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, Display, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
-    fmt = "{{ pre_hash: {}, height: {}, exec_height: {}, pre_proof: {}, state_root: {}, tx: {} }}",
+    fmt = "{{ pre_hash: {}, height: {}, exec_height: {}, pre_proof: {}, tx: {} }}",
     "pre_hash.tiny_hex()",
     height,
     exec_height,
     pre_proof,
-    "state_root.tiny_hex()",
     tx
 )]
 pub struct Block {
@@ -28,6 +27,7 @@ pub struct Block {
     pub state_root:    Hash,
     pub receipt_roots: Vec<Hash>,
     pub tx:            Transaction,
+    pub nonce:         Hash,
 }
 
 impl Block {

@@ -57,14 +57,11 @@ impl Wal {
         let mut full_block_path = self.wal_dir_path.clone();
         full_block_path.push(FULL_BLOCK_SUB_DIR);
         ensure_dir_exists(&full_block_path);
-        println!("full_block_path. {:?}", full_block_path);
 
         for dir_entry in fs::read_dir(full_block_path).map_err(OverlordError::local_wal)? {
             let folder = dir_entry.map_err(OverlordError::local_wal)?.path();
-            println!("folder. {:?}", folder);
             for file_entry in fs::read_dir(folder).map_err(OverlordError::local_wal)? {
                 let file_path = file_entry.map_err(OverlordError::local_wal)?.path();
-                println!("file_path. {:?}", file_path);
                 let mut file = open_file(file_path)?;
                 let mut read_buf = Vec::new();
                 let _ = file
@@ -166,14 +163,36 @@ fn open_file(file_path: PathBuf) -> OverlordResult<fs::File> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::types::TestBlock;
+    use crate::state::Stage;
+    use crate::types::{
+        Aggregates, Choke, ChokeQC, PreCommitQC, PreVoteQC, TestBlock, UpdateFrom, Vote,
+    };
     use crate::{Crypto, DefaultCrypto};
     use rand::random;
 
     #[test]
     fn test_wal() {
         let wal = Wal::new("./wal/");
-        let state = StateInfo::<TestBlock>::default();
+
+        let aggregates = Aggregates {
+            address_bitmap: Bytes::from("iewuceiu"),
+            signature:      Bytes::from("iewuceiu"),
+        };
+
+        let vote = Vote::new(10, 2, Bytes::from("ckvfkvfv"));
+
+        let state = StateInfo {
+            address:       Bytes::from("iewuceiu"),
+            stage:         Stage::default(),
+            lock:          Some(PreVoteQC::new(vote.clone(), aggregates.clone())),
+            block:         Some(TestBlock::default()),
+            pre_commit_qc: Some(PreCommitQC::new(vote, aggregates.clone())),
+            from:          Some(UpdateFrom::ChokeQC(ChokeQC::new(
+                Choke::default(),
+                aggregates,
+            ))),
+        };
+
         wal.save_state(&state).unwrap();
         let load_state = wal.load_state().unwrap();
         assert_eq!(state, load_state);

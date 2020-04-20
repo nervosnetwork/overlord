@@ -394,7 +394,7 @@ impl<B: Blk> Encodable for StateInfo<B> {
     fn rlp_append(&self, s: &mut RlpStream) {
         let block = self
             .block
-            .as_ref()
+            .clone()
             .map(|block| block.fixed_encode().unwrap().to_vec());
         s.begin_list(6)
             .append(&self.stage)
@@ -492,12 +492,11 @@ impl Decodable for HeightRange {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::types::TestBlock;
     use std::fmt::Debug;
 
     #[test]
     fn test_codec() {
-        use crate::types::TestBlock;
-
         test_rlp::<Stage>();
         test_rlp::<StateInfo<TestBlock>>();
         test_rlp::<Aggregates>();

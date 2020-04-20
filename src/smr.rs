@@ -75,12 +75,12 @@ where
             warn!("Load state from wal failed: {}! Try to recover state by the adapter, which face security risk if majority auth nodes lost their wal file at the same time", e);
             state = recover_state_by_adapter(adapter, address.clone()).await;
             last_commit_height = state.stage.height;
-            from = "wal";
+            from = "adapter";
         } else {
             state = rst.unwrap();
             assert_eq!(state.address, address, "Load wal with other address");
             last_commit_height = state.stage.height - 1;
-            from = "adapter"
+            from = "wal"
         };
 
         let prepare = recover_propose_prepare_and_config(adapter, last_commit_height).await;
@@ -212,7 +212,7 @@ where
                 self.handle_sync_response(response).await?;
             }
             OverlordMsg::Stop => {
-                panic!("[STOP]\n\t<{}> -> heaven\n\n\n\n");
+                panic!("[STOP]\n\t<{}> -> heaven\n\n\n\n", self.address.tiny_hex());
             }
         }
 
@@ -299,7 +299,12 @@ where
         };
         let signed_vote = self.auth.sign_pre_commit(vote)?;
         let leader = self.auth.get_leader(height, round);
-        self.agent.transmit(leader, signed_vote.into()).await?;
+        self.agent
+            .transmit(leader, signed_vote.clone().into())
+            .await?;
+        // new design, when leader is down, next leader can aggregate votes to view change fast
+        let next_leader = self.auth.get_leader(height, round + 1);
+        self.agent.transmit(next_leader, signed_vote.into()).await?;
         Ok(())
     }
 
@@ -500,7 +505,10 @@ where
             self.wal.save_state(&self.state)?;
 
             let vote = self.auth.sign_pre_commit(qc.vote.clone())?;
-            self.agent.transmit(leader, vote.into()).await?;
+            self.agent.transmit(leader, vote.clone().into()).await?;
+            // new design, when leader is down, next leader can aggregate votes to view change fast
+            let next_leader = self.auth.get_leader(msg_h, msg_r + 1);
+            self.agent.transmit(next_leader, vote.into()).await?;
         }
         Ok(())
     }
@@ -601,11 +609,13 @@ where
         // This is the exact opposite of the previous design.
         // So the time_config should also be changed.
         // make sure ( pre_vote_timeout >= propose_timeout + interval )
-        if !self.auth.am_i_leader(next_height, INIT_ROUND)
+        if (!self.auth.am_i_leader(next_height, INIT_ROUND)
+            || self.auth.current_auth.list.len() == 1)
             && self.agent.set_step_timeout(self.state.stage.clone())
         {
             return Ok(());
         }
+
         self.next_height().await
     }
 
@@ -773,6 +783,12 @@ where
             )));
         }
         if self.prepare.exec_height < exec_h {
+            println!(
+                "<{}>, self.exec_height < block.exec_height, {} < {}",
+                self.address.tiny_hex(),
+                self.prepare.exec_height,
+                exec_h
+            );
             return Err(OverlordError::warn_block(format!(
                 "self.exec_height < block.exec_height, {} < {}",
                 self.prepare.exec_height, exec_h
@@ -785,7 +801,8 @@ where
                 &self.prepare.get_block_states_list(exec_h),
             )
             .await
-            .map_err(OverlordError::byz_adapter_check_block)
+            .map_err(OverlordError::byz_adapter_check_block)?;
+        Ok(())
     }
 
     async fn create_block(&self) -> OverlordResult<B> {
@@ -916,6 +933,7 @@ async fn recover_propose_prepare_and_config<A: Adapter<B, S>, B: Blk, S: St>(
         .await
         .unwrap()
         .unwrap();
+
     let hash = block.get_block_hash();
     let last_exec_height = block.get_exec_height();
     let mut exec_results = vec![];
@@ -1131,7 +1149,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         let opt = self.compute_timeout(&stage);
         if let Some(delay) = opt {
             let timeout_info = TimeoutInfo::new(delay, stage.into(), self.to_timeout.clone());
-            self.set_timeout(timeout_info);
+            self.set_timeout(timeout_info, delay);
             return true;
         }
         false
@@ -1141,7 +1159,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         let delay = Duration::from_millis(self.time_config.interval * HEIGHT_RATIO / TIME_DIVISOR);
         let timeout_info =
             TimeoutInfo::new(delay, TimeoutEvent::HeightTimeout, self.to_timeout.clone());
-        self.set_timeout(timeout_info);
+        self.set_timeout(timeout_info, delay);
     }
 
     fn set_sync_timeout(&self, request_id: u64) {
@@ -1152,7 +1170,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
             TimeoutEvent::SyncTimeout(request_id),
             self.to_timeout.clone(),
         );
-        self.set_timeout(timeout_info);
+        self.set_timeout(timeout_info, delay);
     }
 
     fn set_clear_timeout(&self, address: Address) {
@@ -1163,15 +1181,15 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
             TimeoutEvent::ClearTimeout(address),
             self.to_timeout.clone(),
         );
-        self.set_timeout(timeout_info);
+        self.set_timeout(timeout_info, delay);
     }
 
-    fn set_timeout(&self, timeout_info: TimeoutInfo) {
+    fn set_timeout(&self, timeout_info: TimeoutInfo, delay: Duration) {
         info!(
             "[SET]\n\t<{}> set timeout\n\t<timeout> {},\n\t<delay> {:?}\n\n",
             self.address.tiny_hex(),
             timeout_info,
-            timeout_info.delay,
+            delay,
         );
         tokio::spawn(async move {
             timeout_info.await;

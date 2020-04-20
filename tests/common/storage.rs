@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use overlord::crypto::KeyPairs;
+use overlord::types::{SelectMode, TimeConfig};
 use overlord::{Address, Height, HeightRange, Proof, TinyHex};
 use parking_lot::RwLock;
 
@@ -15,7 +17,15 @@ pub struct Storage {
 impl Storage {
     pub fn register(&self, address: Address) {
         let mut latest_height_map = self.latest_height_map.write();
-        (*latest_height_map).insert(address, 0);
+        if latest_height_map.get(&address).is_none() {
+            (*latest_height_map).insert(address, 0);
+        }
+    }
+
+    pub fn save_genesis_block(&self, key_pairs: &KeyPairs) {
+        let genesis_block = Block::new(&key_pairs, SelectMode::InTurn, 5, TimeConfig::default());
+        self.block_map.write().insert(0, genesis_block);
+        self.proof_map.write().insert(0, Proof::default());
     }
 
     pub fn save_block_with_proof(&self, to: Address, height: Height, block: Block, proof: Proof) {
@@ -26,17 +36,36 @@ impl Storage {
             assert_eq!(
                 block_exists,
                 &block,
-                "{} save a byzantine block {}",
+                "[TEST]\n\t<{}> -> storage\n\t<collapsed> save.block != exist.block, {} != {}\n\n\n",
                 to.tiny_hex(),
-                block
+                block,
+                block_exists
             );
         } else {
             let mut proof_map = self.proof_map.write();
-            block_map.insert(height, block);
-            proof_map.insert(height, proof);
+            block_map.insert(height, block.clone());
+            proof_map.insert(height, proof.clone());
         }
-        let mut latest_height_map = self.latest_height_map.write();
-        latest_height_map.insert(to, height);
+        let latest_height = { *self.latest_height_map.read().get(&to).unwrap() };
+        if height > latest_height {
+            let mut latest_height_map = self.latest_height_map.write();
+            latest_height_map.insert(to.clone(), height);
+        }
+
+        let list_vec: Vec<(String, Height)> = self
+            .latest_height_map
+            .read()
+            .clone()
+            .iter()
+            .map(|(address, height)| (address.tiny_hex(), *height))
+            .collect();
+        println!(
+            "[TEST]\n\t<{}> -> storage\n\t<store> block: {}, proof: {}\n\t<update> storage: {:?}\n\n",
+            to.tiny_hex(),
+            block,
+            proof,
+            list_vec,
+        );
     }
 
     pub fn get_block_with_proof(&self, from: &Address, range: HeightRange) -> Vec<(Block, Proof)> {
@@ -70,7 +99,7 @@ impl Storage {
         let latest_height = *self.latest_height_map.read().get(address).unwrap();
         if height <= latest_height {
             println!(
-                "{} save lower block of height {}, while it's latest_height is {}",
+                "[TEST]\n\t<{}> -> storage\n\t<warn> save_block.height <= exist.height, {} <= {}\n\n\n",
                 address.tiny_hex(),
                 height,
                 latest_height
@@ -79,7 +108,7 @@ impl Storage {
         }
         if height > latest_height + 1 {
             panic!(
-                "{} save higher block of height {}, while it's latest_height is {}",
+                "[TEST]\n\t<{}> -> storage\n\t<collapsed> save_block.height > exist.height + 1, {} > {} + 1\n\n\n",
                 address.tiny_hex(),
                 height,
                 latest_height

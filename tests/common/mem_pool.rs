@@ -1,5 +1,7 @@
+use bytes::Bytes;
 use overlord::{Hash, Height, Proof};
 use parking_lot::RwLock;
+use rand::random;
 
 use crate::common::block::{Block, Transaction};
 
@@ -20,11 +22,6 @@ impl MemPool {
         *tx = new_tx;
     }
 
-    #[allow(dead_code)]
-    pub fn get_tx(&self) -> Transaction {
-        self.tx.read().clone()
-    }
-
     pub fn package(
         &self,
         height: Height,
@@ -42,7 +39,12 @@ impl MemPool {
             pre_proof,
             state_root,
             receipt_roots,
+            nonce: Bytes::from(gen_random_bytes(10)),
             tx,
         }
     }
+}
+
+fn gen_random_bytes(len: usize) -> Vec<u8> {
+    (0..len).map(|_| random::<u8>()).collect::<Vec<_>>()
 }

@@ -4,12 +4,11 @@ use bytes::Bytes;
 use overlord::crypto::{KeyPair, KeyPairs};
 use overlord::types::SelectMode;
 use overlord::{
-    gen_key_pairs, Address, AuthConfig, Node, OverlordConfig, OverlordServer, Proof, TimeConfig,
-    TinyHex,
+    gen_key_pairs, Address, AuthConfig, Height, Node, OverlordConfig, OverlordMsg, OverlordServer,
+    TimeConfig, TinyHex,
 };
 
 use crate::common::adapter::OverlordAdapter;
-use crate::common::block::Block;
 use crate::common::mem_pool::MemPool;
 use crate::common::network::Network;
 use crate::common::storage::Storage;
@@ -32,6 +31,9 @@ impl Platform {
         let init_config = init_config(&key_pairs);
         let mem_pool = Arc::new(MemPool::new(init_config));
 
+        storage.save_genesis_block(&key_pairs);
+
+        run(key_pairs.clone(), &network, &mem_pool, &storage);
         Platform {
             network,
             mem_pool,
@@ -40,49 +42,86 @@ impl Platform {
         }
     }
 
-    pub fn run(&self) {
-        let key_pairs = self.key_pairs.clone();
-        let network = &self.network;
-        let mem_pool = &self.mem_pool;
-        let storage = &self.storage;
+    #[allow(dead_code)]
+    pub fn add_new_nodes(&mut self, node_number: usize) {
+        let common_ref = self.key_pairs.common_ref.clone();
+        let mut key_pairs = gen_key_pairs(node_number, vec![], Some(common_ref));
+        run(
+            key_pairs.clone(),
+            &self.network,
+            &self.mem_pool,
+            &self.storage,
+        );
+        self.key_pairs.key_pairs.append(&mut key_pairs.key_pairs);
+    }
 
-        let common_ref = key_pairs.common_ref.clone();
-        let genesis_block = Block::new(&key_pairs, SelectMode::InTurn, 5, TimeConfig::default());
-        for key_pair in key_pairs.key_pairs {
-            let address = hex_to_address(&key_pair.address);
-            storage.register(address.clone());
-            storage.save_block_with_proof(
-                address.clone(),
-                0,
-                genesis_block.clone(),
-                Proof::default(),
-            );
-            let adapter = Arc::new(OverlordAdapter::new(
-                address.clone(),
-                network,
-                mem_pool,
-                storage,
-            ));
+    pub fn restart_node(&self, address: &Address) {
+        let common_ref = self.key_pairs.common_ref.clone();
+        let key_pair = self
+            .key_pairs
+            .key_pairs
+            .iter()
+            .find(|key_pair| hex_to_address(&key_pair.address) == address)
+            .unwrap();
+        let key_pairs = KeyPairs {
+            common_ref,
+            key_pairs: vec![key_pair.clone()],
+        };
+        run(key_pairs, &self.network, &self.mem_pool, &self.storage);
+    }
 
-            let common_ref_clone = common_ref.clone();
-            let pri_key = key_pair.private_key.clone();
-            let tiny_address = address.tiny_hex();
-            tokio::spawn(async move {
-                OverlordServer::run(
-                    common_ref_clone,
-                    pri_key,
-                    address,
-                    &adapter,
-                    &("wal/tests/".to_owned() + &tiny_address),
-                )
-                .await;
-            });
-        }
+    pub fn stop_node(&self, to: &Address) {
+        let _ = self.network.transmit(to, OverlordMsg::Stop);
     }
 
     #[allow(dead_code)]
     pub fn set_consensus_config(&self, overlord_config: OverlordConfig) {
         self.mem_pool.send_tx(overlord_config)
+    }
+
+    pub fn get_latest_height(&self, from: &Address) -> Height {
+        self.storage.get_latest_height(from)
+    }
+
+    pub fn get_address_list(&self) -> Vec<Address> {
+        self.key_pairs
+            .key_pairs
+            .iter()
+            .map(|keypair| hex_to_address(&keypair.address))
+            .collect()
+    }
+}
+
+fn run(
+    key_pairs: KeyPairs,
+    network: &Arc<Network>,
+    mem_pool: &Arc<MemPool>,
+    storage: &Arc<Storage>,
+) {
+    let common_ref = key_pairs.common_ref.clone();
+    for key_pair in key_pairs.key_pairs {
+        let address = hex_to_address(&key_pair.address);
+        storage.register(address.clone());
+        let adapter = Arc::new(OverlordAdapter::new(
+            address.clone(),
+            network,
+            mem_pool,
+            storage,
+        ));
+
+        let common_ref_clone = common_ref.clone();
+        let pri_key = key_pair.private_key.clone();
+        let tiny_address = address.tiny_hex();
+        tokio::spawn(async move {
+            OverlordServer::run(
+                common_ref_clone,
+                pri_key,
+                address,
+                &adapter,
+                &("wal/tests/".to_owned() + &tiny_address),
+            )
+            .await;
+        });
     }
 }
 
