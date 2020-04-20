@@ -211,7 +211,9 @@ where
             OverlordMsg::SyncResponse(response) => {
                 self.handle_sync_response(response).await?;
             }
-            _ => {}
+            OverlordMsg::Stop => {
+                panic!("[STOP]\n\t<{}> -> heaven\n\n\n\n");
+            }
         }
 
         Ok(())
