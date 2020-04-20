@@ -582,16 +582,17 @@ where
     async fn handle_commit(&mut self, commit_exec_result: ExecResult<S>) -> OverlordResult<()> {
         let next_height = self.state.stage.height + 1;
         self.auth
-            .handle_commit(commit_exec_result.consensus_config.auth_config);
+            .handle_commit(commit_exec_result.consensus_config.auth_config.clone());
         self.cabinet.handle_commit(next_height, &self.auth);
         self.agent
             .handle_commit(commit_exec_result.consensus_config.time_config.clone());
         self.wal.handle_commit(next_height)?;
         info!(
-            "[COMMIT]\n\t<{}> commit\n\t<state> {}\n\t<prepare> {}\n\n",
+            "[COMMIT]\n\t<{}> commit\n\t<state> {}\n\t<prepare> {}\n<config> {}\n",
             self.address.tiny_hex(),
             self.state,
-            self.prepare
+            self.prepare,
+            commit_exec_result.consensus_config
         );
 
         // If self is leader, should not wait for interval timeout.
@@ -625,7 +626,10 @@ where
 
     async fn handle_sync_request(&mut self, request: SyncRequest) -> OverlordResult<()> {
         if request.request_range.from >= self.state.stage.height {
-            return Err(OverlordError::byz_req_high());
+            return Err(OverlordError::byz_req_high(format!(
+                "request_from > self.height, {} > {}",
+                request.request_range.from, self.state.stage.height
+            )));
         }
 
         self.auth.verify_sync_request(&request)?;
@@ -721,12 +725,28 @@ where
     }
 
     fn check_proposal(&self, p: &Proposal<B>) -> OverlordResult<()> {
-        if p.height != p.block.get_height() || p.block_hash != p.block.get_block_hash() {
-            return Err(OverlordError::byz_block());
+        if p.height != p.block.get_height() {
+            return Err(OverlordError::byz_block(format!(
+                "proposal.height != block.height, {} != {}",
+                p.height,
+                p.block.get_height()
+            )));
+        }
+
+        if p.block_hash != p.block.get_block_hash() {
+            return Err(OverlordError::byz_block(format!(
+                "proposal.block_hash != block.hash, {} != {}",
+                p.block_hash.tiny_hex(),
+                p.block.get_block_hash().tiny_hex()
+            )));
         }
 
         if self.prepare.pre_hash != p.block.get_pre_hash() {
-            return Err(OverlordError::byz_block());
+            return Err(OverlordError::byz_block(format!(
+                "self.pre_hash != block.pre_hash, {} != {}",
+                self.prepare.pre_hash.tiny_hex(),
+                p.block.get_pre_hash().tiny_hex()
+            )));
         }
 
         self.auth.verify_proof(p.block.get_proof())?;
@@ -743,10 +763,18 @@ where
     async fn check_block(&self, block: &B) -> OverlordResult<()> {
         let exec_h = block.get_exec_height();
         if block.get_height() > exec_h + self.prepare.max_exec_behind {
-            return Err(OverlordError::byz_block());
+            return Err(OverlordError::byz_block(format!(
+                "block.block_height > block.exec_height + max_exec_behind, {} > {} + {}",
+                block.get_height(),
+                exec_h,
+                self.prepare.max_exec_behind
+            )));
         }
         if self.prepare.exec_height < exec_h {
-            return Err(OverlordError::warn_block());
+            return Err(OverlordError::warn_block(format!(
+                "self.exec_height < block.exec_height, {} < {}",
+                self.prepare.exec_height, exec_h
+            )));
         }
         self.adapter
             .check_block(
@@ -762,7 +790,10 @@ where
         let height = self.state.stage.height;
         let exec_height = self.prepare.exec_height;
         if height > exec_height + self.prepare.max_exec_behind {
-            return Err(OverlordError::local_behind());
+            return Err(OverlordError::local_behind(format!(
+                "self.height > self.exec_height + max_exec_behind, {} > {} + {}",
+                height, exec_height, self.prepare.max_exec_behind
+            )));
         }
         let pre_hash = self.prepare.pre_hash.clone();
         let pre_proof = self.prepare.pre_proof.clone();

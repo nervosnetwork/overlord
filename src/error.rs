@@ -27,14 +27,14 @@ pub enum ErrorInfo {
     Crypto(Box<dyn Error + Send>),
     #[display(fmt = "unauthorized")]
     UnAuthorized,
-    #[display(fmt = "fake weight")]
-    FakeWeight,
+    #[display(fmt = "fake vote weight, {}", _0)]
+    FakeWeight(String),
     #[display(fmt = "weight sum under majority")]
     UnderMajority,
     #[display(fmt = "msg already exist")]
     MsgExist,
-    #[display(fmt = "msg of multi version")]
-    MultiVersion,
+    #[display(fmt = "msg of multi version, {}", _0)]
+    MultiVersion(String),
     #[display(fmt = "get block failed: {}", _0)]
     GetBlock(Box<dyn Error + Send>),
     #[display(fmt = "fetch full block of {} failed", "_0.tiny_hex()")]
@@ -53,16 +53,16 @@ pub enum ErrorInfo {
     MuchHighMsg,
     #[display(fmt = "receive higher msg")]
     HighMsg,
-    #[display(fmt = "receive msg with wrong leader")]
-    WrongLeader,
-    #[display(fmt = "check block failed")]
-    CheckBlock,
+    #[display(fmt = "receive msg with wrong leader, {}", _0)]
+    WrongLeader(String),
+    #[display(fmt = "check block failed, {}", _0)]
+    CheckBlock(String),
     #[display(fmt = "adapter check block failed")]
     AdapterCheckBlock(Box<dyn Error + Send>),
     #[display(fmt = "under stage")]
     UnderStage,
-    #[display(fmt = "higher proposal with lower lock_round")]
-    AbnormalLock,
+    #[display(fmt = "abnormal lock, {}", _0)]
+    AbnormalLock(String),
     #[display(fmt = "transmit error")]
     Transmit(Box<dyn Error + Send>),
     #[display(fmt = "broadcast error")]
@@ -71,14 +71,14 @@ pub enum ErrorInfo {
     CreateBlock(Box<dyn Error + Send>),
     #[display(fmt = "lock empty vote in proposal")]
     EmptyLock,
-    #[display(fmt = "exec behind consensus to much")]
-    BehindMuch,
-    #[display(fmt = "in block list")]
-    InBlockList,
-    #[display(fmt = "on sync")]
+    #[display(fmt = "exec behind consensus too much, {}", _0)]
+    BehindMuch(String),
+    #[display(fmt = "sender is in black list")]
+    InBlackList,
+    #[display(fmt = "self on sync")]
     OnSync,
-    #[display(fmt = "request higher block")]
-    RequestHigher,
+    #[display(fmt = "request higher block, {}", _0)]
+    RequestHigher(String),
 }
 
 #[derive(Debug, Display)]
@@ -117,10 +117,10 @@ impl OverlordError {
         }
     }
 
-    pub fn byz_fake() -> Self {
+    pub fn byz_fake(str: String) -> Self {
         OverlordError {
             kind: ErrorKind::Byzantine,
-            info: ErrorInfo::FakeWeight,
+            info: ErrorInfo::FakeWeight(str),
         }
     }
 
@@ -138,10 +138,10 @@ impl OverlordError {
         }
     }
 
-    pub fn byz_mul_version() -> Self {
+    pub fn byz_mul_version(str: String) -> Self {
         OverlordError {
             kind: ErrorKind::Byzantine,
-            info: ErrorInfo::MultiVersion,
+            info: ErrorInfo::MultiVersion(str),
         }
     }
 
@@ -208,24 +208,24 @@ impl OverlordError {
         }
     }
 
-    pub fn byz_leader() -> Self {
+    pub fn byz_leader(str: String) -> Self {
         OverlordError {
             kind: ErrorKind::Byzantine,
-            info: ErrorInfo::WrongLeader,
+            info: ErrorInfo::WrongLeader(str),
         }
     }
 
-    pub fn byz_block() -> Self {
+    pub fn byz_block(str: String) -> Self {
         OverlordError {
             kind: ErrorKind::Byzantine,
-            info: ErrorInfo::CheckBlock,
+            info: ErrorInfo::CheckBlock(str),
         }
     }
 
-    pub fn warn_block() -> Self {
+    pub fn warn_block(str: String) -> Self {
         OverlordError {
             kind: ErrorKind::Warn,
-            info: ErrorInfo::CheckBlock,
+            info: ErrorInfo::CheckBlock(str),
         }
     }
 
@@ -236,10 +236,10 @@ impl OverlordError {
         }
     }
 
-    pub fn warn_abnormal_lock() -> Self {
+    pub fn warn_abnormal_lock(str: String) -> Self {
         OverlordError {
             kind: ErrorKind::Warn,
-            info: ErrorInfo::AbnormalLock,
+            info: ErrorInfo::AbnormalLock(str),
         }
     }
 
@@ -278,17 +278,17 @@ impl OverlordError {
         }
     }
 
-    pub fn local_behind() -> Self {
+    pub fn local_behind(str: String) -> Self {
         OverlordError {
             kind: ErrorKind::LocalError,
-            info: ErrorInfo::BehindMuch,
+            info: ErrorInfo::BehindMuch(str),
         }
     }
 
     pub fn net_blacklist() -> Self {
         OverlordError {
             kind: ErrorKind::Network,
-            info: ErrorInfo::InBlockList,
+            info: ErrorInfo::InBlackList,
         }
     }
 
@@ -306,10 +306,10 @@ impl OverlordError {
         }
     }
 
-    pub fn byz_req_high() -> Self {
+    pub fn byz_req_high(str: String) -> Self {
         OverlordError {
             kind: ErrorKind::Byzantine,
-            info: ErrorInfo::RequestHigher,
+            info: ErrorInfo::RequestHigher(str),
         }
     }
 }

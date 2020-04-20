@@ -526,12 +526,18 @@ impl<B: Blk> Grid<B> {
     }
 }
 
-fn check_exist<T: PartialEq + Eq>(opt: Option<&T>, check_data: &T) -> OverlordResult<()> {
+fn check_exist<T: std::fmt::Display + PartialEq + Eq>(
+    opt: Option<&T>,
+    check_data: &T,
+) -> OverlordResult<()> {
     if let Some(exist_data) = opt {
         if exist_data == check_data {
             return Err(OverlordError::net_msg_exist());
         }
-        return Err(OverlordError::byz_mul_version());
+        return Err(OverlordError::byz_mul_version(format!(
+            "insert.msg != exist.msg, {} != {}",
+            check_data, exist_data
+        )));
     }
     Ok(())
 }

@@ -14,7 +14,7 @@ use crate::types::{
 };
 use crate::{
     Adapter, Address, AuthConfig, Blk, CommonHex, Crypto, Hash, Height, HeightRange, Round,
-    Signature, St,
+    Signature, St, TinyHex,
 };
 use crate::{OverlordError, OverlordResult};
 
@@ -323,7 +323,11 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
     fn check_leader(&self, height: Height, round: Round, leader: &Address) -> OverlordResult<()> {
         let expect_leader = self.get_leader(height, round);
         if leader != &expect_leader {
-            return Err(OverlordError::byz_leader());
+            return Err(OverlordError::byz_leader(format!(
+                "msg.leader != exact.leader, {} != {}",
+                leader.tiny_hex(),
+                expect_leader.tiny_hex()
+            )));
         }
         Ok(())
     }
@@ -430,7 +434,10 @@ impl<B: Blk> AuthCell<B> {
             .get(address)
             .ok_or_else(OverlordError::byz_un_auth)?;
         if expect_weight != &vote_weight {
-            return Err(OverlordError::byz_fake());
+            return Err(OverlordError::byz_fake(format!(
+                "msg.weight != exact.weight, {} != {}",
+                vote_weight, expect_weight
+            )));
         }
         Ok(())
     }

@@ -187,7 +187,7 @@ mod test {
 
         wal.save_full_block(&FetchedFullBlock::new(11, hash, full_block))
             .unwrap();
-        wal.remove_full_blocks(11).unwrap();
+        wal.remove_full_blocks(12).unwrap();
     }
 
     fn gen_random_bytes(len: usize) -> Vec<u8> {

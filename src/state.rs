@@ -139,7 +139,10 @@ impl<B: Blk> StateInfo<B> {
                     self.lock = Some(qc.clone());
                     self.block = Some(proposal.block.clone());
                 } else {
-                    return Err(OverlordError::warn_abnormal_lock());
+                    return Err(OverlordError::warn_abnormal_lock(format!(
+                        "proposal.lock_round < self.lock_round, {} < {}",
+                        qc.vote.round, lock.vote.round
+                    )));
                 }
             } else {
                 self.lock = Some(qc.clone());
