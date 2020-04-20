@@ -1,17 +1,15 @@
-#![allow(unused_imports)]
-
 use std::task::{Context, Poll};
 use std::time::Duration;
 use std::{future::Future, pin::Pin};
 
 use derive_more::Display;
-use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
+use futures::channel::mpsc::UnboundedSender;
 use futures::{FutureExt, SinkExt};
 use futures_timer::Delay;
 
 use crate::state::{Stage, Step};
-use crate::types::{TimeConfig, TinyHex};
-use crate::{Address, Height};
+use crate::types::TinyHex;
+use crate::Address;
 
 #[derive(Clone, Debug, Display)]
 pub enum TimeoutEvent {
@@ -23,8 +21,8 @@ pub enum TimeoutEvent {
     PreCommitTimeout(Stage),
     #[display(fmt = "brake_timeout: {}", _0)]
     BrakeTimeout(Stage),
-    #[display(fmt = "next_height_timeout: {}", _0)]
-    NextHeightTimeout(Stage),
+    #[display(fmt = "next_height_timeout")]
+    NextHeightTimeout,
     #[display(fmt = "height_timeout")]
     HeightTimeout,
     #[display(fmt = "sync_timeout: {}", _0)]
@@ -40,7 +38,7 @@ impl From<Stage> for TimeoutEvent {
             Step::PreVote => TimeoutEvent::PreVoteTimeout(stage),
             Step::PreCommit => TimeoutEvent::PreCommitTimeout(stage),
             Step::Brake => TimeoutEvent::BrakeTimeout(stage),
-            Step::Commit => TimeoutEvent::NextHeightTimeout(stage),
+            Step::Commit => TimeoutEvent::NextHeightTimeout,
         }
     }
 }

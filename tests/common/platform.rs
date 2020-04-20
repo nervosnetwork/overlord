@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::sync::Arc;
 
 use bytes::Bytes;
@@ -82,6 +80,7 @@ impl Platform {
         }
     }
 
+    #[allow(dead_code)]
     pub fn set_consensus_config(&self, overlord_config: OverlordConfig) {
         self.mem_pool.send_tx(overlord_config)
     }

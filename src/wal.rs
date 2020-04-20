@@ -1,18 +1,12 @@
-#![allow(unused_imports)]
-#![allow(dead_code)]
-
-use std::error::Error;
 use std::fs;
 use std::io::{Read, Write};
-use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 
 use bytes::Bytes;
-use derive_more::Display;
 
-use crate::state::{StateInfo, Step};
-use crate::types::{FetchedFullBlock, UpdateFrom};
-use crate::{Blk, Hash, Height, OverlordError, OverlordResult, Round, TinyHex};
+use crate::state::StateInfo;
+use crate::types::FetchedFullBlock;
+use crate::{Blk, Height, OverlordError, OverlordResult, TinyHex};
 
 const STATE_SUB_DIR: &str = "state";
 const STATE_FILE_NAME: &str = "state.wal";
@@ -84,7 +78,11 @@ impl Wal {
         Ok(vec)
     }
 
-    pub fn remove_full_blocks(&self, height: Height) -> OverlordResult<()> {
+    pub fn handle_commit(&self, height: Height) -> OverlordResult<()> {
+        self.remove_full_blocks(height)
+    }
+
+    fn remove_full_blocks(&self, height: Height) -> OverlordResult<()> {
         let mut full_block_path = self.wal_dir_path.clone();
         full_block_path.push(FULL_BLOCK_SUB_DIR);
 
@@ -107,7 +105,7 @@ impl Wal {
                 ))
             })?;
 
-            if height_of_folder <= height {
+            if height_of_folder < height {
                 fs::remove_dir_all(folder).map_err(OverlordError::local_wal)?;
             }
         }
@@ -169,7 +167,7 @@ fn open_file(file_path: PathBuf) -> OverlordResult<fs::File> {
 mod test {
     use super::*;
     use crate::types::TestBlock;
-    use crate::{Crypto, DefaultCrypto, Proof};
+    use crate::{Crypto, DefaultCrypto};
     use rand::random;
 
     #[test]

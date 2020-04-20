@@ -1,5 +1,3 @@
-#![allow(unused_imports)]
-
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::error::Error;
@@ -21,7 +19,7 @@ use rand::{rngs::OsRng, RngCore};
 use serde::Serialize;
 use tentacle_secio::SecioKeyPair;
 
-use crate::types::{Address, Aggregates, Hash, Signature as SigBytes};
+use crate::types::{Address, Hash, Signature as SigBytes};
 use crate::Crypto;
 
 lazy_static! {

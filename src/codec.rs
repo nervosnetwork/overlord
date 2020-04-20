@@ -1,5 +1,3 @@
-use std::fmt::Debug;
-
 use bytes::Bytes;
 use rlp::{Decodable, DecoderError, Encodable, Prototype, Rlp, RlpStream};
 
@@ -491,32 +489,38 @@ impl Decodable for HeightRange {
     }
 }
 
-#[test]
-fn test_codec() {
-    use crate::types::TestBlock;
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::fmt::Debug;
 
-    test_rlp::<Stage>();
-    test_rlp::<StateInfo<TestBlock>>();
-    test_rlp::<Aggregates>();
-    test_rlp::<Choke>();
-    test_rlp::<ChokeQC>();
-    test_rlp::<FetchedFullBlock>();
-    test_rlp::<PreCommitQC>();
-    test_rlp::<PreVoteQC>();
-    test_rlp::<Proposal<TestBlock>>();
-    test_rlp::<SignedChoke>();
-    test_rlp::<SignedPreCommit>();
-    test_rlp::<SignedPreVote>();
-    test_rlp::<SignedProposal<TestBlock>>();
-    test_rlp::<UpdateFrom>();
-    test_rlp::<Vote>();
-    test_rlp::<ChokeQC>();
-    test_rlp::<HeightRange>();
-}
+    #[test]
+    fn test_codec() {
+        use crate::types::TestBlock;
 
-fn test_rlp<T: Debug + Default + PartialEq + Eq + Decodable + Encodable>() {
-    let data = T::default();
-    let encode = rlp::encode(&data);
-    let decode = rlp::decode(&encode).unwrap();
-    assert_eq!(data, decode);
+        test_rlp::<Stage>();
+        test_rlp::<StateInfo<TestBlock>>();
+        test_rlp::<Aggregates>();
+        test_rlp::<Choke>();
+        test_rlp::<ChokeQC>();
+        test_rlp::<FetchedFullBlock>();
+        test_rlp::<PreCommitQC>();
+        test_rlp::<PreVoteQC>();
+        test_rlp::<Proposal<TestBlock>>();
+        test_rlp::<SignedChoke>();
+        test_rlp::<SignedPreCommit>();
+        test_rlp::<SignedPreVote>();
+        test_rlp::<SignedProposal<TestBlock>>();
+        test_rlp::<UpdateFrom>();
+        test_rlp::<Vote>();
+        test_rlp::<ChokeQC>();
+        test_rlp::<HeightRange>();
+    }
+
+    fn test_rlp<T: Debug + Default + PartialEq + Eq + Decodable + Encodable>() {
+        let data = T::default();
+        let encode = rlp::encode(&data);
+        let decode = rlp::decode(&encode).unwrap();
+        assert_eq!(data, decode);
+    }
 }

@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::collections::HashMap;
 
 use overlord::{Address, Height, HeightRange, Proof, TinyHex};

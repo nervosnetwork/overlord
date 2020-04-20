@@ -1,13 +1,9 @@
-#![allow(unused_imports)]
-#![allow(dead_code)]
-
 use std::error::Error;
 
 use derive_more::Display;
 use rlp::DecoderError;
 
-use crate::cabinet::Capsule;
-use crate::{Address, Blk, Hash, Height, TinyHex};
+use crate::{Hash, TinyHex};
 
 pub type OverlordResult<T> = Result<T, OverlordError>;
 

@@ -1,39 +1,27 @@
-#![allow(unused_imports)]
-#![allow(unused_variables)]
-
 use std::collections::{HashMap, HashSet};
-use std::error::Error;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use std::task::{Context as TaskCx, Poll};
 use std::time::{Duration, Instant};
-use std::{future::Future, pin::Pin};
 
 use creep::Context;
-use derive_more::Display;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::{select, StreamExt, TryFutureExt};
-use futures::{FutureExt, SinkExt};
-use futures_timer::Delay;
 use log::{debug, error, info, warn};
 
 use crate::auth::{AuthCell, AuthFixedConfig, AuthManage};
 use crate::cabinet::{Cabinet, Capsule};
 use crate::error::{ErrorInfo, ErrorKind};
-use crate::exec::{Exec, ExecRequest};
-use crate::state::Step::Propose;
+use crate::exec::ExecRequest;
 use crate::state::{ProposePrepare, Stage, StateInfo, Step};
 use crate::sync::{Sync, BLOCK_BATCH, CLEAR_TIMEOUT_RATIO, HEIGHT_RATIO, SYNC_TIMEOUT_RATIO};
-use crate::timeout::TimeoutEvent::HeightTimeout;
 use crate::timeout::{TimeoutEvent, TimeoutInfo};
 use crate::types::{
     Choke, ChokeQC, FetchedFullBlock, PreCommitQC, PreVoteQC, Proposal, SignedChoke, SignedHeight,
     SignedPreCommit, SignedPreVote, SignedProposal, SyncRequest, SyncResponse, UpdateFrom, Vote,
 };
 use crate::{
-    Adapter, Address, Blk, CommonHex, ExecResult, Hash, Height, HeightRange, OverlordConfig,
-    OverlordError, OverlordMsg, OverlordResult, PriKeyHex, Proof, Round, St, TimeConfig, TinyHex,
-    Wal, INIT_HEIGHT, INIT_ROUND,
+    Adapter, Address, Blk, ExecResult, Hash, Height, HeightRange, OverlordError, OverlordMsg,
+    OverlordResult, Proof, Round, St, TimeConfig, TinyHex, Wal, INIT_ROUND,
 };
 
 const POWER_CAP: u32 = 5;
@@ -84,7 +72,7 @@ where
         let state;
         let from;
         if let Err(e) = rst {
-            warn!("Load state from wal failed! Try to recover state by the adapter, which face security risk if majority auth nodes lost their wal file at the same time");
+            warn!("Load state from wal failed: {}! Try to recover state by the adapter, which face security risk if majority auth nodes lost their wal file at the same time", e);
             state = recover_state_by_adapter(adapter, address.clone()).await;
             last_commit_height = state.stage.height;
             from = "wal";
@@ -159,7 +147,7 @@ where
 
     pub async fn run(mut self) {
         self.agent.set_step_timeout(self.state.stage.clone());
-        self.agent.set_height_timeout(self.state.stage.height);
+        self.agent.set_height_timeout();
 
         loop {
             select! {
@@ -193,7 +181,7 @@ where
     }
 
     async fn handle_msg(&mut self, wrapped_msg: WrappedOverlordMsg<B>) -> OverlordResult<()> {
-        let (context, msg) = wrapped_msg;
+        let (_, msg) = wrapped_msg;
 
         match msg {
             OverlordMsg::SignedProposal(signed_proposal) => {
@@ -272,7 +260,7 @@ where
             TimeoutEvent::PreVoteTimeout(stage) => self.handle_pre_vote_timeout(stage).await,
             TimeoutEvent::PreCommitTimeout(stage) => self.handle_pre_commit_timeout(stage).await,
             TimeoutEvent::BrakeTimeout(stage) => self.handle_brake_timeout(stage).await,
-            TimeoutEvent::NextHeightTimeout(stage) => self.handle_next_height_timeout(stage).await,
+            TimeoutEvent::NextHeightTimeout => self.handle_next_height_timeout().await,
             TimeoutEvent::HeightTimeout => self.handle_height_timeout().await,
             TimeoutEvent::SyncTimeout(request_id) => self.sync.handle_sync_timeout(request_id),
             TimeoutEvent::ClearTimeout(address) => {
@@ -340,7 +328,7 @@ where
         Ok(())
     }
 
-    async fn handle_next_height_timeout(&mut self, stage: Stage) -> OverlordResult<()> {
+    async fn handle_next_height_timeout(&mut self) -> OverlordResult<()> {
         self.next_height().await
     }
 
@@ -587,10 +575,8 @@ where
             .expect("Unreachable! Lost commit block when commit")
             .get_exec_height();
 
-        let next_height = height + 1;
-
         self.prepare
-            .handle_commit(commit_hash, proof.clone(), commit_exec_h, next_height)
+            .handle_commit(commit_hash, proof.clone(), commit_exec_h)
     }
 
     async fn handle_commit(&mut self, commit_exec_result: ExecResult<S>) -> OverlordResult<()> {
@@ -600,6 +586,7 @@ where
         self.cabinet.handle_commit(next_height, &self.auth);
         self.agent
             .handle_commit(commit_exec_result.consensus_config.time_config.clone());
+        self.wal.handle_commit(next_height)?;
         info!(
             "[COMMIT]\n\t<{}> commit\n\t<state> {}\n\t<prepare> {}\n",
             self.address.tiny_hex(),
@@ -628,6 +615,7 @@ where
         self.auth.verify_signed_height(&signed_height)?;
         self.sync.handle_signed_height(&signed_height)?;
         self.agent.set_sync_timeout(self.sync.request_id);
+        self.agent.set_clear_timeout(signed_height.address.clone());
         let range = HeightRange::new(my_height, BLOCK_BATCH);
         let request = self.auth.sign_sync_request(range)?;
         self.agent
@@ -640,7 +628,9 @@ where
             return Err(OverlordError::byz_req_high());
         }
 
+        self.auth.verify_sync_request(&request)?;
         self.sync.handle_sync_request(&request)?;
+        self.agent.set_clear_timeout(request.requester.clone());
         let blocks = self
             .adapter
             .get_block_with_proofs(Context::default(), request.request_range.clone())
@@ -686,12 +676,13 @@ where
                 .expect("Execution is down! It's meaningless to continue running");
             self.handle_commit(exec_result).await?;
         }
+        self.sync.handle_sync_response::<B>();
 
         Ok(())
     }
 
     async fn handle_height_timeout(&mut self) -> OverlordResult<()> {
-        self.agent.set_height_timeout(self.state.stage.height);
+        self.agent.set_height_timeout();
 
         let height = self.state.stage.height;
         let signed_height = self.auth.sign_height(height)?;
@@ -1100,7 +1091,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         false
     }
 
-    fn set_height_timeout(&self, height: Height) {
+    fn set_height_timeout(&self) {
         let delay = Duration::from_millis(self.time_config.interval * HEIGHT_RATIO / TIME_DIVISOR);
         let timeout_info =
             TimeoutInfo::new(delay, TimeoutEvent::HeightTimeout, self.to_timeout.clone());

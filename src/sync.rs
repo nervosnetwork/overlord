@@ -1,11 +1,9 @@
-#![allow(unused_imports)]
-
 use std::collections::HashSet;
 
 use derive_more::Display;
 
-use crate::types::{DisplayVec, SignedHeight, SyncRequest, SyncResponse, TinyHex};
-use crate::{Address, Blk, Hash, HeightRange, OverlordError, OverlordResult};
+use crate::types::{DisplayVec, SignedHeight, SyncRequest, TinyHex};
+use crate::{Address, Blk, OverlordError, OverlordResult};
 
 pub const HEIGHT_RATIO: u64 = 10;
 /// timeout waiting for a sync request.

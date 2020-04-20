@@ -1,5 +1,3 @@
-#![allow(unused_imports)]
-
 pub use creep::Context;
 
 use std::collections::HashMap;
@@ -13,8 +11,8 @@ use futures::channel::mpsc::UnboundedSender;
 use crate::crypto::PubKeyHex;
 use crate::error::OverlordError;
 use crate::types::{
-    Address, Aggregates, BlockState, CommonHex, ExecResult, Hash, Height, HeightRange, OverlordMsg,
-    Proof, Signature,
+    Address, BlockState, CommonHex, ExecResult, Hash, Height, HeightRange, OverlordMsg, Proof,
+    Signature,
 };
 use crate::PriKeyHex;
 

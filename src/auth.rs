@@ -1,22 +1,16 @@
-#![allow(unused_imports)]
-
 use std::collections::{HashMap, HashSet};
-use std::error::Error;
 use std::marker::PhantomData;
-use std::sync::Arc;
 
 use bit_vec::BitVec;
 use bytes::Bytes;
-use derive_more::Display;
-use log::{debug, warn};
+use log::warn;
 use prime_tools::get_primes_less_than_x;
 use rlp::{encode, Encodable};
 
-use crate::error::{ErrorInfo, ErrorKind};
 use crate::types::{
-    Aggregates, Choke, ChokeQC, Node, PreCommitQC, PreVoteQC, PriKeyHex, Proof, Proposal,
-    PubKeyHex, SelectMode, SignedChoke, SignedHeight, SignedPreCommit, SignedPreVote,
-    SignedProposal, SyncRequest, SyncResponse, UpdateFrom, Vote, VoteType, Weight,
+    Aggregates, Choke, ChokeQC, PreCommitQC, PreVoteQC, PriKeyHex, Proof, Proposal, PubKeyHex,
+    SelectMode, SignedChoke, SignedHeight, SignedPreCommit, SignedPreVote, SignedProposal,
+    SyncRequest, SyncResponse, UpdateFrom, Vote, VoteType, Weight,
 };
 use crate::{
     Adapter, Address, AuthConfig, Blk, CommonHex, Crypto, Hash, Height, HeightRange, Round,
@@ -243,7 +237,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         ))
     }
 
-    pub fn verify_sync_request(&self, request: SyncRequest) -> OverlordResult<()> {
+    pub fn verify_sync_request(&self, request: &SyncRequest) -> OverlordResult<()> {
         let hash = A::CryptoImpl::hash(&Bytes::from(rlp::encode(&request.request_range)));
         self.verify_signature(&request.requester, &hash, &request.signature)
     }

@@ -1,33 +1,15 @@
-#![allow(unused_imports)]
-#![allow(unused_variables)]
-#![allow(dead_code)]
-
 use std::cmp::{Ord, Ordering, PartialOrd};
 use std::collections::BTreeMap;
-use std::error::Error;
-use std::marker::PhantomData;
-use std::sync::Arc;
 
-use bytes::Bytes;
-use creep::Context;
 use derive_more::Display;
-use futures::channel::mpsc::UnboundedReceiver;
 use log::info;
-use rlp::{decode, encode, DecoderError};
 
-use crate::auth::AuthManage;
-use crate::cabinet::{Cabinet, Capsule};
-use crate::exec::Exec;
-use crate::smr::EventAgent;
+use crate::cabinet::Capsule;
 use crate::timeout::TimeoutEvent;
-use crate::types::{
-    Aggregates, Choke, ChokeQC, PreCommitQC, PreVoteQC, Proposal, SignedChoke, SignedPreCommit,
-    SignedPreVote, SignedProposal, UpdateFrom, Vote,
-};
+use crate::types::{ChokeQC, PreCommitQC, PreVoteQC, Proposal, SignedProposal, UpdateFrom};
 use crate::{
-    Adapter, Address, Blk, BlockState, CommonHex, ExecResult, Hash, Height, OverlordConfig,
-    OverlordError, OverlordMsg, OverlordResult, PriKeyHex, Proof, Round, St, TimeConfig, TinyHex,
-    Wal, INIT_ROUND,
+    Address, Blk, BlockState, ExecResult, Hash, Height, OverlordError, OverlordResult, Proof,
+    Round, St, TinyHex, INIT_ROUND,
 };
 
 #[derive(Clone, Debug, Display, Default, Eq, PartialEq)]
@@ -392,7 +374,6 @@ impl<S: St> ProposePrepare<S> {
         block_hash: Hash,
         pre_commit_qc: PreCommitQC,
         commit_exec_h: Height,
-        next_height: Height,
     ) -> ExecResult<S> {
         self.pre_hash = block_hash;
         self.pre_proof = pre_commit_qc;
@@ -415,13 +396,16 @@ impl<S: St> ProposePrepare<S> {
         self.exec_results
             .iter()
             .filter(|(h, _)| **h <= cut_off)
-            .map(|(height, exec_result)| exec_result.block_states.clone())
+            .map(|(_, exec_result)| exec_result.block_states.clone())
             .collect()
     }
 }
 
 #[test]
 fn test_stage_cmp() {
+    use crate::types::{Aggregates, Vote};
+    use bytes::Bytes;
+
     let stage_0 = Stage::new(10, 0, Step::Propose);
     let stage_1 = Stage::new(10, 0, Step::Propose);
     assert_eq!(stage_0, stage_1);
