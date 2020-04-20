@@ -1,27 +1,27 @@
 #[macro_export]
 macro_rules! impl_from {
-     ($for:ident<$gen:tt:$trait:tt>, [$struct:ident, $($tail:tt)*]) => {
+    ($for:ident<$gen:tt:$trait:tt>, [$struct:ident, $($tail:tt)*]) => {
         impl_from!($for<$gen:$trait>, $struct);
         impl_from!($for<$gen:$trait>, [$($tail)*]);
-     };
+    };
 
-     ($for:ident<$gen:tt:$trait:tt>, [$struct:ident<$gen_:tt>, $($tail:tt)*]) => {
+    ($for:ident<$gen:tt:$trait:tt>, [$struct:ident<$gen_:tt>, $($tail:tt)*]) => {
         impl_from!($for<$gen:$trait>, $struct<$gen_>);
         impl_from!($for<$gen:$trait>, [$($tail)*]);
-     };
+    };
 
-     ($for:ident<$life:tt, $gen:tt:$trait:tt>, [$struct:ident, $($tail:tt)*]) => {
+    ($for:ident<$life:tt, $gen:tt:$trait:tt>, [$struct:ident, $($tail:tt)*]) => {
         impl_from!($for<$life, $gen:$trait>, $struct);
         impl_from!($for<$life, $gen:$trait>, [$($tail)*]);
      };
 
-     ($for:ident<$life:tt, $gen:tt:$trait:tt>, [$struct:ident<$gen_:tt>, $($tail:tt)*]) => {
+    ($for:ident<$life:tt, $gen:tt:$trait:tt>, [$struct:ident<$gen_:tt>, $($tail:tt)*]) => {
         impl_from!($for<$life, $gen:$trait>, $struct<$gen_>);
         impl_from!($for<$life, $gen:$trait>, [$($tail)*]);
-     };
+    };
 
-     ($for:ident<$gen:tt:$trait:tt>, []) => {};
-     ($for:ident<$life:tt, $gen:tt:$trait:tt>, []) => {};
+    ($for:ident<$gen:tt:$trait:tt>, []) => {};
+    ($for:ident<$life:tt, $gen:tt:$trait:tt>, []) => {};
 
     ($for:ident<$gen:tt:$trait:tt>, $struct:ident) => {
         impl<$gen:$trait> From<$struct> for $for<$gen> {

@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 #![allow(unused_variables)]
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -660,28 +660,31 @@ where
         }
         self.auth.verify_sync_response(&response)?;
 
-        // todo: make sure block_with_proofs is order by height
-        for (block, proof) in response.block_with_proofs {
-            if block.get_height() == self.state.stage.height {
-                self.check_block(&block).await?;
-                self.auth.verify_pre_commit_qc(&proof)?;
-                let full_block = self
-                    .adapter
-                    .fetch_full_block(Context::default(), block.clone())
-                    .map_err(|_| OverlordError::net_fetch(block.get_block_hash()))
-                    .await?;
-                let exec_result = self
-                    .adapter
-                    .save_and_exec_block_with_proof(
-                        Context::default(),
-                        block.get_height(),
-                        full_block,
-                        proof,
-                    )
-                    .await
-                    .expect("Execution is down! It's meaningless to continue running");
-                self.handle_commit(exec_result).await?;
-            }
+        let map: HashMap<Height, (B, Proof)> = response
+            .block_with_proofs
+            .into_iter()
+            .map(|(block, proof)| (block.get_height(), (block, proof)))
+            .collect();
+
+        while let Some(&(block, proof)) = map.get(&self.state.stage.height).as_ref() {
+            self.check_block(block).await?;
+            self.auth.verify_pre_commit_qc(proof)?;
+            let full_block = self
+                .adapter
+                .fetch_full_block(Context::default(), block.clone())
+                .map_err(|_| OverlordError::net_fetch(block.get_block_hash()))
+                .await?;
+            let exec_result = self
+                .adapter
+                .save_and_exec_block_with_proof(
+                    Context::default(),
+                    block.get_height(),
+                    full_block,
+                    proof.clone(),
+                )
+                .await
+                .expect("Execution is down! It's meaningless to continue running");
+            self.handle_commit(exec_result).await?;
         }
 
         Ok(())
