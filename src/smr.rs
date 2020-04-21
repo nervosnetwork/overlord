@@ -776,7 +776,7 @@ where
 
         let height = self.state.stage.height;
         let signed_height = self.auth.sign_height(height)?;
-        // todo: can optimized by transmit a random peer instead of broadcast
+        // Todo: can optimized by transmit a random peer instead of broadcast
         self.agent.broadcast(signed_height.into()).await
     }
 

@@ -105,11 +105,11 @@ const NODE_LIMIT: usize = 8;
 
 #[tokio::test(threaded_scheduler)]
 async fn test_chaos() {
-    // set_log(LevelFilter::Debug);
+    set_log(LevelFilter::Error);
     let init_n = 4;
 
     let mut platform = Platform::new(init_n);
-    platform.update_interval(200);
+    platform.update_interval(20);
     thread::sleep(Duration::from_secs(1));
 
     let mut cnt = 0;
@@ -130,7 +130,7 @@ async fn test_chaos() {
             .collect::<Vec<(String, bool)>>()
     );
     let mut stopped_nodes: Vec<(Address, bool)> = vec![];
-    while cnt < 100 {
+    while cnt < 3 {
         let (fortune_auth_n, fortune_alive_n) = fortune_oracle();
         println!("[CASE {}] start\n\t<state> total_n: {}, alive_n: {}\n\t<auth> auth_n: {}, alive_auth_n: {}, auth_list: {:?}\n\t<alive> {:?}\n\t<stopped> {:?}\n\t<fortune> auth_n: {}, alive_n: {}\n",
                  cnt, total_n, alive_n, auth_n, alive_auth_n, platform.get_auth_list(),
@@ -218,7 +218,7 @@ async fn test_chaos() {
                 drain = true;
             }
         } else {
-            while fortune_alive_n < alive_n {
+            while fortune_alive_n < alive_n && alive_auth_n > auth_n * 2 / 3 + 2 {
                 let (address, is_auth) = alive_nodes.pop().expect("pop alive_nodes");
                 platform.stop_node(&address);
                 alive_n -= 1;
@@ -227,6 +227,17 @@ async fn test_chaos() {
                 }
                 stopped_nodes.push((address, is_auth));
             }
+        }
+
+        // ensure enough alive_node
+        while alive_auth_n < auth_n * 2 / 3 + 1 {
+            let (address, is_auth) = stopped_nodes.pop().expect("pop alive_nodes");
+            platform.restart_node(&address);
+            alive_n += 1;
+            if is_auth {
+                alive_auth_n += 1;
+            }
+            alive_nodes.push((address, is_auth));
         }
 
         println!("[CASE {}] end\n\t<state> total_n: {}, alive_n: {}\n\t<auth> auth_n: {}, alive_auth_n: {}, auth_list: {:?}\n\t<alive> {:?}\n\t<stopped> {:?}\n\t<fortune> auth_n: {}, alive_n: {}\n",
