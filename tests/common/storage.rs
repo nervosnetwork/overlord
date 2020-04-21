@@ -36,15 +36,15 @@ impl Storage {
             assert_eq!(
                 block_exists,
                 &block,
-                "[TEST]\n\t<{}> -> storage\n\t<collapsed> save.block != exist.block, {} != {}\n\n\n",
+                "[TEST]\n\t<{}> -> storage\n\t<collapsed> save.block != exist.block, {} != {}\n",
                 to.tiny_hex(),
                 block,
                 block_exists
             );
         } else {
             let mut proof_map = self.proof_map.write();
-            block_map.insert(height, block.clone());
-            proof_map.insert(height, proof.clone());
+            block_map.insert(height, block);
+            proof_map.insert(height, proof);
         }
         let latest_height = { *self.latest_height_map.read().get(&to).unwrap() };
         if height > latest_height {
@@ -60,10 +60,8 @@ impl Storage {
             .map(|(address, height)| (address.tiny_hex(), *height))
             .collect();
         println!(
-            "[TEST]\n\t<{}> -> storage\n\t<store> block: {}, proof: {}\n\t<update> storage: {:?}\n\n",
+            "[TEST]\n\t<{}> -> storage\n\t<update> storage: {:?}\n",
             to.tiny_hex(),
-            block,
-            proof,
             list_vec,
         );
     }
@@ -99,7 +97,7 @@ impl Storage {
         let latest_height = *self.latest_height_map.read().get(address).unwrap();
         if height <= latest_height {
             println!(
-                "[TEST]\n\t<{}> -> storage\n\t<warn> save_block.height <= exist.height, {} <= {}\n\n\n",
+                "[TEST]\n\t<{}> -> storage\n\t<warn> save_block.height <= exist.height, {} <= {}\n",
                 address.tiny_hex(),
                 height,
                 latest_height
@@ -108,7 +106,7 @@ impl Storage {
         }
         if height > latest_height + 1 {
             panic!(
-                "[TEST]\n\t<{}> -> storage\n\t<collapsed> save_block.height > exist.height + 1, {} > {} + 1\n\n\n",
+                "[TEST]\n\t<{}> -> storage\n\t<collapsed> save_block.height > exist.height + 1, {} > {} + 1\n",
                 address.tiny_hex(),
                 height,
                 latest_height

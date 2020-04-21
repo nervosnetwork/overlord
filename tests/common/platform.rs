@@ -45,6 +45,9 @@ impl Platform {
     pub fn add_new_nodes(&mut self, node_number: usize) -> Vec<Address> {
         let common_ref = self.key_pairs.common_ref.clone();
         let key_pairs = gen_key_pairs(node_number, vec![], Some(common_ref));
+        self.key_pairs
+            .key_pairs
+            .append(&mut key_pairs.key_pairs.clone());
         run(
             key_pairs.clone(),
             &self.network,
@@ -93,6 +96,10 @@ impl Platform {
         self.mem_pool.update_interval(interval);
     }
 
+    pub fn get_auth_list(&self) -> Vec<String> {
+        self.mem_pool.get_auth_list()
+    }
+
     pub fn get_latest_height(&self, address: &Address) -> Height {
         self.storage.get_latest_height(address)
     }
@@ -107,7 +114,7 @@ impl Platform {
             .key_pairs
             .iter()
             .find(|key_pair| hex_to_address(&key_pair.address) == address)
-            .unwrap();
+            .expect("get node failed");
         Node::new(
             hex_to_address(&key_pair.address),
             key_pair.bls_public_key.clone(),

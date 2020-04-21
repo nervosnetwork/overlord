@@ -49,7 +49,7 @@ impl Network {
         msg: OverlordMsg<Block>,
     ) -> Result<(), Box<dyn Error + Send>> {
         let handler = self.handlers.read();
-        let sender = handler.get(to).unwrap();
+        let sender = handler.get(to).expect("cannot get handler");
         let _ = sender.unbounded_send((Context::default(), msg));
         Ok(())
     }

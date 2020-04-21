@@ -105,7 +105,7 @@ const NODE_LIMIT: usize = 8;
 
 #[tokio::test(threaded_scheduler)]
 async fn test_chaos() {
-    set_log(LevelFilter::Debug);
+    // set_log(LevelFilter::Debug);
     let init_n = 4;
 
     let mut platform = Platform::new(init_n);
@@ -122,11 +122,18 @@ async fn test_chaos() {
         .into_iter()
         .map(|address| (address, true))
         .collect();
+    println!(
+        "[INIT]\n\t<list> {:?}",
+        alive_nodes
+            .iter()
+            .map(|(address, is_auth)| (address.tiny_hex(), *is_auth))
+            .collect::<Vec<(String, bool)>>()
+    );
     let mut stopped_nodes: Vec<(Address, bool)> = vec![];
     while cnt < 100 {
         let (fortune_auth_n, fortune_alive_n) = fortune_oracle();
-        println!("[CASE {}] start\n\t<state> total_n: {}, alive_n: {}, <auth> auth_n: {}, alive_auth_n: {}\n\t<alive> {:?}\n\t<stopped> {:?}\n\t<fortune> auth_n: {}, alive_n: {}\n",
-                 cnt, total_n, alive_n, auth_n, alive_auth_n,
+        println!("[CASE {}] start\n\t<state> total_n: {}, alive_n: {}\n\t<auth> auth_n: {}, alive_auth_n: {}, auth_list: {:?}\n\t<alive> {:?}\n\t<stopped> {:?}\n\t<fortune> auth_n: {}, alive_n: {}\n",
+                 cnt, total_n, alive_n, auth_n, alive_auth_n, platform.get_auth_list(),
                  alive_nodes.iter().map(|(address, bool)| (address.tiny_hex(), *bool)).collect::<Vec<(String, bool)>>(),
                  stopped_nodes.iter().map(|(address, bool)| (address.tiny_hex(), *bool)).collect::<Vec<(String, bool)>>(),
                  fortune_auth_n, fortune_alive_n);
@@ -145,37 +152,40 @@ async fn test_chaos() {
                     .collect(),
             );
         } else if fortune_auth_n > auth_n {
-            alive_nodes.iter().for_each(|(address, is_auth)| {
+            alive_nodes.iter_mut().for_each(|(address, is_auth)| {
                 if fortune_auth_n > auth_n && !*is_auth {
                     platform.auth_new_node(address);
                     auth_n += 1;
                     alive_auth_n += 1;
+                    *is_auth = true;
                 }
             });
-            stopped_nodes.iter().for_each(|(address, is_auth)| {
+            stopped_nodes.iter_mut().for_each(|(address, is_auth)| {
                 if fortune_auth_n > auth_n && !*is_auth {
                     platform.auth_new_node(address);
                     auth_n += 1;
+                    *is_auth = true;
                 }
             });
         } else {
-            alive_nodes.iter().for_each(|(address, is_auth)| {
+            alive_nodes.iter_mut().for_each(|(address, is_auth)| {
                 if fortune_auth_n < auth_n && *is_auth {
                     platform.remove_node_auth(address);
                     auth_n -= 1;
                     alive_auth_n -= 1;
+                    *is_auth = false;
                 }
             });
-            stopped_nodes.iter().for_each(|(address, is_auth)| {
+            stopped_nodes.iter_mut().for_each(|(address, is_auth)| {
                 if fortune_auth_n < auth_n && *is_auth {
                     platform.remove_node_auth(address);
                     auth_n -= 1;
+                    *is_auth = false;
                 }
             });
         }
         thread::sleep(Duration::from_secs(1));
 
-        println!("############## here is safe");
         // do alive
         if fortune_alive_n > total_n {
             let address_list = platform.add_new_nodes(fortune_alive_n - total_n);
@@ -195,18 +205,21 @@ async fn test_chaos() {
                 alive_nodes.push((address, is_auth));
             }
         } else if fortune_alive_n > alive_n {
-            while fortune_alive_n > alive_n {
-                let (address, is_auth) = stopped_nodes.pop().expect("####### pop stopped_nodes");
-                platform.restart_node(&address);
-                alive_n += 1;
-                if is_auth {
-                    alive_auth_n += 1;
+            let mut drain = false;
+            while fortune_alive_n > alive_n && !drain {
+                while let Some((address, is_auth)) = stopped_nodes.pop() {
+                    platform.restart_node(&address);
+                    alive_n += 1;
+                    if is_auth {
+                        alive_auth_n += 1;
+                    }
+                    alive_nodes.push((address, is_auth));
                 }
-                alive_nodes.push((address, is_auth));
+                drain = true;
             }
         } else {
             while fortune_alive_n < alive_n {
-                let (address, is_auth) = alive_nodes.pop().expect("####### pop alive_nodes");
+                let (address, is_auth) = alive_nodes.pop().expect("pop alive_nodes");
                 platform.stop_node(&address);
                 alive_n -= 1;
                 if is_auth {
@@ -216,12 +229,12 @@ async fn test_chaos() {
             }
         }
 
-        thread::sleep(Duration::from_secs(10));
-        println!("[CASE {}] end\n\t<state> total_n: {}, alive_n: {}\n\t<auth> auth_n: {}, alive_auth_n: {}\n\t<alive> {:?}\n\t<stopped> {:?}\n\t<fortune> auth_n: {}, alive_n: {}\n",
-                 cnt, total_n, alive_n, auth_n, alive_auth_n,
+        println!("[CASE {}] end\n\t<state> total_n: {}, alive_n: {}\n\t<auth> auth_n: {}, alive_auth_n: {}, auth_list: {:?}\n\t<alive> {:?}\n\t<stopped> {:?}\n\t<fortune> auth_n: {}, alive_n: {}\n",
+                 cnt, total_n, alive_n, auth_n, alive_auth_n, platform.get_auth_list(),
                  alive_nodes.iter().map(|(address, bool)| (address.tiny_hex(), *bool)).collect::<Vec<(String, bool)>>(),
                  stopped_nodes.iter().map(|(address, bool)| (address.tiny_hex(), *bool)).collect::<Vec<(String, bool)>>(),
                  fortune_auth_n, fortune_alive_n);
+        thread::sleep(Duration::from_secs(10));
         cnt += 1;
     }
 }
@@ -236,10 +249,9 @@ async fn test_chaos() {
 // 2/3+ alive auth limit"
 fn fortune_oracle() -> (usize, usize) {
     // auth_n and alive_n
-    let auth_n = rand::thread_rng().gen::<usize>() % NODE_LIMIT;
-    println!("###########@@@@@@@@ {}", NODE_LIMIT - auth_n * 2 / 3 - 1);
-    let alive_n =
-        auth_n * 2 / 3 + 1 + rand::thread_rng().gen::<usize>() % (NODE_LIMIT - auth_n * 2 / 3 - 1);
+    let auth_n = rand::thread_rng().gen::<usize>() % (NODE_LIMIT - 1) + 1;
+    let min_alive_n = auth_n * 2 / 3 + 1;
+    let alive_n = rand::thread_rng().gen::<usize>() % (NODE_LIMIT - min_alive_n) + min_alive_n;
     (auth_n, alive_n)
 }
 

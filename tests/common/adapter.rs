@@ -123,7 +123,7 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         block: Block,
     ) -> Result<Bytes, Box<dyn Error + Send>> {
         let full_block = FullBlock { block };
-        let vec = bincode::serialize(&full_block).unwrap();
+        let vec = bincode::serialize(&full_block).expect("serialize full block failed");
         Ok(Bytes::from(vec))
     }
 
@@ -134,7 +134,8 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         full_block: Bytes,
         proof: Proof,
     ) -> Result<ExecResult<ExecState>, Box<dyn Error + Send>> {
-        let full_block: FullBlock = bincode::deserialize(&full_block).unwrap();
+        let full_block: FullBlock =
+            bincode::deserialize(&full_block).expect("deserialize full block failed");
         let block = full_block.block.clone();
         self.storage
             .save_block_with_proof(self.address.clone(), height, block, proof);

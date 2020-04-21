@@ -71,15 +71,17 @@ impl Block {
 
 impl Blk for Block {
     fn fixed_encode(&self) -> Result<Bytes, Box<dyn Error + Send>> {
-        Ok(bincode::serialize(self).map(Bytes::from).unwrap())
+        Ok(bincode::serialize(self)
+            .map(Bytes::from)
+            .expect("serialize a block failed"))
     }
 
     fn fixed_decode(data: &Bytes) -> Result<Self, Box<dyn Error + Send>> {
-        Ok(bincode::deserialize(data.as_ref()).unwrap())
+        Ok(bincode::deserialize(data.as_ref()).expect("deserialize a block failed"))
     }
 
     fn get_block_hash(&self) -> Hash {
-        DefaultCrypto::hash(&self.fixed_encode().unwrap())
+        DefaultCrypto::hash(&self.fixed_encode().expect("fixed encode a block failed"))
     }
 
     fn get_pre_hash(&self) -> Hash {

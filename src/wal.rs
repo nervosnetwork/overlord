@@ -182,7 +182,6 @@ mod test {
         let vote = Vote::new(10, 2, Bytes::from("ckvfkvfv"));
 
         let state = StateInfo {
-            address:       Bytes::from("iewuceiu"),
             stage:         Stage::default(),
             lock:          Some(PreVoteQC::new(vote.clone(), aggregates.clone())),
             block:         Some(TestBlock::default()),

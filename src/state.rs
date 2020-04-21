@@ -2,14 +2,11 @@ use std::cmp::{Ord, Ordering, PartialOrd};
 use std::collections::BTreeMap;
 
 use derive_more::Display;
-use log::info;
 
-use crate::cabinet::Capsule;
-use crate::timeout::TimeoutEvent;
 use crate::types::{ChokeQC, PreCommitQC, PreVoteQC, Proposal, SignedProposal, UpdateFrom};
 use crate::{
-    Address, Blk, BlockState, ExecResult, Hash, Height, OverlordError, OverlordResult, Proof,
-    Round, St, TinyHex, INIT_ROUND,
+    Blk, BlockState, ExecResult, Hash, Height, OverlordError, OverlordResult, Proof, Round, St,
+    TinyHex, INIT_ROUND,
 };
 
 #[derive(Clone, Debug, Display, Default, Eq, PartialEq)]
@@ -21,8 +18,7 @@ use crate::{
     "from.clone().map_or(\"None\".to_owned(), |from| format!(\"{}\", from))"
 )]
 pub struct StateInfo<B: Blk> {
-    pub address: Address,
-    pub stage:   Stage,
+    pub stage: Stage,
 
     pub lock:          Option<PreVoteQC>,
     pub block:         Option<B>,
@@ -31,9 +27,8 @@ pub struct StateInfo<B: Blk> {
 }
 
 impl<B: Blk> StateInfo<B> {
-    pub fn from_commit_height(commit_height: Height, my_address: Address) -> Self {
+    pub fn from_commit_height(commit_height: Height) -> Self {
         StateInfo {
-            address:       my_address,
             stage:         Stage::new(commit_height, INIT_ROUND, Step::Commit),
             lock:          None,
             pre_commit_qc: None,
@@ -42,7 +37,10 @@ impl<B: Blk> StateInfo<B> {
         }
     }
 
-    pub fn handle_signed_proposal(&mut self, sp: &SignedProposal<B>) -> OverlordResult<()> {
+    pub fn handle_signed_proposal(
+        &mut self,
+        sp: &SignedProposal<B>,
+    ) -> OverlordResult<StateInfo<B>> {
         let next_stage = self.filter_stage(sp)?;
 
         let old_stage = self.clone();
@@ -55,16 +53,10 @@ impl<B: Blk> StateInfo<B> {
             ));
         }
         self.update_lock(&sp.proposal)?;
-        self.log_state_update_of_msg(old_stage, &sp.proposal.proposer, sp.into());
-        Ok(())
+        Ok(old_stage)
     }
 
-    pub fn handle_pre_vote_qc(
-        &mut self,
-        qc: &PreVoteQC,
-        block: B,
-        from: &Address,
-    ) -> OverlordResult<()> {
+    pub fn handle_pre_vote_qc(&mut self, qc: &PreVoteQC, block: B) -> OverlordResult<StateInfo<B>> {
         let next_stage = self.filter_stage(qc)?;
 
         let old_stage = self.clone();
@@ -78,16 +70,14 @@ impl<B: Blk> StateInfo<B> {
             self.lock = Some(qc.clone());
             self.block = Some(block);
         }
-        self.log_state_update_of_msg(old_stage, from, qc.into());
-        Ok(())
+        Ok(old_stage)
     }
 
     pub fn handle_pre_commit_qc(
         &mut self,
         qc: &PreCommitQC,
         block: B,
-        from: &Address,
-    ) -> OverlordResult<()> {
+    ) -> OverlordResult<StateInfo<B>> {
         let next_stage = self.filter_stage(qc)?;
 
         let old_stage = self.clone();
@@ -98,29 +88,25 @@ impl<B: Blk> StateInfo<B> {
             self.pre_commit_qc = Some(qc.clone());
             self.block = Some(block);
         }
-        self.log_state_update_of_msg(old_stage, from, qc.into());
-        Ok(())
+        Ok(old_stage)
     }
 
-    pub fn handle_choke_qc(&mut self, choke_qc: &ChokeQC) -> OverlordResult<()> {
+    pub fn handle_choke_qc(&mut self, choke_qc: &ChokeQC) -> OverlordResult<StateInfo<B>> {
         let next_stage = self.filter_stage(choke_qc)?;
 
         let old_stage = self.clone();
         if self.stage.update_stage(next_stage) {
             self.from = Some(UpdateFrom::ChokeQC(choke_qc.clone()));
         }
-        self.log_state_update_of_msg(old_stage, &self.address, choke_qc.into());
-        Ok(())
+        Ok(old_stage)
     }
 
-    pub fn handle_timeout(&mut self, stage: &Stage) -> OverlordResult<()> {
+    pub fn handle_timeout(&mut self, stage: &Stage) -> OverlordResult<StateInfo<B>> {
         let next_stage = self.filter_stage(stage)?;
 
         let old_stage = self.clone();
         self.stage.update_stage(next_stage);
-        self.log_state_update_of_timeout(old_stage, stage.clone().into());
-
-        Ok(())
+        Ok(old_stage)
     }
 
     pub fn filter_stage<T: NextStage>(&self, msg: &T) -> OverlordResult<Stage> {
@@ -160,27 +146,6 @@ impl<B: Blk> StateInfo<B> {
         self.pre_commit_qc = None;
         self.block = None;
         self.from = None;
-    }
-
-    fn log_state_update_of_msg(&self, old_state: StateInfo<B>, from: &Address, msg: Capsule<B>) {
-        info!(
-            "[RECEIVE] \n\t<{}> <- {}\n\t<message> {} \n\t<before> state: {} \n\t<update> state: {}\n",
-            self.address.tiny_hex(),
-            from.tiny_hex(),
-            msg,
-            old_state,
-            self
-        );
-    }
-
-    fn log_state_update_of_timeout(&self, old_state: StateInfo<B>, timeout: TimeoutEvent) {
-        info!(
-            "[TIMEOUT]\n\t<{}> <- timeout\n\t<timeout> {} \n\t<before> state: {} \n\t<update> state: {}\n",
-            self.address.tiny_hex(),
-            timeout,
-            old_state,
-            self
-        );
     }
 }
 
@@ -326,7 +291,7 @@ impl From<u8> for Step {
     }
 }
 
-#[derive(Debug, Display)]
+#[derive(Clone, Debug, Display)]
 #[display(
     fmt = "exec_height: {}, last_exec_height: {}, exec_cache: {:?}, pre_proof: {}, pre_hash: {}, max_exec_behind: {}",
     exec_height,
@@ -373,10 +338,12 @@ impl<S: St> ProposePrepare<S> {
         }
     }
 
-    pub fn handle_exec_result(&mut self, exec_result: ExecResult<S>) {
+    pub fn handle_exec_result(&mut self, exec_result: ExecResult<S>) -> ProposePrepare<S> {
+        let old_prepare = self.clone();
         let exec_height = exec_result.block_states.height;
         self.exec_height = exec_height;
         self.exec_results.insert(exec_height, exec_result);
+        old_prepare
     }
 
     pub fn handle_commit(

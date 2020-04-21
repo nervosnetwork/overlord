@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use overlord::{Hash, Height, Node, Proof};
+use overlord::{Hash, Height, Node, Proof, TinyHex};
 use parking_lot::RwLock;
 use rand::random;
 
@@ -22,7 +22,7 @@ impl MemPool {
             .auth_config
             .auth_list
             .iter()
-            .find(|n| n != &&node)
+            .find(|n| n == &&node)
             .is_none()
         {
             tx.auth_config.auth_list.push(node);
@@ -36,13 +36,29 @@ impl MemPool {
             .auth_list
             .iter()
             .position(|n| *n == node)
-            .unwrap();
+            .unwrap_or_else(|| {
+                panic!(
+                    "cannot find index of {} in auth_config",
+                    node.address.tiny_hex()
+                )
+            });
         tx.auth_config.auth_list.remove(index);
     }
 
     pub fn update_interval(&self, interval: u64) {
         let mut tx = self.tx.write();
         tx.time_config.interval = interval;
+    }
+
+    pub fn get_auth_list(&self) -> Vec<String> {
+        self.tx
+            .read()
+            .auth_config
+            .auth_list
+            .clone()
+            .iter()
+            .map(|node| node.address.tiny_hex())
+            .collect()
     }
 
     pub fn package(

@@ -74,11 +74,10 @@ where
         let from;
         if let Err(e) = rst {
             warn!("Load state from wal failed: {}! Try to recover state by the adapter, which face security risk if majority auth nodes lost their wal file at the same time", e);
-            state = recover_state_by_adapter(adapter, address.clone()).await;
+            state = recover_state_by_adapter(adapter).await;
             from = "adapter";
         } else {
             state = rst.unwrap();
-            assert_eq!(state.address, address, "Load wal with other address");
             from = "wal"
         };
 
@@ -113,7 +112,7 @@ where
             last_config.map(|config| AuthCell::new(config.auth_config, &address));
 
         info!(
-            "[LOAD]\n\t<{}> <- {}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n",
+            "[LOAD]\n\t<{}> <- {}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n\n\n",
             address.tiny_hex(),
             from,
             state,
@@ -152,7 +151,8 @@ where
                     let msg = opt.expect("Net Channel is down! It's meaningless to continue running");
                     if let Err(e) = self.handle_msg(msg.clone()).await {
                         let sender = self.extract_sender(&msg.1);
-                        let content = format!("[RECEIVE]\n\t<{}> <- {}\n\t<message> {}\n\t{}\n\t<state> {}\n", self.address.tiny_hex(), sender.tiny_hex(), msg.1, e, self.state);
+                        let content = format!("[RECEIVE]\n\t<{}> <- {}\n\t<message> {}\n\t{}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n",
+                            self.address.tiny_hex(), sender.tiny_hex(), msg.1, e, self.state, self.prepare, self.sync);
                         self.handle_err(e, content).await;
                     }
                 }
@@ -162,14 +162,16 @@ where
                 opt = self.agent.from_fetch.next() => {
                     let fetch = opt.expect("Fetch Channel is down! It's meaningless to continue running");
                     if let Err(e) = self.handle_fetch(fetch).await {
-                        let content = format!("[FETCH]\n\t<{}> <- full block\n\t{}\n\n\n", self.address.tiny_hex(), e);
+                        let content = format!("[FETCH]\n\t<{}> <- full block\n\t{}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n\n",
+                            self.address.tiny_hex(), e, self.state, self.prepare, self.sync);
                         self.handle_err(e, content).await;
                     }
                 }
                 opt = self.agent.from_timeout.next() => {
                     let timeout = opt.expect("Timeout Channel is down! It's meaningless to continue running");
                     if let Err(e) = self.handle_timeout(timeout.clone()).await {
-                        let content = format!("[TIMEOUT]\n\t<{}> <- timeout\n\t<timeout> {}\n\t{}\n\t<state> {}\n", self.address.tiny_hex(), timeout, e, self.state);
+                        let content = format!("[TIMEOUT]\n\t<{}> <- timeout\n\t<timeout> {}\n\t{}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n",
+                            self.address.tiny_hex(), timeout, e, self.state, self.prepare, self.sync);
                         self.handle_err(e, content).await;
                     }
                 }
@@ -209,7 +211,13 @@ where
                 self.handle_sync_response(response).await?;
             }
             OverlordMsg::Stop => {
-                panic!("[STOP]\n\t<{}> -> heaven\n\n\n\n", self.address.tiny_hex());
+                panic!(
+                    "[STOP]\n\t<{}> -> heaven\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n\n\n",
+                    self.address.tiny_hex(),
+                    self.state,
+                    self.prepare,
+                    self.sync
+                );
             }
         }
 
@@ -217,13 +225,16 @@ where
     }
 
     fn handle_exec_result(&mut self, exec_result: ExecResult<S>) {
+        let old_prepare = self.prepare.handle_exec_result(exec_result.clone());
         info!(
-            "[EXEC]\n\t<{}> <- exec\n\t<response> exec_result: {}\n\t<prepare> {}\n\n",
+            "[EXEC]\n\t<{}> <- exec\n\t<message> exec_result: {}\n\t<state> {}\n\t<prepare> {} => {}\n\t<sync> {}\n\n",
             self.address.tiny_hex(),
             exec_result,
-            self.prepare
+            self.state,
+            old_prepare,
+            self.prepare,
+            self.sync
         );
-        self.prepare.handle_exec_result(exec_result);
     }
 
     async fn handle_fetch(
@@ -238,9 +249,12 @@ where
         self.wal.save_full_block(&fetch)?;
 
         info!(
-            "[FETCH]\n\t<{}> <- full block\n\t<response> full_block: {}\n\n\n",
+            "[FETCH]\n\t<{}> <- full block\n\t<message> full_block: {}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n\n",
             self.address.tiny_hex(),
-            fetch
+            fetch,
+            self.state,
+            self.prepare,
+            self.sync
         );
 
         let hash = fetch.block_hash;
@@ -275,7 +289,8 @@ where
     }
 
     async fn handle_propose_timeout(&mut self, stage: Stage) -> OverlordResult<()> {
-        self.state.handle_timeout(&stage)?;
+        let old_state = self.state.handle_timeout(&stage)?;
+        self.log_state_update_of_timeout(old_state, stage.into());
         self.agent.set_step_timeout(self.state.stage.clone());
         self.wal.save_state(&self.state)?;
 
@@ -288,7 +303,8 @@ where
     }
 
     async fn handle_pre_vote_timeout(&mut self, stage: Stage) -> OverlordResult<()> {
-        self.state.handle_timeout(&stage)?;
+        let old_state = self.state.handle_timeout(&stage)?;
+        self.log_state_update_of_timeout(old_state, stage.into());
         self.agent.set_step_timeout(self.state.stage.clone());
         self.wal.save_state(&self.state)?;
 
@@ -311,7 +327,8 @@ where
     }
 
     async fn handle_pre_commit_timeout(&mut self, stage: Stage) -> OverlordResult<()> {
-        self.state.handle_timeout(&stage)?;
+        let old_state = self.state.handle_timeout(&stage)?;
+        self.log_state_update_of_timeout(old_state, stage.into());
         self.agent.set_step_timeout(self.state.stage.clone());
         self.wal.save_state(&self.state)?;
 
@@ -325,7 +342,8 @@ where
     }
 
     async fn handle_brake_timeout(&mut self, stage: Stage) -> OverlordResult<()> {
-        self.state.handle_timeout(&stage)?;
+        let old_state = self.state.handle_timeout(&stage)?;
+        self.log_state_update_of_timeout(old_state, stage.into());
         self.agent.set_step_timeout(self.state.stage.clone());
 
         let height = self.state.stage.height;
@@ -361,7 +379,8 @@ where
             return Err(OverlordError::debug_high());
         }
 
-        self.state.handle_signed_proposal(&sp)?;
+        let old_state = self.state.handle_signed_proposal(&sp)?;
+        self.log_state_update_of_msg(old_state, &sp.proposal.proposer, (&sp).into());
         self.agent.set_step_timeout(self.state.stage.clone());
         self.wal.save_state(&self.state)?;
 
@@ -385,11 +404,14 @@ where
         self.auth.verify_signed_pre_vote(&sv)?;
         if let Some(sum_w) = self.cabinet.insert(msg_h, msg_r, (&sv).into())? {
             info!(
-                "[RECEIVE]\n\t<{}> <- {}\n\t<message> signed_pre_vote: {}\n\t<weight> cumulative_weight: {}\n\n",
+                "[RECEIVE]\n\t<{}> <- {}\n\t<message> signed_pre_vote: {}\n\t<weight> cumulative_weight: {}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n",
                 self.address.tiny_hex(),
                 sv.voter.tiny_hex(),
                 sv,
-                sum_w
+                sum_w,
+                self.state,
+                self.prepare,
+                self.sync,
             );
             if self.auth.current_auth.beyond_majority(sum_w.cum_weight) {
                 let votes = self
@@ -421,11 +443,14 @@ where
         self.auth.verify_signed_pre_commit(&sv)?;
         if let Some(sum_w) = self.cabinet.insert(msg_h, msg_r, (&sv).into())? {
             info!(
-                "[RECEIVE]\n\t<{}> <- {}\n\t<message> signed_pre_commit: {}\n\t<weight> cumulative_weight: {}\n\n",
+                "[RECEIVE]\n\t<{}> <- {}\n\t<message> signed_pre_commit: {}\n\t<weight> cumulative_weight: {}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n",
                 self.address.tiny_hex(),
                 sv.voter.tiny_hex(),
                 sv,
-                sum_w
+                sum_w,
+                self.state,
+                self.prepare,
+                self.sync,
             );
             if self.auth.current_auth.beyond_majority(sum_w.cum_weight) {
                 let votes = self
@@ -457,11 +482,14 @@ where
         self.auth.verify_signed_choke(&sc)?;
         if let Some(sum_w) = self.cabinet.insert(msg_h, msg_r, (&sc).into())? {
             info!(
-                "[RECEIVE]\n\t<{}> <- {}\n\t<message> signed_choke: {}\n\t<weight> cumulative_weight: {}\n\n",
+                "[RECEIVE]\n\t<{}> <- {}\n\t<message> signed_choke: {}\n\t<weight> cumulative_weight: {}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n",
                 self.address.tiny_hex(),
                 sc.voter.tiny_hex(),
                 sc,
-                sum_w
+                sum_w,
+                self.state,
+                self.prepare,
+                self.sync
             );
             if self.auth.current_auth.beyond_majority(sum_w.cum_weight) {
                 let chokes = self
@@ -505,7 +533,8 @@ where
                 .get_block(msg_h, &qc.vote.block_hash)
                 .expect("Unreachable! Lost a block which full block exist");
             let leader = self.auth.get_leader(msg_h, msg_r);
-            self.state.handle_pre_vote_qc(&qc, block.clone(), &leader)?;
+            let old_state = self.state.handle_pre_vote_qc(&qc, block.clone())?;
+            self.log_state_update_of_msg(old_state, &leader, (&qc).into());
 
             self.agent.set_step_timeout(self.state.stage.clone());
             self.wal.save_state(&self.state)?;
@@ -542,8 +571,8 @@ where
                 .get_block(msg_h, &qc.vote.block_hash)
                 .expect("Unreachable! Lost a block which full block exist");
             let leader = self.auth.get_leader(msg_h, msg_r);
-            self.state
-                .handle_pre_commit_qc(&qc, block.clone(), &leader)?;
+            let old_state = self.state.handle_pre_commit_qc(&qc, block.clone())?;
+            self.log_state_update_of_msg(old_state, &leader, (&qc).into());
             self.wal.save_state(&self.state)?;
 
             let (commit_hash, proof, commit_exec_h) = self.save_and_exec_block().await;
@@ -559,13 +588,16 @@ where
 
         self.filter_msg(msg_h, msg_r, (&qc).into())?;
         self.auth.verify_choke_qc(&qc)?;
-        self.state.handle_choke_qc(&qc)?;
+        let old_state = self.state.handle_choke_qc(&qc)?;
+        self.log_state_update_of_msg(old_state, &self.address, (&qc).into());
         self.wal.save_state(&self.state)?;
         info!(
-            "[ROUND]\n\t<{}> -> new round: {}\n\t<state> {}\n\n\n",
+            "[ROUND]\n\t<{}> -> new round {}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n\n\n",
             self.address.tiny_hex(),
             self.state.stage.round,
-            self.state
+            self.state,
+            self.prepare,
+            self.sync,
         );
         self.new_round().await
     }
@@ -614,11 +646,12 @@ where
             .handle_commit(commit_exec_result.consensus_config.time_config.clone());
         self.wal.handle_commit(next_height)?;
         info!(
-            "[COMMIT]\n\t<{}> commit\n\t<state> {}\n\t<prepare> {}\n<config> {}\n",
+            "[COMMIT]\n\t<{}> -> commit\n\t<config> {}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n\n",
             self.address.tiny_hex(),
+            commit_exec_result.consensus_config,
             self.state,
             self.prepare,
-            commit_exec_result.consensus_config
+            self.sync,
         );
 
         // If self is leader, should not wait for interval timeout.
@@ -750,10 +783,12 @@ where
     async fn next_height(&mut self) -> OverlordResult<()> {
         self.state.next_height();
         info!(
-            "[HEIGHT]\n\t<{}> -> next height: {}\n\t<state> {}\n\n\n",
+            "[HEIGHT]\n\t<{}> -> next height {}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n\n\n",
             self.address.tiny_hex(),
             self.state.stage.height,
-            self.state
+            self.state,
+            self.prepare,
+            self.sync,
         );
         self.wal.save_state(&self.state)?;
         self.agent.next_height();
@@ -973,16 +1008,40 @@ where
             self.sync
         );
     }
+
+    fn log_state_update_of_timeout(&self, old_state: StateInfo<B>, timeout: TimeoutEvent) {
+        info!(
+            "[TIMEOUT]\n\t<{}> <- timeout\n\t<timeout> {} \n\t<state> {} => {} \n\t<prepare> {}\n\t<sync> {}\n\n",
+            self.address.tiny_hex(),
+            timeout,
+            old_state,
+            self.state,
+            self.prepare,
+            self.sync,
+        );
+    }
+
+    fn log_state_update_of_msg(&self, old_state: StateInfo<B>, from: &Address, msg: Capsule<B>) {
+        info!(
+            "[RECEIVE] \n\t<{}> <- {}\n\t<message> {} \n\t<state> {} => {} \n\t<prepare> {}\n\t<sync> {}\n\n",
+            self.address.tiny_hex(),
+            from.tiny_hex(),
+            msg,
+            old_state,
+            self.state,
+            self.prepare,
+            self.sync,
+        );
+    }
 }
 
 async fn recover_state_by_adapter<A: Adapter<B, S>, B: Blk, S: St>(
     adapter: &Arc<A>,
-    address: Address,
 ) -> StateInfo<B> {
     let height = adapter.get_latest_height(Context::default()).await.expect(
         "Cannot get the latest height from the adapter! It's meaningless to continue running",
     );
-    StateInfo::from_commit_height(height, address)
+    StateInfo::from_commit_height(height)
 }
 
 async fn recover_propose_prepare_and_config<A: Adapter<B, S>, B: Blk, S: St>(
@@ -1113,7 +1172,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
 
     async fn transmit(&self, to: Address, msg: OverlordMsg<B>) -> OverlordResult<()> {
         info!(
-            "[TRANSMIT]\n\t<{}> -> {}\n\t<message> {} \n\n\n",
+            "[TRANSMIT]\n\t<{}> -> {}\n\t<message> {} \n\n\n\n\n",
             self.address.tiny_hex(),
             to.tiny_hex(),
             msg
@@ -1134,7 +1193,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
 
     async fn broadcast(&self, msg: OverlordMsg<B>) -> OverlordResult<()> {
         info!(
-            "[BROADCAST]\n\t<{}> =>|\n\t<message> {} \n\n\n",
+            "[BROADCAST]\n\t<{}> =>|\n\t<message> {} \n\n\n\n\n",
             self.address.tiny_hex(),
             msg
         );
@@ -1170,7 +1229,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         }
 
         info!(
-            "[FETCH]\n\t<{}> -> full block\n\t<request> block_hash: {}\n\n\n",
+            "[FETCH]\n\t<{}> -> full block\n\t<request> block_hash: {}\n\n\n\n\n",
             self.address.tiny_hex(),
             block_hash.tiny_hex()
         );
@@ -1193,7 +1252,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
 
     fn save_and_exec_block(&self, request: ExecRequest) {
         info!(
-            "[EXEC]\n\t<{}> -> exec\n\t<request> exec_request: {}\n\n\n",
+            "[EXEC]\n\t<{}> -> exec\n\t<request> exec_request: {}\n\n\n\n\n",
             self.address.tiny_hex(),
             request
         );
@@ -1244,7 +1303,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
 
     fn set_timeout(&self, timeout_info: TimeoutInfo, delay: Duration) {
         info!(
-            "[SET]\n\t<{}> set timeout\n\t<timeout> {},\n\t<delay> {:?}\n\n",
+            "[SET]\n\t<{}> set timeout\n\t<timeout> {},\n\t<delay> {:?}\n\n\n\n",
             self.address.tiny_hex(),
             timeout_info,
             delay,
