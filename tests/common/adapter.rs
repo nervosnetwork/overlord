@@ -4,10 +4,11 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use bytes::Bytes;
 use creep::Context;
+use derive_more::Display;
 use futures::channel::mpsc::UnboundedSender;
 use overlord::{
     Adapter, Address, BlockState, DefaultCrypto, ExecResult, Hash, Height, HeightRange,
-    OverlordError, OverlordMsg, Proof,
+    OverlordError, OverlordMsg, Proof, TinyHex,
 };
 
 use crate::common::block::{Block, ExecState, FullBlock};
@@ -92,8 +93,27 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
                 block_state.state.receipt_root.clone()
             })
             .collect();
-        assert_eq!(expect_state_root, block.state_root);
-        assert_eq!(expect_receipt_roots, block.receipt_roots);
+        if expect_state_root != block.state_root {
+            return Err(Box::new(BlockError(format!(
+                "expect_state_root != block.state_root, {} != {}",
+                expect_state_root.tiny_hex(),
+                block.state_root.tiny_hex()
+            ))));
+        }
+        if expect_receipt_roots != block.receipt_roots {
+            return Err(Box::new(BlockError(format!(
+                "expect_receipt_roots != block.receipt_roots, {:?} != {:?}",
+                expect_receipt_roots
+                    .iter()
+                    .map(|r| r.tiny_hex())
+                    .collect::<Vec<String>>(),
+                block
+                    .receipt_roots
+                    .iter()
+                    .map(|r| r.tiny_hex())
+                    .collect::<Vec<String>>()
+            ))));
+        }
         Ok(())
     }
 
@@ -160,3 +180,9 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
 
     async fn handle_error(&self, _ctx: Context, _err: OverlordError) {}
 }
+
+#[derive(Clone, Debug, Display)]
+#[display(fmt = "block error: {}", _0)]
+struct BlockError(String);
+
+impl Error for BlockError {}

@@ -81,13 +81,14 @@ impl<B: Blk> SignedProposal<B> {
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
-    fmt = "{{ height: {}, round: {}, block_hash: {}, block_exec_height: {}, lock: {}, proposer: {} }}",
+    fmt = "{{ height: {}, round: {}, block_hash: {}, block_exec_height: {}, lock: {}, proposer: {}, block: {} }}",
     height,
     round,
     "block_hash.tiny_hex()",
     "block.get_exec_height()",
     "lock.clone().map_or(\"None\".to_owned(), |lock| format!(\"{}\", lock))",
-    "proposer.tiny_hex()"
+    "proposer.tiny_hex()",
+    block
 )]
 pub struct Proposal<B: Blk> {
     pub height:     Height,
@@ -213,7 +214,7 @@ impl SignedPreCommit {
     }
 }
 
-#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, Default, Eq, Serialize, Deserialize)]
 #[display(fmt = "{{ vote: {}, aggregates: {} }}", vote, aggregates)]
 pub struct PreVoteQC {
     pub vote:       Vote,
@@ -226,7 +227,13 @@ impl PreVoteQC {
     }
 }
 
-#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+impl PartialEq for PreVoteQC {
+    fn eq(&self, other: &Self) -> bool {
+        self.vote == other.vote
+    }
+}
+
+#[derive(Clone, Debug, Display, Default, Eq, Serialize, Deserialize)]
 #[display(fmt = "{{ vote: {}, aggregates: {} }}", vote, aggregates)]
 pub struct PreCommitQC {
     pub vote:       Vote,
@@ -236,6 +243,12 @@ pub struct PreCommitQC {
 impl PreCommitQC {
     pub fn new(vote: Vote, aggregates: Aggregates) -> Self {
         PreCommitQC { vote, aggregates }
+    }
+}
+
+impl PartialEq for PreCommitQC {
+    fn eq(&self, other: &Self) -> bool {
+        self.vote == other.vote
     }
 }
 
@@ -261,7 +274,7 @@ impl Aggregates {
     }
 }
 
-#[derive(Clone, Debug, Default, Display, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Default, Display, PartialEq, Eq)]
 #[display(
     fmt = "{{ choke: {}, vote_weight: {}, from: {}, voter: {}, signature: {} }}",
     choke,
@@ -322,7 +335,7 @@ impl ChokeQC {
     }
 }
 
-#[derive(Clone, Debug, Display, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UpdateFrom {
     #[display(fmt = "pre_vote_qc: {}", _0)]
     PreVoteQC(PreVoteQC),
@@ -457,7 +470,7 @@ pub struct ExecResult<S: St> {
 }
 
 #[derive(Clone, Debug, Display, Default)]
-#[display(fmt = "{{ {} -> state: {:?} }}", height, state)]
+#[display(fmt = "{{ {} -> state: {} }}", height, state)]
 pub struct BlockState<S: St> {
     pub height: Height,
     pub state:  S,
@@ -670,7 +683,14 @@ impl<'a, T: std::fmt::Display> std::fmt::Display for DisplayVec<'a, T> {
 }
 
 /// for test
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[display(
+    fmt = "{{ pre_hash: {}, height: {}, exec_height: {}, pre_proof: {} }}",
+    "pre_hash.tiny_hex()",
+    height,
+    exec_height,
+    pre_proof
+)]
 pub struct TestBlock {
     pub pre_hash:    Hash,
     pub height:      Height,

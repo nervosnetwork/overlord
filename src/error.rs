@@ -57,7 +57,7 @@ pub enum ErrorInfo {
     WrongLeader(String),
     #[display(fmt = "check block failed, {}", _0)]
     CheckBlock(String),
-    #[display(fmt = "adapter check block failed")]
+    #[display(fmt = "adapter check block failed, {}", _0)]
     AdapterCheckBlock(Box<dyn Error + Send>),
     #[display(fmt = "under stage")]
     UnderStage,
@@ -79,6 +79,10 @@ pub enum ErrorInfo {
     OnSync,
     #[display(fmt = "request higher block, {}", _0)]
     RequestHigher(String),
+    #[display(fmt = "not ready to sync, {}", _0)]
+    NotReady(String),
+    #[display(fmt = "sync error, {}", _0)]
+    Sync(String),
 }
 
 #[derive(Debug, Display)]
@@ -131,9 +135,9 @@ impl OverlordError {
         }
     }
 
-    pub fn net_msg_exist() -> Self {
+    pub fn debug_msg_exist() -> Self {
         OverlordError {
-            kind: ErrorKind::Network,
+            kind: ErrorKind::Debug,
             info: ErrorInfo::MsgExist,
         }
     }
@@ -310,6 +314,20 @@ impl OverlordError {
         OverlordError {
             kind: ErrorKind::Byzantine,
             info: ErrorInfo::RequestHigher(str),
+        }
+    }
+
+    pub fn debug_not_ready(str: String) -> Self {
+        OverlordError {
+            kind: ErrorKind::Debug,
+            info: ErrorInfo::NotReady(str),
+        }
+    }
+
+    pub fn byz_sync(str: String) -> Self {
+        OverlordError {
+            kind: ErrorKind::Byzantine,
+            info: ErrorInfo::Sync(str),
         }
     }
 }

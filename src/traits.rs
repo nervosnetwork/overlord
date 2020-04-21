@@ -2,7 +2,7 @@ pub use creep::Context;
 
 use std::collections::HashMap;
 use std::error::Error;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -83,7 +83,7 @@ pub trait Adapter<B: Blk, S: St>: 'static + Send + Sync {
 }
 
 /// should ensure the same serialization results in different environments
-pub trait Blk: 'static + Clone + Debug + Default + PartialEq + Eq + Send + Sync {
+pub trait Blk: 'static + Clone + Debug + Display + Default + PartialEq + Eq + Send + Sync {
     fn fixed_encode(&self) -> Result<Bytes, Box<dyn Error + Send>>;
 
     fn fixed_decode(data: &Bytes) -> Result<Self, Box<dyn Error + Send>>;
@@ -99,7 +99,7 @@ pub trait Blk: 'static + Clone + Debug + Default + PartialEq + Eq + Send + Sync 
     fn get_proof(&self) -> Proof;
 }
 
-pub trait St: 'static + Clone + Debug + Default + Send + Sync {}
+pub trait St: 'static + Clone + Debug + Display + Default + Send + Sync {}
 
 /// provide DefaultCrypto
 pub trait Crypto: Send {

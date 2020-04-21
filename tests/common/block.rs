@@ -12,10 +12,12 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, Display, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
-    fmt = "{{ pre_hash: {}, height: {}, exec_height: {}, pre_proof: {}, tx: {} }}",
+    fmt = "{{ pre_hash: {}, height: {}, exec_height: {}, state_root: {}, receipt_roots: {:?}, pre_proof: {}, tx: {} }}",
     "pre_hash.tiny_hex()",
     height,
     exec_height,
+    "state_root.tiny_hex()",
+    "receipt_roots.iter().map(|hash| hash.tiny_hex()).collect::<Vec<String>>()",
     pre_proof,
     tx
 )]
@@ -99,7 +101,12 @@ impl Blk for Block {
 
 pub type Transaction = OverlordConfig;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Display, Default)]
+#[display(
+    fmt = "{{ state_root: {}, receipt_root: {} }}",
+    "state_root.tiny_hex()",
+    "receipt_root.tiny_hex()"
+)]
 pub struct ExecState {
     pub state_root:   Hash,
     pub receipt_root: Hash,

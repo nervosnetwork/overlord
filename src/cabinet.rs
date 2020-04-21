@@ -532,7 +532,7 @@ fn check_exist<T: std::fmt::Display + PartialEq + Eq>(
 ) -> OverlordResult<()> {
     if let Some(exist_data) = opt {
         if exist_data == check_data {
-            return Err(OverlordError::net_msg_exist());
+            return Err(OverlordError::debug_msg_exist());
         }
         return Err(OverlordError::byz_mul_version(format!(
             "insert.msg != exist.msg, {} != {}",

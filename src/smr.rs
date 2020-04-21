@@ -13,7 +13,9 @@ use crate::cabinet::{Cabinet, Capsule};
 use crate::error::{ErrorInfo, ErrorKind};
 use crate::exec::ExecRequest;
 use crate::state::{ProposePrepare, Stage, StateInfo, Step};
-use crate::sync::{Sync, BLOCK_BATCH, CLEAR_TIMEOUT_RATIO, HEIGHT_RATIO, SYNC_TIMEOUT_RATIO};
+use crate::sync::{
+    Sync, SyncStat, BLOCK_BATCH, CLEAR_TIMEOUT_RATIO, HEIGHT_RATIO, SYNC_TIMEOUT_RATIO,
+};
 use crate::timeout::{TimeoutEvent, TimeoutInfo};
 use crate::types::{
     Choke, ChokeQC, FetchedFullBlock, PreCommitQC, PreVoteQC, Proposal, SignedChoke, SignedHeight,
@@ -68,31 +70,25 @@ where
         let wal = Wal::new(wal_path);
         let rst = wal.load_state();
 
-        let last_commit_height;
         let state;
         let from;
         if let Err(e) = rst {
             warn!("Load state from wal failed: {}! Try to recover state by the adapter, which face security risk if majority auth nodes lost their wal file at the same time", e);
             state = recover_state_by_adapter(adapter, address.clone()).await;
-            last_commit_height = state.stage.height;
             from = "adapter";
         } else {
             state = rst.unwrap();
             assert_eq!(state.address, address, "Load wal with other address");
-            last_commit_height = state.stage.height - 1;
             from = "wal"
         };
 
-        let prepare = recover_propose_prepare_and_config(adapter, last_commit_height).await;
-        let last_exec_result = prepare
-            .exec_results
-            .get(&prepare.exec_height)
-            .expect("Unreachable! Cannot get last exec result");
+        let prepare = recover_propose_prepare_and_config(adapter).await;
+        let last_exec_result = prepare.last_exec_result.clone();
         let auth_config = last_exec_result.consensus_config.auth_config.clone();
         let time_config = last_exec_result.consensus_config.time_config.clone();
-        let last_config = if last_commit_height > 0 {
+        let last_config = if prepare.exec_height > 0 {
             Some(
-                get_exec_result(adapter, state.stage.height - 1)
+                get_exec_result(adapter, prepare.exec_height - 1)
                     .await
                     .unwrap()
                     .unwrap()
@@ -364,7 +360,11 @@ where
         self.wal.save_state(&self.state)?;
 
         let vote = self.auth.sign_pre_vote(sp.proposal.as_vote())?;
-        self.agent.transmit(sp.proposal.proposer, vote.into()).await
+        self.agent
+            .transmit(sp.proposal.proposer, vote.clone().into())
+            .await?;
+        let next_leader = self.auth.get_leader(msg_h, msg_r + 1);
+        self.agent.transmit(next_leader, vote.into()).await
     }
 
     async fn handle_signed_pre_vote(&mut self, sv: SignedPreVote) -> OverlordResult<()> {
@@ -539,8 +539,10 @@ where
             self.state
                 .handle_pre_commit_qc(&qc, block.clone(), &leader)?;
             self.wal.save_state(&self.state)?;
-            let exec_result = self.get_exec_block().await;
-            self.handle_commit(exec_result).await?;
+
+            let (commit_hash, proof, commit_exec_h) = self.save_and_exec_block().await;
+            self.handle_commit(commit_hash, proof, commit_exec_h)
+                .await?;
         }
         Ok(())
     }
@@ -562,7 +564,7 @@ where
         self.new_round().await
     }
 
-    async fn get_exec_block(&mut self) -> ExecResult<S> {
+    async fn save_and_exec_block(&mut self) -> (Hash, Proof, Height) {
         let proof = self
             .state
             .pre_commit_qc
@@ -585,11 +587,19 @@ where
             .expect("Unreachable! Lost commit block when commit")
             .get_exec_height();
 
-        self.prepare
-            .handle_commit(commit_hash, proof.clone(), commit_exec_h)
+        (commit_hash, proof.clone(), commit_exec_h)
     }
 
-    async fn handle_commit(&mut self, commit_exec_result: ExecResult<S>) -> OverlordResult<()> {
+    async fn handle_commit(
+        &mut self,
+        commit_hash: Hash,
+        proof: Proof,
+        commit_exec_h: Height,
+    ) -> OverlordResult<()> {
+        let commit_exec_result =
+            self.prepare
+                .handle_commit(commit_hash, proof.clone(), commit_exec_h);
+
         let next_height = self.state.stage.height + 1;
         self.auth
             .handle_commit(commit_exec_result.consensus_config.auth_config.clone());
@@ -609,8 +619,9 @@ where
         // This is the exact opposite of the previous design.
         // So the time_config should also be changed.
         // make sure ( pre_vote_timeout >= propose_timeout + interval )
-        if (!self.auth.am_i_leader(next_height, INIT_ROUND)
-            || self.auth.current_auth.list.len() == 1)
+        if self.sync.state == SyncStat::Off
+            && (!self.auth.am_i_leader(next_height, INIT_ROUND)
+                || self.auth.current_auth.list.len() == 1)
             && self.agent.set_step_timeout(self.state.stage.clone())
         {
             return Ok(());
@@ -621,8 +632,14 @@ where
 
     async fn handle_signed_height(&mut self, signed_height: SignedHeight) -> OverlordResult<()> {
         let my_height = self.state.stage.height;
-        if signed_height.height <= my_height || self.state.stage.step != Step::Brake {
+        if signed_height.height <= my_height {
             return Err(OverlordError::debug_old());
+        }
+        if self.state.stage.step != Step::Brake {
+            return Err(OverlordError::debug_not_ready(format!(
+                "my.step != Step::Brake, {} != Step::Brake",
+                self.state.stage.step
+            )));
         }
 
         self.auth.verify_signed_height(&signed_height)?;
@@ -674,6 +691,14 @@ where
             .collect();
 
         while let Some(&(block, proof)) = map.get(&self.state.stage.height).as_ref() {
+            let block_hash = block.get_block_hash();
+            if proof.vote.block_hash != block_hash {
+                return Err(OverlordError::byz_sync(format!(
+                    "proof.vote_hash != block.hash, {} != {}",
+                    proof.vote.block_hash.tiny_hex(),
+                    block_hash.tiny_hex()
+                )));
+            }
             self.check_block(block).await?;
             self.auth.verify_pre_commit_qc(proof)?;
             let full_block = self
@@ -691,7 +716,9 @@ where
                 )
                 .await
                 .expect("Execution is down! It's meaningless to continue running");
-            self.handle_commit(exec_result).await?;
+            self.prepare.handle_exec_result(exec_result);
+            self.handle_commit(block_hash, proof.clone(), block.get_exec_height())
+                .await?;
         }
         self.sync.handle_sync_response(&response);
 
@@ -783,17 +810,12 @@ where
             )));
         }
         if self.prepare.exec_height < exec_h {
-            println!(
-                "<{}>, self.exec_height < block.exec_height, {} < {}",
-                self.address.tiny_hex(),
-                self.prepare.exec_height,
-                exec_h
-            );
             return Err(OverlordError::warn_block(format!(
                 "self.exec_height < block.exec_height, {} < {}",
                 self.prepare.exec_height, exec_h
             )));
         }
+
         self.adapter
             .check_block(
                 Context::new(),
@@ -927,8 +949,10 @@ async fn recover_state_by_adapter<A: Adapter<B, S>, B: Blk, S: St>(
 
 async fn recover_propose_prepare_and_config<A: Adapter<B, S>, B: Blk, S: St>(
     adapter: &Arc<A>,
-    last_commit_height: Height,
 ) -> ProposePrepare<S> {
+    let last_commit_height = adapter.get_latest_height(Context::default()).await.expect(
+        "Cannot get the latest height from the adapter! It's meaningless to continue running",
+    );
     let (block, proof) = get_block_with_proof(adapter, last_commit_height)
         .await
         .unwrap()
@@ -937,24 +961,23 @@ async fn recover_propose_prepare_and_config<A: Adapter<B, S>, B: Blk, S: St>(
     let hash = block.get_block_hash();
     let last_exec_height = block.get_exec_height();
     let mut exec_results = vec![];
-
-    let start_height = if last_exec_height == 0 {
-        last_exec_height
-    } else {
-        last_exec_height + 1
-    };
-
+    let mut last_exec_result = ExecResult::default();
     let mut max_exec_behind = 5;
-
-    for h in start_height..=last_commit_height {
+    for h in last_exec_height..=last_commit_height {
         let exec_result = get_exec_result(adapter, h).await.unwrap().unwrap();
         max_exec_behind = exec_result.consensus_config.max_exec_behind;
-        exec_results.push(exec_result);
+        if h == last_exec_height {
+            last_exec_result = exec_result;
+        } else {
+            exec_results.push(exec_result);
+        }
     }
 
     ProposePrepare::new(
         max_exec_behind,
         last_commit_height,
+        last_exec_height,
+        last_exec_result,
         exec_results,
         proof,
         hash,
@@ -969,9 +992,6 @@ async fn get_block_with_proof<A: Adapter<B, S>, B: Blk, S: St>(
         .get_block_with_proofs(Context::default(), HeightRange::new(height, 1))
         .await
         .map_err(OverlordError::local_get_block)?;
-    if vec.is_empty() {
-        return Ok(None);
-    }
     Ok(Some(vec[0].clone()))
 }
 

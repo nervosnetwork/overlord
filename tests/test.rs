@@ -52,7 +52,7 @@ async fn test_wal_1_node() {
 
 #[tokio::test(threaded_scheduler)]
 async fn test_wal_4_nodes() {
-    set_log(LevelFilter::Info);
+    // set_log(LevelFilter::Debug);
     let platform = Platform::new(4);
     thread::sleep(Duration::from_secs(3));
     let vec = platform.get_address_list();
@@ -67,7 +67,7 @@ async fn test_wal_4_nodes() {
 
     // restart node
     platform.restart_node(&address);
-    thread::sleep(Duration::from_secs(10));
+    thread::sleep(Duration::from_secs(100));
     let height_after_restart = platform.get_latest_height(&address);
     assert!(
         height_after_restart > height_after_sleep,
