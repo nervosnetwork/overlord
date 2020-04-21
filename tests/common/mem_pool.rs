@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use overlord::{Hash, Height, Proof};
+use overlord::{Hash, Height, Node, Proof};
 use parking_lot::RwLock;
 use rand::random;
 
@@ -16,10 +16,33 @@ impl MemPool {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn send_tx(&self, new_tx: Transaction) {
+    pub fn auth_new_node(&self, node: Node) {
         let mut tx = self.tx.write();
-        *tx = new_tx;
+        if tx
+            .auth_config
+            .auth_list
+            .iter()
+            .find(|n| n != &&node)
+            .is_none()
+        {
+            tx.auth_config.auth_list.push(node);
+        }
+    }
+
+    pub fn remove_node_auth(&self, node: Node) {
+        let mut tx = self.tx.write();
+        let index = tx
+            .auth_config
+            .auth_list
+            .iter()
+            .position(|n| *n == node)
+            .unwrap();
+        tx.auth_config.auth_list.remove(index);
+    }
+
+    pub fn update_interval(&self, interval: u64) {
+        let mut tx = self.tx.write();
+        tx.time_config.interval = interval;
     }
 
     pub fn package(

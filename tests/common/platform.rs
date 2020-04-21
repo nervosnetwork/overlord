@@ -42,27 +42,26 @@ impl Platform {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn add_new_nodes(&mut self, node_number: usize) {
+    pub fn add_new_nodes(&mut self, node_number: usize) -> Vec<Address> {
         let common_ref = self.key_pairs.common_ref.clone();
-        let mut key_pairs = gen_key_pairs(node_number, vec![], Some(common_ref));
+        let key_pairs = gen_key_pairs(node_number, vec![], Some(common_ref));
         run(
             key_pairs.clone(),
             &self.network,
             &self.mem_pool,
             &self.storage,
         );
-        self.key_pairs.key_pairs.append(&mut key_pairs.key_pairs);
+        into_address_list(&key_pairs.key_pairs)
     }
 
-    pub fn restart_node(&self, address: &Address) {
+    pub fn restart_node(&self, node: &Address) {
         let common_ref = self.key_pairs.common_ref.clone();
         let key_pair = self
             .key_pairs
             .key_pairs
             .iter()
-            .find(|key_pair| hex_to_address(&key_pair.address) == address)
-            .unwrap();
+            .find(|key_pair| hex_to_address(&key_pair.address) == node)
+            .expect("restart node failed");
         let key_pairs = KeyPairs {
             common_ref,
             key_pairs: vec![key_pair.clone()],
@@ -70,25 +69,51 @@ impl Platform {
         run(key_pairs, &self.network, &self.mem_pool, &self.storage);
     }
 
-    pub fn stop_node(&self, to: &Address) {
-        let _ = self.network.transmit(to, OverlordMsg::Stop);
+    pub fn stop_node(&self, address: &Address) {
+        let _ = self.network.transmit(address, OverlordMsg::Stop);
     }
 
-    #[allow(dead_code)]
-    pub fn set_consensus_config(&self, overlord_config: OverlordConfig) {
-        self.mem_pool.send_tx(overlord_config)
+    pub fn auth_node_list(&self, address: &[Address]) {
+        address
+            .iter()
+            .for_each(|address| self.auth_new_node(address));
     }
 
-    pub fn get_latest_height(&self, from: &Address) -> Height {
-        self.storage.get_latest_height(from)
+    pub fn auth_new_node(&self, address: &Address) {
+        let node = self.get_node(address);
+        self.mem_pool.auth_new_node(node);
+    }
+
+    pub fn remove_node_auth(&self, address: &Address) {
+        let node = self.get_node(address);
+        self.mem_pool.remove_node_auth(node);
+    }
+
+    pub fn update_interval(&self, interval: u64) {
+        self.mem_pool.update_interval(interval);
+    }
+
+    pub fn get_latest_height(&self, address: &Address) -> Height {
+        self.storage.get_latest_height(address)
     }
 
     pub fn get_address_list(&self) -> Vec<Address> {
-        self.key_pairs
+        into_address_list(&self.key_pairs.key_pairs)
+    }
+
+    fn get_node(&self, address: &Address) -> Node {
+        let key_pair = self
+            .key_pairs
             .key_pairs
             .iter()
-            .map(|keypair| hex_to_address(&keypair.address))
-            .collect()
+            .find(|key_pair| hex_to_address(&key_pair.address) == address)
+            .unwrap();
+        Node::new(
+            hex_to_address(&key_pair.address),
+            key_pair.bls_public_key.clone(),
+            1,
+            1,
+        )
     }
 }
 
@@ -149,6 +174,13 @@ fn into_auth_list(key_pairs: &[KeyPair]) -> Vec<Node> {
                 1,
             )
         })
+        .collect()
+}
+
+fn into_address_list(key_pairs: &[KeyPair]) -> Vec<Address> {
+    key_pairs
+        .iter()
+        .map(|keypair| hex_to_address(&keypair.address))
         .collect()
 }
 

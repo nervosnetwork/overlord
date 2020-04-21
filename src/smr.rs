@@ -113,11 +113,12 @@ where
             last_config.map(|config| AuthCell::new(config.auth_config, &address));
 
         info!(
-            "[LOAD]\n\t<{}> <- {}\n\t<state> {}\n\t<prepare> {}\n\n",
+            "[LOAD]\n\t<{}> <- {}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n",
             address.tiny_hex(),
             from,
             state,
-            prepare
+            prepare,
+            Sync::<B>::new(),
         );
         SMR {
             wal,
@@ -126,7 +127,7 @@ where
             prepare,
             phantom_s: PhantomData,
             address: address.clone(),
-            sync: Sync::new(address.clone()),
+            sync: Sync::new(),
             adapter: Arc::<A>::clone(adapter),
             auth: AuthManage::new(auth_fixed_config, current_auth, last_auth),
             agent: EventAgent::new(
@@ -260,9 +261,14 @@ where
             TimeoutEvent::BrakeTimeout(stage) => self.handle_brake_timeout(stage).await,
             TimeoutEvent::NextHeightTimeout => self.handle_next_height_timeout().await,
             TimeoutEvent::HeightTimeout => self.handle_height_timeout().await,
-            TimeoutEvent::SyncTimeout(request_id) => self.sync.handle_sync_timeout(request_id),
+            TimeoutEvent::SyncTimeout(request_id) => {
+                let old_sync = self.sync.handle_sync_timeout(request_id)?;
+                self.log_sync_update_of_timeout(old_sync, TimeoutEvent::SyncTimeout(request_id));
+                Ok(())
+            }
             TimeoutEvent::ClearTimeout(address) => {
-                self.sync.handle_clear_timeout(&address);
+                let old_sync = self.sync.handle_clear_timeout(&address);
+                self.log_sync_update_of_timeout(old_sync, TimeoutEvent::ClearTimeout(address));
                 Ok(())
             }
         }
@@ -643,7 +649,12 @@ where
         }
 
         self.auth.verify_signed_height(&signed_height)?;
-        self.sync.handle_signed_height(&signed_height)?;
+        let old_sync = self.sync.handle_signed_height(&signed_height)?;
+        self.log_sync_update_of_msg(
+            old_sync,
+            &signed_height.address,
+            signed_height.clone().into(),
+        );
         self.agent.set_sync_timeout(self.sync.request_id);
         self.agent.set_clear_timeout(signed_height.address.clone());
         let range = HeightRange::new(my_height, BLOCK_BATCH);
@@ -662,7 +673,8 @@ where
         }
 
         self.auth.verify_sync_request(&request)?;
-        self.sync.handle_sync_request(&request)?;
+        let old_sync = self.sync.handle_sync_request(&request)?;
+        self.log_sync_update_of_msg(old_sync, &request.requester, request.clone().into());
         self.agent.set_clear_timeout(request.requester.clone());
         let blocks = self
             .adapter
@@ -720,7 +732,8 @@ where
             self.handle_commit(block_hash, proof.clone(), block.get_exec_height())
                 .await?;
         }
-        self.sync.handle_sync_response(&response);
+        let old_sync = self.sync.handle_sync_response();
+        self.log_sync_update_of_msg(old_sync, &response.responder.clone(), response.into());
 
         Ok(())
     }
@@ -934,6 +947,31 @@ where
                 self.adapter.handle_error(Context::default(), e).await;
             }
         }
+    }
+
+    fn log_sync_update_of_timeout(&self, old_sync: Sync<B>, timeout: TimeoutEvent) {
+        info!(
+            "[TIMEOUT]\n\t<{}> <- timeout\n\t<message> {}\n\t<state> {}\n\t<prepare> {} \n\t<sync> {} => {}\n",
+            self.address.tiny_hex(),
+            timeout,
+            self.state,
+            self.prepare,
+            old_sync,
+            self.sync,
+        );
+    }
+
+    fn log_sync_update_of_msg(&self, old_sync: Sync<B>, from: &Address, msg: OverlordMsg<B>) {
+        info!(
+            "[RECEIVE]\n\t<{}> <- {}\n\t<message> {}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {} => {}\n",
+            self.address.tiny_hex(),
+            from.tiny_hex(),
+            msg,
+            self.state,
+            self.prepare,
+            old_sync,
+            self.sync
+        );
     }
 }
 
