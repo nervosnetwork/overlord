@@ -12,6 +12,7 @@ pub type Signature = Bytes;
 
 pub type PriKeyHex = String;
 pub type PubKeyHex = String;
+pub type PartyPubKeyHex = String;
 pub type CommonHex = String;
 
 pub type Height = u64;
@@ -354,16 +355,23 @@ impl Default for UpdateFrom {
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[display(fmt = "{{ height: {}, address: {} }}", height, "address.tiny_hex()")]
 pub struct SignedHeight {
-    pub height:    Height,
-    pub address:   Address,
-    pub signature: Signature,
+    pub height:      Height,
+    pub address:     Address,
+    pub pub_key_hex: String,
+    pub signature:   Signature,
 }
 
 impl SignedHeight {
-    pub fn new(height: Height, address: Address, signature: Signature) -> Self {
+    pub fn new(
+        height: Height,
+        address: Address,
+        pub_key_hex: String,
+        signature: Signature,
+    ) -> Self {
         SignedHeight {
             height,
             address,
+            pub_key_hex,
             signature,
         }
     }
@@ -378,14 +386,21 @@ impl SignedHeight {
 pub struct SyncRequest {
     pub request_range: HeightRange,
     pub requester:     Address,
+    pub pub_key_hex:   String,
     pub signature:     Signature,
 }
 
 impl SyncRequest {
-    pub fn new(request_range: HeightRange, requester: Address, signature: Signature) -> Self {
+    pub fn new(
+        request_range: HeightRange,
+        requester: Address,
+        pub_key_hex: String,
+        signature: Signature,
+    ) -> Self {
         SyncRequest {
             request_range,
             requester,
+            pub_key_hex,
             signature,
         }
     }
@@ -401,6 +416,7 @@ pub struct SyncResponse<B: Blk> {
     pub request_range:     HeightRange,
     pub block_with_proofs: Vec<(B, Proof)>,
     pub responder:         Address,
+    pub pub_key_hex:       String,
     pub signature:         Signature,
 }
 
@@ -409,12 +425,14 @@ impl<B: Blk> SyncResponse<B> {
         request_range: HeightRange,
         block_with_proofs: Vec<(B, Proof)>,
         responder: Address,
+        pub_key_hex: String,
         signature: Signature,
     ) -> Self {
         SyncResponse {
             request_range,
             block_with_proofs,
             responder,
+            pub_key_hex,
             signature,
         }
     }
@@ -706,11 +724,13 @@ impl TestBlock {
 
 impl Blk for TestBlock {
     fn fixed_encode(&self) -> Result<Bytes, Box<dyn std::error::Error + Send>> {
-        Ok(bincode::serialize(self).map(Bytes::from).unwrap())
+        Ok(bincode::serialize(self)
+            .map(Bytes::from)
+            .expect("test block encode failed"))
     }
 
     fn fixed_decode(data: &Bytes) -> Result<Self, Box<dyn std::error::Error + Send>> {
-        Ok(bincode::deserialize(data.as_ref()).unwrap())
+        Ok(bincode::deserialize(data.as_ref()).expect("test block decode failed"))
     }
 
     fn get_block_hash(&self) -> Hash {

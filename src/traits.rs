@@ -11,8 +11,8 @@ use futures::channel::mpsc::UnboundedSender;
 use crate::crypto::PubKeyHex;
 use crate::error::OverlordError;
 use crate::types::{
-    Address, BlockState, CommonHex, ExecResult, Hash, Height, HeightRange, OverlordMsg, Proof,
-    Signature,
+    Address, BlockState, CommonHex, ExecResult, Hash, Height, HeightRange, OverlordMsg,
+    PartyPubKeyHex, Proof, Signature,
 };
 use crate::PriKeyHex;
 
@@ -105,23 +105,32 @@ pub trait St: 'static + Clone + Debug + Display + Default + Send + Sync {}
 pub trait Crypto: Send {
     fn hash(msg: &Bytes) -> Hash;
 
-    fn sign(pri_key: PriKeyHex, hash: &Hash) -> Result<Signature, Box<dyn Error + Send>>;
+    fn sign_msg(pri_key: PriKeyHex, hash: &Hash) -> Result<Signature, Box<dyn Error + Send>>;
 
     fn verify_signature(
-        common_ref: CommonHex,
         pub_key: PubKeyHex,
+        address: &Address,
+        hash: &Hash,
+        signature: &Signature,
+    ) -> Result<(), Box<dyn Error + Send>>;
+
+    fn party_sign_msg(pri_key: PriKeyHex, hash: &Hash) -> Result<Signature, Box<dyn Error + Send>>;
+
+    fn party_verify_signature(
+        common_ref: CommonHex,
+        party_pub_key: PartyPubKeyHex,
         hash: &Hash,
         signature: &Signature,
     ) -> Result<(), Box<dyn Error + Send>>;
 
     fn aggregate(
-        signatures: HashMap<&PubKeyHex, &Signature>,
+        signatures: HashMap<&PartyPubKeyHex, &Signature>,
     ) -> Result<Signature, Box<dyn Error + Send>>;
 
     fn verify_aggregates(
         common_ref: CommonHex,
         hash: &Hash,
-        pub_keys: &[PubKeyHex],
+        party_pub_keys: &[PartyPubKeyHex],
         signature: &Signature,
     ) -> Result<(), Box<dyn Error + Send>>;
 }

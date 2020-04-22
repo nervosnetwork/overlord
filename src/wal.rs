@@ -193,19 +193,20 @@ mod test {
         };
 
         wal.save_state(&state).unwrap();
-        let load_state = wal.load_state().unwrap();
+        let load_state = wal.load_state().expect("load state failed");
         assert_eq!(state, load_state);
 
         let full_block = Bytes::from(gen_random_bytes(1000));
         let hash = DefaultCrypto::hash(&full_block);
         let fetch = FetchedFullBlock::new(10, hash.clone(), full_block.clone());
         wal.save_full_block(&fetch).unwrap();
-        let fetches = wal.load_full_blocks().unwrap();
+        let fetches = wal.load_full_blocks().expect("load full blocks failed");
         assert_eq!(fetch, fetches[0]);
 
         wal.save_full_block(&FetchedFullBlock::new(11, hash, full_block))
             .unwrap();
-        wal.remove_full_blocks(12).unwrap();
+        wal.remove_full_blocks(12)
+            .expect("remove full blocks failed");
     }
 
     fn gen_random_bytes(len: usize) -> Vec<u8> {

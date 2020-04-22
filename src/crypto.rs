@@ -9,10 +9,11 @@ use hasher::{Hasher, HasherKeccak};
 use hex::FromHexError;
 use lazy_static::lazy_static;
 use ophelia::{
-    BlsSignatureVerify, Error as SigError, HashValue, PrivateKey, PublicKey, Signature,
-    ToBlsPublicKey,
+    BlsSignatureVerify, Crypto as OphCrypto, Error as SigError, HashValue, PrivateKey, PublicKey,
+    Signature, ToBlsPublicKey,
 };
 use ophelia_bls_amcl::{BlsCommonReference, BlsPrivateKey, BlsPublicKey, BlsSignature};
+use ophelia_secp256k1::Secp256k1;
 use rand::distributions::Alphanumeric;
 use rand::Rng;
 use rand::{rngs::OsRng, RngCore};
@@ -20,7 +21,7 @@ use serde::Serialize;
 use tentacle_secio::SecioKeyPair;
 
 use crate::types::{Address, Hash, Signature as SigBytes};
-use crate::Crypto;
+use crate::{Crypto, TinyHex};
 
 lazy_static! {
     static ref HASHER_INST: HasherKeccak = HasherKeccak::new();
@@ -44,27 +45,54 @@ impl Crypto for DefaultCrypto {
         BytesMut::from(out.as_ref()).freeze()
     }
 
-    fn sign(pri_key: PriKeyHex, hash: &Hash) -> Result<SigBytes, Box<dyn Error + Send>> {
+    fn sign_msg(pri_key: PriKeyHex, hash: &Hash) -> Result<SigBytes, Box<dyn Error + Send>> {
+        let pri_key = hex_decode(&pri_key)?;
+        let signature =
+            Secp256k1::sign_message(&hash, &pri_key).map_err(CryptoError::SignFailed)?;
+        Ok(signature.to_bytes())
+    }
+
+    fn verify_signature(
+        pub_key: PubKeyHex,
+        address: &Address,
+        hash: &Hash,
+        signature: &SigBytes,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        let pub_key = hex_decode(&pub_key)?;
+        let expect_address = pub_key_to_address(Bytes::from(pub_key.clone()));
+        if expect_address != address {
+            return Err(Box::new(CryptoError::MismatchAddress(format!(
+                "expect: {}, actual: {}",
+                expect_address.tiny_hex(),
+                address.tiny_hex()
+            ))));
+        }
+        Secp256k1::verify_signature(hash, signature, &pub_key)
+            .map_err(CryptoError::VerifyFailed)?;
+        Ok(())
+    }
+
+    fn party_sign_msg(pri_key: PriKeyHex, hash: &Hash) -> Result<SigBytes, Box<dyn Error + Send>> {
         let pri_key = hex_to_bls_pri_key(&pri_key)?;
         let hash_value =
-            HashValue::try_from(hash.as_ref()).map_err(|_| CryptoError::TryInfoHashValueFailed)?;
+            HashValue::try_from(hash.as_ref()).map_err(|_| CryptoError::TryIntoHashValueFailed)?;
         let sig = pri_key.sign_message(&hash_value);
         Ok(sig.to_bytes())
     }
 
-    fn verify_signature(
+    fn party_verify_signature(
         common_ref: CommonHex,
-        pub_key: PubKeyHex,
+        pub_key: BlsPubKeyHex,
         hash: &Hash,
         signature: &SigBytes,
     ) -> Result<(), Box<dyn Error + Send>> {
         let pub_key = hex_to_bls_pub_key(&pub_key)?;
         let common_ref = hex_to_common_ref(&common_ref)?;
         let hash =
-            HashValue::try_from(hash.as_ref()).map_err(|_| CryptoError::TryInfoHashValueFailed)?;
+            HashValue::try_from(hash.as_ref()).map_err(|_| CryptoError::TryIntoHashValueFailed)?;
 
         let signature = BlsSignature::try_from(signature.as_ref())
-            .map_err(CryptoError::TryInfoBlsSignatureFailed)?;
+            .map_err(CryptoError::TryIntoBlsSignatureFailed)?;
         signature
             .verify(&hash, &pub_key, &common_ref)
             .map_err(CryptoError::VerifyFailed)?;
@@ -78,7 +106,7 @@ impl Crypto for DefaultCrypto {
 
         for (pub_key, signature) in signatures.into_iter() {
             let signature = BlsSignature::try_from(signature.as_ref())
-                .map_err(CryptoError::TryInfoBlsSignatureFailed)?;
+                .map_err(CryptoError::TryIntoBlsSignatureFailed)?;
             let pub_key = hex_to_bls_pub_key(pub_key)?;
             combine.push((signature, pub_key));
         }
@@ -100,9 +128,9 @@ impl Crypto for DefaultCrypto {
 
         let aggregate_key = BlsPublicKey::aggregate(list.iter().collect());
         let aggregated_signature = BlsSignature::try_from(signature.as_ref())
-            .map_err(CryptoError::TryInfoBlsSignatureFailed)?;
+            .map_err(CryptoError::TryIntoBlsSignatureFailed)?;
         let hash =
-            HashValue::try_from(hash.as_ref()).map_err(|_| CryptoError::TryInfoHashValueFailed)?;
+            HashValue::try_from(hash.as_ref()).map_err(|_| CryptoError::TryIntoHashValueFailed)?;
         let common_ref = hex_to_common_ref(&common_ref)?;
 
         aggregated_signature
@@ -169,19 +197,19 @@ pub fn hex_to_bls_pri_key(hex_str: &str) -> Result<BlsPrivateKey, CryptoError> {
     let mut pri_key = Vec::new();
     pri_key.extend_from_slice(&[0u8; 16]);
     pri_key.append(&mut hex_decode(hex_str)?);
-    BlsPrivateKey::try_from(pri_key.as_ref()).map_err(CryptoError::TryInfoBlsPriKeyFailed)
+    BlsPrivateKey::try_from(pri_key.as_ref()).map_err(CryptoError::TryIntoBlsPriKeyFailed)
 }
 
 pub fn hex_to_bls_pub_key(hex_str: &str) -> Result<BlsPublicKey, CryptoError> {
-    let pub_key = hex_decode(hex_str)?;
-    BlsPublicKey::try_from(pub_key.as_ref()).map_err(CryptoError::TryInfoBlsPubKeyFailed)
+    let bls_pub_key = hex_decode(hex_str)?;
+    BlsPublicKey::try_from(bls_pub_key.as_ref()).map_err(CryptoError::TryIntoBlsPubKeyFailed)
 }
 
 pub fn hex_to_common_ref(hex_str: &str) -> Result<BlsCommonReference, CryptoError> {
     let common_ref = hex_decode(hex_str)?;
     std::str::from_utf8(common_ref.as_ref())
         .map(|str| str.into())
-        .map_err(CryptoError::TryInfoCommonRefFailed)
+        .map_err(CryptoError::TryIntoCommonRefFailed)
 }
 
 pub fn hex_to_address(hex_str: &str) -> Result<Address, CryptoError> {
@@ -249,28 +277,37 @@ fn gen_keypair(pri_key: Option<&PriKeyHex>, common_ref_str: BlsCommonReference) 
 #[derive(Debug, Display)]
 pub enum CryptoError {
     #[display(fmt = "Try into HashValue failed")]
-    TryInfoHashValueFailed,
+    TryIntoHashValueFailed,
 
     #[display(fmt = "Try into CommonRef failed, {:?}", _0)]
-    TryInfoCommonRefFailed(Utf8Error),
+    TryIntoCommonRefFailed(Utf8Error),
 
     #[display(fmt = "Try into BlsSignature failed, {:?}", _0)]
-    TryInfoBlsSignatureFailed(SigError),
+    TryIntoBlsSignatureFailed(SigError),
 
     #[display(fmt = "Try into BlsPriKey failed, {:?}", _0)]
-    TryInfoBlsPriKeyFailed(SigError),
+    TryIntoBlsPriKeyFailed(SigError),
 
     #[display(fmt = "Try into BlsPubKey failed, {:?}", _0)]
-    TryInfoBlsPubKeyFailed(SigError),
+    TryIntoBlsPubKeyFailed(SigError),
+
+    #[display(fmt = "Try into PubKey failed, {:?}", _0)]
+    TryIntoPubKeyFailed(SigError),
 
     #[display(fmt = "Decode Hex failed, {:?}", _0)]
     HexDecodeFailed(FromHexError),
+
+    #[display(fmt = "Sign message failed, {:?}", _0)]
+    SignFailed(SigError),
 
     #[display(fmt = "Verify signature failed, {:?}", _0)]
     VerifyFailed(SigError),
 
     #[display(fmt = "Verify aggregated signature failed, {:?}", _0)]
     VerifyAggregateFailed(SigError),
+
+    #[display(fmt = "mismatch address, {}", _0)]
+    MismatchAddress(String),
 }
 
 impl From<CryptoError> for Box<dyn Error + Send> {
@@ -369,16 +406,26 @@ mod test {
         let msg = Bytes::from("test_default_crypto");
         let hash = DefaultCrypto::hash(&msg);
 
-        // test sign and verify_signature
-        let sig_0 = DefaultCrypto::sign(pri_keys[0].clone(), &hash).unwrap();
-        DefaultCrypto::verify_signature(common_ref.clone(), auth_list[0].1.clone(), &hash, &sig_0)
-            .unwrap();
+        // test sign and party_verify_signature
+        let sig_0 = DefaultCrypto::party_sign_msg(pri_keys[0].clone(), &hash).unwrap();
+        DefaultCrypto::party_verify_signature(
+            common_ref.clone(),
+            auth_list[0].1.clone(),
+            &hash,
+            &sig_0,
+        )
+        .unwrap();
 
-        let sig_1 = DefaultCrypto::sign(pri_keys[1].clone(), &hash).unwrap();
-        DefaultCrypto::verify_signature(common_ref.clone(), auth_list[1].1.clone(), &hash, &sig_1)
-            .unwrap();
+        let sig_1 = DefaultCrypto::party_sign_msg(pri_keys[1].clone(), &hash).unwrap();
+        DefaultCrypto::party_verify_signature(
+            common_ref.clone(),
+            auth_list[1].1.clone(),
+            &hash,
+            &sig_1,
+        )
+        .unwrap();
 
-        assert!(DefaultCrypto::verify_signature(
+        assert!(DefaultCrypto::party_verify_signature(
             common_ref.clone(),
             auth_list[2].1.clone(),
             &hash,
@@ -401,5 +448,19 @@ mod test {
             &agg_sig,
         )
         .unwrap();
+    }
+
+    #[test]
+    fn test_crypto() {
+        let message = Bytes::from("cedfrtrrt");
+        let hash = DefaultCrypto::hash(&message);
+
+        let pri_key = "0xeba570f6b2cabd67aede56941baa6cc66729bfbf4e15bfd7df805ae0e4f66596";
+        let pub_key = "0x02146d3d0a180bd1c1bce9b63caa549dc444d7dc3c875f1a0f171b63059c60bd9d";
+        let pri_key = hex_decode(pri_key).unwrap();
+        let pub_key = hex_decode(pub_key).unwrap();
+
+        let signature = Secp256k1::sign_message(&hash, &pri_key).unwrap().to_bytes();
+        Secp256k1::verify_signature(&hash, &signature, &pub_key).unwrap();
     }
 }

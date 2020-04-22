@@ -35,6 +35,7 @@ use futures::channel::mpsc::unbounded;
 use crate::auth::AuthFixedConfig;
 use crate::exec::Exec;
 use crate::smr::SMR;
+use crate::types::{PartyPubKeyHex, PubKeyHex};
 use crate::wal::Wal;
 
 pub const INIT_HEIGHT: Height = 0;
@@ -55,6 +56,8 @@ where
     pub async fn run(
         common_ref: CommonHex,
         pri_key: PriKeyHex,
+        pub_key: PubKeyHex,
+        party_pub_key: PartyPubKeyHex,
         address: Address,
         adapter: &Arc<A>,
         wal_path: &str,
@@ -66,7 +69,8 @@ where
         adapter
             .register_network(Context::default(), net_sender.clone())
             .await;
-        let auth_fixed_config = AuthFixedConfig::new(common_ref, pri_key, address);
+        let auth_fixed_config =
+            AuthFixedConfig::new(common_ref, pri_key, pub_key, party_pub_key, address);
 
         let exec = Exec::new(adapter, smr_receiver, exec_sender);
         let smr = SMR::new(

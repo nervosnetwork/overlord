@@ -76,12 +76,6 @@ impl Platform {
         let _ = self.network.transmit(address, OverlordMsg::Stop);
     }
 
-    pub fn auth_node_list(&self, address: &[Address]) {
-        address
-            .iter()
-            .for_each(|address| self.auth_new_node(address));
-    }
-
     pub fn auth_new_node(&self, address: &Address) {
         let node = self.get_node(address);
         self.mem_pool.auth_new_node(node);
@@ -94,10 +88,6 @@ impl Platform {
 
     pub fn update_interval(&self, interval: u64) {
         self.mem_pool.update_interval(interval);
-    }
-
-    pub fn get_auth_list(&self) -> Vec<String> {
-        self.mem_pool.get_auth_list()
     }
 
     pub fn get_latest_height(&self, address: &Address) -> Height {
@@ -143,11 +133,15 @@ fn run(
 
         let common_ref_clone = common_ref.clone();
         let pri_key = key_pair.private_key.clone();
+        let pub_key = key_pair.public_key.clone();
+        let party_pub_key = key_pair.bls_public_key.clone();
         let tiny_address = address.tiny_hex();
         tokio::spawn(async move {
             OverlordServer::run(
                 common_ref_clone,
                 pri_key,
+                pub_key,
+                party_pub_key,
                 address,
                 &adapter,
                 &("wal/tests/".to_owned() + &tiny_address),

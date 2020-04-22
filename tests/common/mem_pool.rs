@@ -50,17 +50,6 @@ impl MemPool {
         tx.time_config.interval = interval;
     }
 
-    pub fn get_auth_list(&self) -> Vec<String> {
-        self.tx
-            .read()
-            .auth_config
-            .auth_list
-            .clone()
-            .iter()
-            .map(|node| node.address.tiny_hex())
-            .collect()
-    }
-
     pub fn package(
         &self,
         height: Height,
