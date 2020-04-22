@@ -10,3 +10,6 @@ Cargo.lock
 **/*.rs.bk
 
 /tests/integration_tests/test.json
+
+# IDEA IDE
+.idea
