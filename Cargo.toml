@@ -19,23 +19,19 @@ bit-vec = "0.6"
 creep = "0.2"
 log = "0.4"
 hex = "0.4"
-chrono = "0.4"
 ophelia = "0.2"
 lazy_static = "1.4"
-futures-timer = "3.0"
-moodyblues-sdk = "0.3"
-ophelia-secp256k1 = "0.2"
 ophelia-bls-amcl = "0.1"
 parking_lot = "0.10"
 prime_tools = "0.2"
-rand_core = "0.5"
-rand_pcg = "0.2"
+derive_more = "0.99"
+futures-timer = "3.0"
 rlp = "0.4"
 rand = "0.7"
 bincode = "1.2"
 serde_json = "1.0"
 serde_derive = "1.0"
-derive_more = "0.99"
+ophelia-secp256k1 = "0.2"
 bytes = { version = "0.5", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 hasher = { version = "0.1", features = ['hash-keccak'] }
@@ -44,13 +40,8 @@ tentacle-secio = { version = "0.1", features = [ "flatc" ] }
 tokio = { version = "0.2", features = ["macros", "rt-core", "rt-threaded"]}
 
 [dev-dependencies]
-blake2b_simd = "0.5"
-chashmap = "2.2"
-crossbeam-channel = "0.4"
+chrono = "0.4"
 env_logger = "0.7"
-hasher = { version = "0.1", features = ['hash-keccak'] }
-lru-cache = "0.1"
-rand = "0.7"
 
 [features]
 default = []
