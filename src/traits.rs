@@ -51,6 +51,8 @@ pub trait Adapter<B: Blk, S: St>: 'static + Send + Sync {
         proof: Proof,
     ) -> Result<ExecResult<S>, Box<dyn Error + Send>>;
 
+    async fn commit(&self, ctx: Context, commit_state: ExecResult<S>);
+
     async fn register_network(
         &self,
         _ctx: Context,

@@ -637,6 +637,9 @@ where
         let commit_exec_result =
             self.prepare
                 .handle_commit(commit_hash, proof.clone(), commit_exec_h);
+        self.adapter
+            .commit(Context::default(), commit_exec_result.clone())
+            .await;
 
         let next_height = self.state.stage.height + 1;
         self.auth
@@ -645,6 +648,7 @@ where
         self.agent
             .handle_commit(commit_exec_result.consensus_config.time_config.clone());
         self.wal.handle_commit(next_height)?;
+
         info!(
             "[COMMIT]\n\t<{}> -> commit\n\t<config> {}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n\n",
             self.address.tiny_hex(),
