@@ -621,7 +621,7 @@ where
         })?;
 
         self.check_block(ctx, hash, block).await;
-        self.vote_process(VoteType::Prevote).await?;
+        // self.vote_process(VoteType::Prevote).await?;
         Ok(())
     }
 
@@ -864,7 +864,7 @@ where
 
         let proof = Proof {
             height,
-            round: self.round,
+            round: qc.round,
             block_hash: hash.clone(),
             signature: qc.signature.clone(),
         };
