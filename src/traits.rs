@@ -88,7 +88,7 @@ pub trait Blk: 'static + Clone + Debug + Display + Default + PartialEq + Eq + Se
 
     fn fixed_decode(data: &Bytes) -> Result<Self, Box<dyn Error + Send>>;
 
-    fn get_block_hash(&self) -> Hash;
+    fn get_block_hash(&self) -> Result<Hash, Box<dyn Error + Send>>;
 
     fn get_pre_hash(&self) -> Hash;
 

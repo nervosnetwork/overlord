@@ -83,6 +83,8 @@ pub enum ErrorInfo {
     NotReady(String),
     #[display(fmt = "sync error, {}", _0)]
     Sync(String),
+    #[display(fmt = "hash block error, {}", _0)]
+    HashBlock(Box<dyn Error + Send>),
 }
 
 #[derive(Debug, Display)]
@@ -328,6 +330,13 @@ impl OverlordError {
         OverlordError {
             kind: ErrorKind::Byzantine,
             info: ErrorInfo::Sync(str),
+        }
+    }
+
+    pub fn byz_hash(e: Box<dyn Error + Send>) -> Self {
+        OverlordError {
+            kind: ErrorKind::Byzantine,
+            info: ErrorInfo::HashBlock(e),
         }
     }
 }

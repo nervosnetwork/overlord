@@ -736,12 +736,12 @@ where
             .collect();
 
         while let Some(&(block, proof)) = map.get(&self.state.stage.height).as_ref() {
-            let block_hash = block.get_block_hash();
+            let block_hash = block.get_block_hash().map_err(OverlordError::byz_hash)?;
             if proof.vote.block_hash != block_hash {
                 return Err(OverlordError::byz_sync(format!(
                     "proof.vote_hash != block.hash, {} != {}",
                     proof.vote.block_hash.tiny_hex(),
-                    block_hash.tiny_hex()
+                    block_hash.clone().tiny_hex()
                 )));
             }
             self.check_block(block).await?;
@@ -749,7 +749,7 @@ where
             let full_block = self
                 .adapter
                 .fetch_full_block(Context::default(), block.clone())
-                .map_err(|_| OverlordError::net_fetch(block.get_block_hash()))
+                .map_err(|_| OverlordError::net_fetch(block_hash.clone()))
                 .await?;
             let exec_result = self
                 .adapter
@@ -820,11 +820,12 @@ where
             )));
         }
 
-        if p.block_hash != p.block.get_block_hash() {
+        let block_hash = p.block.get_block_hash().map_err(OverlordError::byz_hash)?;
+        if p.block_hash != block_hash {
             return Err(OverlordError::byz_block(format!(
                 "proposal.block_hash != block.hash, {} != {}",
                 p.block_hash.tiny_hex(),
-                p.block.get_block_hash().tiny_hex()
+                block_hash.tiny_hex()
             )));
         }
 
@@ -920,7 +921,7 @@ where
             )
         } else {
             let block = self.create_block().await?;
-            let hash = block.get_block_hash();
+            let hash = block.get_block_hash().map_err(OverlordError::byz_hash)?;
             Proposal::new(height, round, block, hash, None, self.address.clone())
         };
         self.auth.sign_proposal(proposal)
@@ -1055,7 +1056,7 @@ async fn recover_propose_prepare_and_config<A: Adapter<B, S>, B: Blk, S: St>(
         .unwrap()
         .unwrap();
 
-    let hash = block.get_block_hash();
+    let hash = block.get_block_hash().expect("hash block failed");
     let last_exec_height = block.get_exec_height();
     let mut exec_results = vec![];
     let mut last_exec_result = ExecResult::default();
@@ -1101,7 +1102,13 @@ async fn get_exec_result<A: Adapter<B, S>, B: Blk, S: St>(
         let full_block = adapter
             .fetch_full_block(Context::default(), block.clone())
             .await
-            .map_err(|_| OverlordError::net_fetch(block.get_block_hash()))?;
+            .map_err(|_| {
+                OverlordError::net_fetch(
+                    block
+                        .get_block_hash()
+                        .expect("Unreachable! Block hash has been checked before"),
+                )
+            })?;
         let rst = adapter
             .save_and_exec_block_with_proof(Context::default(), height, full_block, proof.clone())
             .await
@@ -1223,7 +1230,9 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
     }
 
     fn request_full_block(&self, block: B) {
-        let block_hash = block.get_block_hash();
+        let block_hash = block
+            .get_block_hash()
+            .expect("Unreachable! Block hash has been checked before");
         if self.fetch_set.contains(&block_hash) {
             return;
         }

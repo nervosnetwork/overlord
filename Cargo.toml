@@ -42,7 +42,3 @@ tokio = { version = "0.2", features = ["macros", "rt-core", "rt-threaded"]}
 [dev-dependencies]
 chrono = "0.4"
 env_logger = "0.7"
-
-[features]
-default = []
-random_leader = []

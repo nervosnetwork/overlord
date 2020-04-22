@@ -7,7 +7,7 @@ pub struct Executor;
 impl Executor {
     pub fn exec(full_block: &FullBlock) -> ExecResult<ExecState> {
         let consensus_config = full_block.block.tx.clone();
-        let hash = full_block.block.get_block_hash();
+        let hash = full_block.block.get_block_hash().unwrap();
         let exec_state = ExecState {
             state_root:   hash.clone(),
             receipt_root: hash,

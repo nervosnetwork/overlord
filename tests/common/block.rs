@@ -80,8 +80,10 @@ impl Blk for Block {
         Ok(bincode::deserialize(data.as_ref()).expect("deserialize a block failed"))
     }
 
-    fn get_block_hash(&self) -> Hash {
-        DefaultCrypto::hash(&self.fixed_encode().expect("fixed encode a block failed"))
+    fn get_block_hash(&self) -> Result<Hash, Box<dyn Error + Send>> {
+        Ok(DefaultCrypto::hash(
+            &self.fixed_encode().expect("fixed encode a block failed"),
+        ))
     }
 
     fn get_pre_hash(&self) -> Hash {

@@ -733,9 +733,9 @@ impl Blk for TestBlock {
         Ok(bincode::deserialize(data.as_ref()).expect("test block decode failed"))
     }
 
-    fn get_block_hash(&self) -> Hash {
+    fn get_block_hash(&self) -> Result<Hash, Box<dyn std::error::Error + Send>> {
         use crate::{Crypto, DefaultCrypto};
-        DefaultCrypto::hash(&self.fixed_encode().unwrap())
+        Ok(DefaultCrypto::hash(&self.fixed_encode().unwrap()))
     }
 
     fn get_pre_hash(&self) -> Hash {
