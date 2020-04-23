@@ -196,6 +196,16 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         Ok(self.storage.get_block_with_proof(&self.address, range))
     }
 
+    async fn sync_full_block(
+        &self,
+        _ctx: Context,
+        block: Block,
+    ) -> Result<Bytes, Box<dyn Error + Send>> {
+        let full_block = FullBlock { block };
+        let vec = bincode::serialize(&full_block).expect("serialize full block failed");
+        Ok(Bytes::from(vec))
+    }
+
     async fn get_latest_height(&self, _ctx: Context) -> Result<Height, Box<dyn Error + Send>> {
         Ok(self.storage.get_latest_height(&self.address))
     }
