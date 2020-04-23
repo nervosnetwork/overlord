@@ -82,7 +82,7 @@ where
         };
 
         let prepare = recover_propose_prepare_and_config(adapter).await;
-        let last_exec_result = prepare.last_exec_result.clone();
+        let last_exec_result = prepare.last_commit_exec_result.clone();
         let auth_config = last_exec_result.consensus_config.auth_config.clone();
         let time_config = last_exec_result.consensus_config.time_config.clone();
         let last_config = if prepare.exec_height > 0 {
@@ -878,6 +878,7 @@ where
                 Context::new(),
                 block,
                 &self.prepare.get_block_states_list(exec_h),
+                &self.prepare.last_commit_exec_result.block_states.state,
             )
             .await
             .map_err(OverlordError::byz_adapter_check_block)?;
@@ -904,6 +905,11 @@ where
                 pre_hash,
                 pre_proof,
                 block_states,
+                self.prepare
+                    .last_commit_exec_result
+                    .block_states
+                    .state
+                    .clone(),
             )
             .await
             .map_err(OverlordError::local_create_block)

@@ -293,20 +293,21 @@ impl From<u8> for Step {
 
 #[derive(Clone, Debug, Display)]
 #[display(
-    fmt = "exec_height: {}, last_exec_height: {}, exec_cache: {:?}, pre_proof: {}, pre_hash: {}, max_exec_behind: {}",
+    fmt = "exec_height: {}, last_commit_exec_height: {}, exec_cache: {:?}, pre_proof: {}, pre_hash: {}, max_exec_behind: {}",
     exec_height,
-    last_exec_height,
+    last_commit_exec_height,
     "exec_results.keys()",
     pre_proof,
     "pre_hash.tiny_hex()",
     max_exec_behind
 )]
 pub struct ProposePrepare<S: St> {
-    pub max_exec_behind:  u64,
-    pub exec_height:      Height,
-    pub last_exec_height: u64,
-    pub last_exec_result: ExecResult<S>,
-    pub exec_results:     BTreeMap<Height, ExecResult<S>>,
+    pub max_exec_behind:         u64,
+    pub exec_height:             Height,
+    pub last_exec_result:        ExecResult<S>,
+    pub last_commit_exec_height: Height,
+    pub last_commit_exec_result: ExecResult<S>,
+    pub exec_results:            BTreeMap<Height, ExecResult<S>>,
 
     pub pre_proof: Proof, /* proof for the previous block which will be involved in the
                            * next block */
@@ -317,7 +318,7 @@ impl<S: St> ProposePrepare<S> {
     pub fn new(
         max_exec_behind: u64,
         exec_height: Height,
-        last_exec_height: u64,
+        last_commit_exec_height: Height,
         last_exec_result: ExecResult<S>,
         exec_results: Vec<ExecResult<S>>,
         pre_proof: Proof,
@@ -327,11 +328,13 @@ impl<S: St> ProposePrepare<S> {
             .into_iter()
             .map(|rst| (rst.block_states.height, rst))
             .collect();
+        let last_commit_exec_result = last_exec_result.clone();
         ProposePrepare {
             max_exec_behind,
             exec_height,
-            last_exec_height,
+            last_commit_exec_height,
             last_exec_result,
+            last_commit_exec_result,
             exec_results,
             pre_proof,
             pre_hash,
@@ -342,7 +345,8 @@ impl<S: St> ProposePrepare<S> {
         let old_prepare = self.clone();
         let exec_height = exec_result.block_states.height;
         self.exec_height = exec_height;
-        self.exec_results.insert(exec_height, exec_result);
+        self.exec_results.insert(exec_height, exec_result.clone());
+        self.last_exec_result = exec_result;
         old_prepare
     }
 
@@ -355,8 +359,8 @@ impl<S: St> ProposePrepare<S> {
         self.pre_hash = block_hash;
         self.pre_proof = pre_commit_qc;
 
-        if commit_exec_h == self.last_exec_height {
-            return self.last_exec_result.clone();
+        if commit_exec_h == self.last_commit_exec_height {
+            return self.last_commit_exec_result.clone();
         }
         let commit_exec_result = self
             .exec_results
@@ -370,8 +374,8 @@ impl<S: St> ProposePrepare<S> {
             .clone();
         self.exec_results = self.exec_results.split_off(&(commit_exec_h + 1));
         self.max_exec_behind = commit_exec_result.consensus_config.max_exec_behind;
-        self.last_exec_height = commit_exec_h;
-        self.last_exec_result = commit_exec_result.clone();
+        self.last_commit_exec_height = commit_exec_h;
+        self.last_commit_exec_result = commit_exec_result.clone();
         commit_exec_result
     }
 

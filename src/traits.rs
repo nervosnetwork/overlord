@@ -27,6 +27,7 @@ pub trait Adapter<B: Blk, S: St>: 'static + Send + Sync {
         height: Height,
     ) -> Result<ExecResult<S>, Box<dyn Error + Send>>;
 
+    #[allow(clippy::too_many_arguments)]
     async fn create_block(
         &self,
         ctx: Context,
@@ -35,6 +36,7 @@ pub trait Adapter<B: Blk, S: St>: 'static + Send + Sync {
         pre_hash: Hash,
         pre_proof: Proof,
         block_states: Vec<BlockState<S>>,
+        last_commit_exec_resp: S,
     ) -> Result<B, Box<dyn Error + Send>>;
 
     async fn check_block(
@@ -42,6 +44,7 @@ pub trait Adapter<B: Blk, S: St>: 'static + Send + Sync {
         ctx: Context,
         block: &B,
         block_states: &[BlockState<S>],
+        last_commit_exec_resp: &S,
     ) -> Result<(), Box<dyn Error + Send>>;
 
     async fn fetch_full_block(

@@ -10,7 +10,6 @@ use overlord::{
     Adapter, Address, BlockState, DefaultCrypto, ExecResult, Hash, Height, HeightRange,
     OverlordError, OverlordMsg, Proof, TinyHex,
 };
-use parking_lot::RwLock;
 
 use crate::common::block::{Block, ExecState, FullBlock};
 use crate::common::executor::Executor;
@@ -23,8 +22,7 @@ pub struct OverlordAdapter {
     mem_pool: Arc<MemPool>,
     storage:  Arc<Storage>,
 
-    address:         Address,
-    last_state_root: RwLock<Hash>,
+    address: Address,
 }
 
 impl OverlordAdapter {
@@ -37,14 +35,12 @@ impl OverlordAdapter {
         let network = Arc::<Network>::clone(network);
         let mem_pool = Arc::<MemPool>::clone(mem_pool);
         let storage = Arc::<Storage>::clone(storage);
-        let last_state_root = RwLock::new(Hash::default());
 
         OverlordAdapter {
             network,
             mem_pool,
             storage,
             address,
-            last_state_root,
         }
     }
 }
@@ -70,6 +66,7 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         Ok(Executor::exec(&full_block))
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn create_block(
         &self,
         _ctx: Context,
@@ -78,8 +75,9 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         pre_hash: Hash,
         pre_proof: Proof,
         block_states: Vec<BlockState<ExecState>>,
+        last_commit_exec_resp: ExecState,
     ) -> Result<Block, Box<dyn Error + Send>> {
-        let mut state_root = self.last_state_root.read().clone();
+        let mut state_root = last_commit_exec_resp.state_root;
         let receipt_roots: Vec<Hash> = block_states
             .iter()
             .map(|block_state| {
@@ -102,8 +100,9 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         _ctx: Context,
         block: &Block,
         block_states: &[BlockState<ExecState>],
+        last_commit_exec_resp: &ExecState,
     ) -> Result<(), Box<dyn Error + Send>> {
-        let mut expect_state_root = self.last_state_root.read().clone();
+        let mut expect_state_root = last_commit_exec_resp.state_root.clone();
         let expect_receipt_roots: Vec<Hash> = block_states
             .iter()
             .map(|block_state| {
@@ -161,10 +160,7 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         Ok(Executor::exec(&full_block))
     }
 
-    async fn commit(&self, _ctx: Context, commit_state: ExecResult<ExecState>) {
-        let mut last_state_root = self.last_state_root.write();
-        *last_state_root = commit_state.block_states.state.state_root;
-    }
+    async fn commit(&self, _ctx: Context, _commit_state: ExecResult<ExecState>) {}
 
     async fn register_network(
         &self,
