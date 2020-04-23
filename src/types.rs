@@ -578,7 +578,7 @@ impl Default for TimeConfig {
 )]
 pub struct Node {
     pub address:        Address,
-    pub pub_key:        PubKeyHex,
+    pub party_pub_key:  PartyPubKeyHex,
     pub propose_weight: Weight,
     pub vote_weight:    Weight,
 }
@@ -586,13 +586,13 @@ pub struct Node {
 impl Node {
     pub fn new(
         address: Address,
-        pub_key: PubKeyHex,
+        party_pub_key: PubKeyHex,
         propose_weight: Weight,
         vote_weight: Weight,
     ) -> Self {
         Node {
             address,
-            pub_key,
+            party_pub_key,
             propose_weight,
             vote_weight,
         }

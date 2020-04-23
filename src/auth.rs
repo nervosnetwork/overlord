@@ -406,7 +406,7 @@ impl<B: Blk> AuthCell<B> {
         let mut propose_weight_sum = 0;
 
         config.auth_list.iter().for_each(|node| {
-            list.push((node.address.clone(), node.pub_key.clone()));
+            list.push((node.address.clone(), node.party_pub_key.clone()));
             vote_weight_map.insert(node.address.clone(), node.vote_weight);
             vote_weight_sum += node.vote_weight;
             propose_weight_sum += node.propose_weight;
