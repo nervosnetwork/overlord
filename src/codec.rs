@@ -4,9 +4,10 @@ use rlp::{Decodable, DecoderError, Encodable, Prototype, Rlp, RlpStream};
 use crate::state::{Stage, StateInfo, Step};
 use crate::types::{
     Aggregates, Choke, ChokeQC, FetchedFullBlock, HeightRange, PreCommitQC, PreVoteQC, Proposal,
-    SignedChoke, SignedPreCommit, SignedPreVote, SignedProposal, UpdateFrom, Vote, Weight,
+    SignedChoke, SignedHeight, SignedPreCommit, SignedPreVote, SignedProposal, SyncRequest,
+    SyncResponse, UpdateFrom, Vote, Weight,
 };
-use crate::{Address, Blk, Hash, Height, Round, Signature};
+use crate::{Address, Blk, Hash, Height, Proof, Round, Signature};
 
 // impl Encodable and Decodable trait for Aggregates
 impl Encodable for Aggregates {
@@ -485,6 +486,147 @@ impl Decodable for HeightRange {
     }
 }
 
+// impl Encodable and Decodable trait for SignedHeight
+impl Encodable for SignedHeight {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        s.begin_list(4)
+            .append(&self.height)
+            .append(&self.address.to_vec())
+            .append(&self.pub_key_hex)
+            .append(&self.signature.to_vec());
+    }
+}
+
+impl Decodable for SignedHeight {
+    fn decode(r: &Rlp) -> Result<Self, DecoderError> {
+        match r.prototype()? {
+            Prototype::List(4) => {
+                let height: Height = r.val_at(0)?;
+                let tmp: Vec<u8> = r.val_at(1)?;
+                let address = Address::from(tmp);
+                let pub_key_hex: String = r.val_at(2)?;
+                let tmp: Vec<u8> = r.val_at(3)?;
+                let signature = Signature::from(tmp);
+                Ok(SignedHeight {
+                    height,
+                    address,
+                    pub_key_hex,
+                    signature,
+                })
+            }
+            _ => Err(DecoderError::RlpInconsistentLengthAndData),
+        }
+    }
+}
+
+// impl Encodable and Decodable trait for SyncRequest
+impl Encodable for SyncRequest {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        s.begin_list(4)
+            .append(&self.request_range)
+            .append(&self.requester.to_vec())
+            .append(&self.pub_key_hex)
+            .append(&self.signature.to_vec());
+    }
+}
+
+impl Decodable for SyncRequest {
+    fn decode(r: &Rlp) -> Result<Self, DecoderError> {
+        match r.prototype()? {
+            Prototype::List(4) => {
+                let request_range: HeightRange = r.val_at(0)?;
+                let tmp: Vec<u8> = r.val_at(1)?;
+                let requester = Address::from(tmp);
+                let pub_key_hex: String = r.val_at(2)?;
+                let tmp: Vec<u8> = r.val_at(3)?;
+                let signature = Signature::from(tmp);
+                Ok(SyncRequest {
+                    request_range,
+                    requester,
+                    pub_key_hex,
+                    signature,
+                })
+            }
+            _ => Err(DecoderError::RlpInconsistentLengthAndData),
+        }
+    }
+}
+
+// impl Encodable and Decodable trait for SyncRequest
+impl<B: Blk> Encodable for SyncResponse<B> {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        let block_with_proofs: Vec<BlockWithProof<B>> = self
+            .block_with_proofs
+            .iter()
+            .map(|(block, proof)| BlockWithProof {
+                block: block.clone(),
+                proof: proof.clone(),
+            })
+            .collect();
+        s.begin_list(5)
+            .append(&self.request_range)
+            .append(&self.responder.to_vec())
+            .append(&self.pub_key_hex)
+            .append(&self.signature.to_vec())
+            .append_list(&block_with_proofs);
+    }
+}
+
+impl<B: Blk> Decodable for SyncResponse<B> {
+    fn decode(r: &Rlp) -> Result<Self, DecoderError> {
+        match r.prototype()? {
+            Prototype::List(5) => {
+                let request_range: HeightRange = r.val_at(0)?;
+                let tmp: Vec<u8> = r.val_at(1)?;
+                let responder = Address::from(tmp);
+                let pub_key_hex: String = r.val_at(2)?;
+                let tmp: Vec<u8> = r.val_at(3)?;
+                let signature = Signature::from(tmp);
+                let block_with_proofs: Vec<BlockWithProof<B>> = r.list_at(4)?;
+                let block_with_proofs = block_with_proofs
+                    .into_iter()
+                    .map(|bp| (bp.block, bp.proof))
+                    .collect();
+                Ok(SyncResponse {
+                    request_range,
+                    responder,
+                    pub_key_hex,
+                    signature,
+                    block_with_proofs,
+                })
+            }
+            _ => Err(DecoderError::RlpInconsistentLengthAndData),
+        }
+    }
+}
+
+struct BlockWithProof<B: Blk> {
+    block: B,
+    proof: Proof,
+}
+
+impl<B: Blk> Encodable for BlockWithProof<B> {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        let block = self.block.fixed_encode().unwrap().to_vec();
+        s.begin_list(2).append(&self.proof).append(&block);
+    }
+}
+
+impl<B: Blk> Decodable for BlockWithProof<B> {
+    fn decode(r: &Rlp) -> Result<Self, DecoderError> {
+        match r.prototype()? {
+            Prototype::List(2) => {
+                let proof: Proof = r.val_at(0)?;
+                let tmp: Vec<u8> = r.val_at(1)?;
+                let block: B = B::fixed_decode(&Bytes::from(tmp))
+                    .map_err(|_| DecoderError::Custom("Codec decode error."))?;
+                Ok(BlockWithProof { proof, block })
+            }
+            _ => Err(DecoderError::RlpInconsistentLengthAndData),
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -510,6 +652,9 @@ mod test {
         test_rlp::<Vote>();
         test_rlp::<ChokeQC>();
         test_rlp::<HeightRange>();
+        test_rlp::<SignedHeight>();
+        test_rlp::<SyncRequest>();
+        test_rlp::<SyncResponse<TestBlock>>();
     }
 
     fn test_rlp<T: Debug + Default + PartialEq + Eq + Decodable + Encodable>() {
