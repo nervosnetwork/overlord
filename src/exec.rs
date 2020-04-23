@@ -12,19 +12,27 @@ use crate::{Adapter, Blk, ExecResult, Height, Proof, St};
 #[derive(Display)]
 #[display(fmt = "{{ height: {}, proof: {} }}", height, proof)]
 pub struct ExecRequest<S: St> {
-    height:         Height,
-    full_block:     Bytes,
-    proof:          Proof,
-    last_exec_resp: S,
+    height:                Height,
+    full_block:            Bytes,
+    proof:                 Proof,
+    last_exec_resp:        S,
+    last_commit_exec_resp: S,
 }
 
 impl<S: St> ExecRequest<S> {
-    pub fn new(height: Height, full_block: Bytes, proof: Proof, last_exec_resp: S) -> Self {
+    pub fn new(
+        height: Height,
+        full_block: Bytes,
+        proof: Proof,
+        last_exec_resp: S,
+        last_commit_exec_resp: S,
+    ) -> Self {
         ExecRequest {
             height,
             full_block,
             proof,
             last_exec_resp,
+            last_commit_exec_resp,
         }
     }
 }
@@ -73,6 +81,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> Exec<A, B, S> {
                 request.full_block,
                 request.proof,
                 request.last_exec_resp,
+                request.last_commit_exec_resp,
             )
             .await
             .expect("Execution is down! It's meaningless to continue running");

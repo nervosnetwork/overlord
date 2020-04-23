@@ -151,6 +151,7 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         full_block: Bytes,
         proof: Proof,
         _last_exec_resp: ExecState,
+        _last_commit_exec_resp: ExecState,
     ) -> Result<ExecResult<ExecState>, Box<dyn Error + Send>> {
         let full_block: FullBlock =
             bincode::deserialize(&full_block).expect("deserialize full block failed");

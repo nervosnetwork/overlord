@@ -618,6 +618,11 @@ where
             full_block.clone(),
             proof.clone(),
             self.prepare.last_exec_result.block_states.state.clone(),
+            self.prepare
+                .last_commit_exec_result
+                .block_states
+                .state
+                .clone(),
         );
         self.agent.save_and_exec_block(request);
 
@@ -766,6 +771,11 @@ where
                     full_block,
                     proof.clone(),
                     self.prepare.last_exec_result.block_states.state.clone(),
+                    self.prepare
+                        .last_commit_exec_result
+                        .block_states
+                        .state
+                        .clone(),
                 )
                 .await
                 .expect("Execution is down! It's meaningless to continue running");
