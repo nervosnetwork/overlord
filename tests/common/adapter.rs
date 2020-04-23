@@ -53,6 +53,23 @@ impl OverlordAdapter {
 impl Adapter<Block, ExecState> for OverlordAdapter {
     type CryptoImpl = DefaultCrypto;
 
+    async fn get_block_exec_result(
+        &self,
+        ctx: Context,
+        height: Height,
+    ) -> Result<ExecResult<ExecState>, Box<dyn Error + Send>> {
+        let latest_height = self.storage.get_latest_height(&self.address);
+        assert!(height <= latest_height);
+        let blocks = self
+            .storage
+            .get_block_with_proof(&self.address, HeightRange::new(height, 1));
+        let block = blocks[0].0.clone();
+        let full_block = self.fetch_full_block(ctx, block).await?;
+        let full_block: FullBlock =
+            bincode::deserialize(&full_block).expect("deserialize full block failed");
+        Ok(Executor::exec(&full_block))
+    }
+
     async fn create_block(
         &self,
         _ctx: Context,
@@ -134,6 +151,7 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         height: Height,
         full_block: Bytes,
         proof: Proof,
+        _last_exec_resp: ExecState,
     ) -> Result<ExecResult<ExecState>, Box<dyn Error + Send>> {
         let full_block: FullBlock =
             bincode::deserialize(&full_block).expect("deserialize full block failed");

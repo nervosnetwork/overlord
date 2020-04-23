@@ -20,6 +20,13 @@ use crate::PriKeyHex;
 pub trait Adapter<B: Blk, S: St>: 'static + Send + Sync {
     type CryptoImpl: Crypto;
 
+    /// Get blocks exec result which exists already. Ensure height < latest_height.
+    async fn get_block_exec_result(
+        &self,
+        ctx: Context,
+        height: Height,
+    ) -> Result<ExecResult<S>, Box<dyn Error + Send>>;
+
     async fn create_block(
         &self,
         ctx: Context,
@@ -49,6 +56,7 @@ pub trait Adapter<B: Blk, S: St>: 'static + Send + Sync {
         height: Height,
         full_block: Bytes,
         proof: Proof,
+        last_exec_resp: S,
     ) -> Result<ExecResult<S>, Box<dyn Error + Send>>;
 
     async fn commit(&self, ctx: Context, commit_state: ExecResult<S>);

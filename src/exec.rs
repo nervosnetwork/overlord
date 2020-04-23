@@ -11,25 +11,27 @@ use crate::{Adapter, Blk, ExecResult, Height, Proof, St};
 
 #[derive(Display)]
 #[display(fmt = "{{ height: {}, proof: {} }}", height, proof)]
-pub struct ExecRequest {
-    height:     Height,
-    full_block: Bytes,
-    proof:      Proof,
+pub struct ExecRequest<S: St> {
+    height:         Height,
+    full_block:     Bytes,
+    proof:          Proof,
+    last_exec_resp: S,
 }
 
-impl ExecRequest {
-    pub fn new(height: Height, full_block: Bytes, proof: Proof) -> Self {
+impl<S: St> ExecRequest<S> {
+    pub fn new(height: Height, full_block: Bytes, proof: Proof, last_exec_resp: S) -> Self {
         ExecRequest {
             height,
             full_block,
             proof,
+            last_exec_resp,
         }
     }
 }
 
 pub struct Exec<A: Adapter<B, S>, B: Blk, S: St> {
     adapter:  Arc<A>,
-    from_smr: UnboundedReceiver<ExecRequest>,
+    from_smr: UnboundedReceiver<ExecRequest<S>>,
     to_smr:   UnboundedSender<ExecResult<S>>,
 
     phantom: PhantomData<B>,
@@ -38,7 +40,7 @@ pub struct Exec<A: Adapter<B, S>, B: Blk, S: St> {
 impl<A: Adapter<B, S>, B: Blk, S: St> Exec<A, B, S> {
     pub fn new(
         adapter: &Arc<A>,
-        from_smr: UnboundedReceiver<ExecRequest>,
+        from_smr: UnboundedReceiver<ExecRequest<S>>,
         to_smr: UnboundedSender<ExecResult<S>>,
     ) -> Self {
         Exec {
@@ -62,7 +64,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> Exec<A, B, S> {
         });
     }
 
-    async fn save_and_exec_block(&self, request: ExecRequest) {
+    async fn save_and_exec_block(&self, request: ExecRequest<S>) {
         let exec_result = self
             .adapter
             .save_and_exec_block_with_proof(
@@ -70,6 +72,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> Exec<A, B, S> {
                 request.height,
                 request.full_block,
                 request.proof,
+                request.last_exec_resp,
             )
             .await
             .expect("Execution is down! It's meaningless to continue running");

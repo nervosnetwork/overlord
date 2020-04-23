@@ -62,7 +62,7 @@ where
         from_net: UnboundedReceiver<(Context, OverlordMsg<B>)>,
         to_net: UnboundedSender<(Context, OverlordMsg<B>)>,
         from_exec: UnboundedReceiver<ExecResult<S>>,
-        to_exec: UnboundedSender<ExecRequest>,
+        to_exec: UnboundedSender<ExecRequest<S>>,
         wal_path: &str,
     ) -> Self {
         let address = &auth_fixed_config.address.clone();
@@ -89,8 +89,6 @@ where
             Some(
                 get_exec_result(adapter, prepare.exec_height - 1)
                     .await
-                    .unwrap()
-                    .unwrap()
                     .consensus_config,
             )
         } else {
@@ -615,7 +613,12 @@ where
             .cabinet
             .get_full_block(height, &commit_hash)
             .expect("Unreachable! Lost full block when commit");
-        let request = ExecRequest::new(height, full_block.clone(), proof.clone());
+        let request = ExecRequest::new(
+            height,
+            full_block.clone(),
+            proof.clone(),
+            self.prepare.last_exec_result.block_states.state.clone(),
+        );
         self.agent.save_and_exec_block(request);
 
         let commit_exec_h = self
@@ -762,6 +765,7 @@ where
                     block.get_height(),
                     full_block,
                     proof.clone(),
+                    self.prepare.last_exec_result.block_states.state.clone(),
                 )
                 .await
                 .expect("Execution is down! It's meaningless to continue running");
@@ -1066,7 +1070,7 @@ async fn recover_propose_prepare_and_config<A: Adapter<B, S>, B: Blk, S: St>(
     let mut last_exec_result = ExecResult::default();
     let mut max_exec_behind = 5;
     for h in last_exec_height..=last_commit_height {
-        let exec_result = get_exec_result(adapter, h).await.unwrap().unwrap();
+        let exec_result = get_exec_result(adapter, h).await;
         max_exec_behind = exec_result.consensus_config.max_exec_behind;
         if h == last_exec_height {
             last_exec_result = exec_result;
@@ -1100,27 +1104,11 @@ async fn get_block_with_proof<A: Adapter<B, S>, B: Blk, S: St>(
 async fn get_exec_result<A: Adapter<B, S>, B: Blk, S: St>(
     adapter: &Arc<A>,
     height: Height,
-) -> OverlordResult<Option<ExecResult<S>>> {
-    let opt = get_block_with_proof(adapter, height).await?;
-    if let Some((block, proof)) = opt {
-        let full_block = adapter
-            .fetch_full_block(Context::default(), block.clone())
-            .await
-            .map_err(|_| {
-                OverlordError::net_fetch(
-                    block
-                        .get_block_hash()
-                        .expect("Unreachable! Block hash has been checked before"),
-                )
-            })?;
-        let rst = adapter
-            .save_and_exec_block_with_proof(Context::default(), height, full_block, proof.clone())
-            .await
-            .map_err(OverlordError::local_exec)?;
-        Ok(Some(rst))
-    } else {
-        Ok(None)
-    }
+) -> ExecResult<S> {
+    adapter
+        .get_block_exec_result(Context::default(), height)
+        .await
+        .unwrap_or_else(|_| panic!("Unreachable! Cannot get exec result of height {}", height))
 }
 
 pub struct EventAgent<A: Adapter<B, S>, B: Blk, S: St> {
@@ -1134,7 +1122,7 @@ pub struct EventAgent<A: Adapter<B, S>, B: Blk, S: St> {
     to_net:   UnboundedSender<WrappedOverlordMsg<B>>,
 
     from_exec: UnboundedReceiver<ExecResult<S>>,
-    to_exec:   UnboundedSender<ExecRequest>,
+    to_exec:   UnboundedSender<ExecRequest<S>>,
 
     from_fetch: UnboundedReceiver<OverlordResult<FetchedFullBlock>>,
     to_fetch:   UnboundedSender<OverlordResult<FetchedFullBlock>>,
@@ -1151,7 +1139,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         from_net: UnboundedReceiver<(Context, OverlordMsg<B>)>,
         to_net: UnboundedSender<(Context, OverlordMsg<B>)>,
         from_exec: UnboundedReceiver<ExecResult<S>>,
-        to_exec: UnboundedSender<ExecRequest>,
+        to_exec: UnboundedSender<ExecRequest<S>>,
     ) -> Self {
         let (to_fetch, from_fetch) = unbounded();
         let (to_timeout, from_timeout) = unbounded();
@@ -1263,7 +1251,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         });
     }
 
-    fn save_and_exec_block(&self, request: ExecRequest) {
+    fn save_and_exec_block(&self, request: ExecRequest<S>) {
         info!(
             "[EXEC]\n\t<{}> -> exec\n\t<request> exec_request: {}\n\n\n\n\n",
             self.address.tiny_hex(),
