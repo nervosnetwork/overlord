@@ -760,7 +760,7 @@ where
             self.auth.verify_pre_commit_qc(proof)?;
             let full_block = self
                 .adapter
-                .sync_full_block(Context::default(), block.clone())
+                .sync_full_block(Context::default(), &response.responder, block.clone())
                 .map_err(|_| OverlordError::net_fetch(block_hash.clone()))
                 .await?;
             let exec_result = self

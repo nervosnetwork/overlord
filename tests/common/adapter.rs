@@ -199,6 +199,7 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
     async fn sync_full_block(
         &self,
         _ctx: Context,
+        _from: &Address,
         block: Block,
     ) -> Result<Bytes, Box<dyn Error + Send>> {
         let full_block = FullBlock { block };

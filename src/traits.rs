@@ -91,8 +91,12 @@ pub trait Adapter<B: Blk, S: St>: 'static + Send + Sync {
         height_range: HeightRange,
     ) -> Result<Vec<(B, Proof)>, Box<dyn Error + Send>>;
 
-    async fn sync_full_block(&self, ctx: Context, block: B)
-        -> Result<Bytes, Box<dyn Error + Send>>;
+    async fn sync_full_block(
+        &self,
+        ctx: Context,
+        from: &Address,
+        block: B,
+    ) -> Result<Bytes, Box<dyn Error + Send>>;
 
     async fn get_latest_height(&self, ctx: Context) -> Result<Height, Box<dyn Error + Send>>;
 

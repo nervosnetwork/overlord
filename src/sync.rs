@@ -9,10 +9,10 @@ use crate::{Address, Blk, OverlordError, OverlordResult};
 pub const HEIGHT_RATIO: u64 = 10;
 /// timeout waiting for a sync request.
 /// sync_timeout = `SYNC_TIMEOUT_RATIO`/`TIME_DIVISOR` * `interval`
-pub const SYNC_TIMEOUT_RATIO: u64 = 10;
+pub const SYNC_TIMEOUT_RATIO: u64 = 50;
 /// timeout for removing one address in black list
 /// clear_timeout = `CLEAR_TIMEOUT_RATIO`/`TIME_DIVISOR` * `interval`
-pub const CLEAR_TIMEOUT_RATIO: u64 = 40;
+pub const CLEAR_TIMEOUT_RATIO: u64 = 50;
 /// max number of blocks can be request in one request
 pub const BLOCK_BATCH: u64 = 50;
 
