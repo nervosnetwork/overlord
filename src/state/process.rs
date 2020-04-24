@@ -65,6 +65,7 @@ pub struct State<T: Codec, F: Consensus<T>, C: Crypto, W: Wal> {
     block_interval:      u64,
     consensus_power:     bool,
     stopped:             bool,
+    height_msg_set:      HashSet<Bytes>,
 
     resp_tx:  UnboundedSender<VerifyResp>,
     function: Arc<F>,
@@ -111,6 +112,7 @@ where
             block_interval:      interval,
             consensus_power:     false,
             stopped:             false,
+            height_msg_set:      HashSet::new(),
 
             resp_tx:  tx,
             function: consensus,
@@ -495,6 +497,7 @@ where
         self.votes.flush(new_height - 1);
         self.hash_with_block.clear();
         self.chokes.clear();
+        self.height_msg_set.clear();
 
         // Re-check proposals that have been in the proposal collector, of the current height.
         if let Some(proposals) = self.proposals.get_height_proposals(self.height) {
@@ -707,7 +710,12 @@ where
         let block = proposal.content.clone();
         self.hash_with_block.insert(hash.clone(), proposal.content);
         self.proposals
-            .insert(self.height, self.round, signed_proposal)?;
+            .insert(self.height, self.round, signed_proposal.clone())?;
+
+        if self.need_gossip(rlp::encode(&signed_proposal)) {
+            self.broadcast(ctx.clone(), OverlordMsg::SignedProposal(signed_proposal))
+                .await;
+        }
 
         info!(
             "Overlord: state trigger SMR proposal height {}, round {}, hash {:?}",
@@ -975,10 +983,15 @@ where
         }
 
         self.votes
-            .insert_vote(signed_vote.get_hash(), signed_vote, voter);
+            .insert_vote(signed_vote.get_hash(), signed_vote.clone(), voter);
 
         if height > self.height {
             return Ok(());
+        }
+
+        if self.need_gossip(rlp::encode(&signed_vote)) {
+            self.broadcast(ctx.clone(), OverlordMsg::SignedVote(signed_vote))
+                .await;
         }
 
         let block_hash = self.counting_vote(vote_type.clone())?;
@@ -1049,7 +1062,7 @@ where
     /// 4. Other cases, return `Ok(())` directly.
     async fn handle_aggregated_vote(
         &mut self,
-        _ctx: Context,
+        ctx: Context,
         aggregated_vote: AggregatedVote,
     ) -> ConsensusResult<()> {
         let height = aggregated_vote.get_height();
@@ -1126,7 +1139,13 @@ where
 
         // Check if the block hash has been verified.
         let qc_hash = aggregated_vote.block_hash.clone();
-        self.votes.set_qc(aggregated_vote);
+        self.votes.set_qc(aggregated_vote.clone());
+
+        if self.need_gossip(rlp::encode(&aggregated_vote)) {
+            self.broadcast(ctx, OverlordMsg::AggregatedVote(aggregated_vote))
+                .await;
+        }
+
         if !qc_hash.is_empty() && !self.try_get_full_txs(&qc_hash) {
             return Ok(());
         }
@@ -1951,6 +1970,11 @@ where
         }
 
         false
+    }
+
+    fn need_gossip(&mut self, msg: Vec<u8>) -> bool {
+        let hash = self.util.hash(Bytes::from(msg));
+        self.height_msg_set.insert(hash)
     }
 }
 
