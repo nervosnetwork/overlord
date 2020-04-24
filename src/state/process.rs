@@ -640,13 +640,7 @@ where
         ctx: Context,
         signed_proposal: SignedProposal<T>,
     ) -> ConsensusResult<()> {
-        if self.need_gossip(rlp::encode(&signed_proposal)) {
-            self.broadcast(
-                ctx.clone(),
-                OverlordMsg::SignedProposal(signed_proposal.clone()),
-            )
-            .await;
-        } else {
+        if !self.need_gossip(rlp::encode(&signed_proposal)) {
             return Ok(());
         }
 
@@ -721,6 +715,12 @@ where
         self.hash_with_block.insert(hash.clone(), proposal.content);
         self.proposals
             .insert(self.height, self.round, signed_proposal.clone())?;
+
+        self.broadcast(
+            ctx.clone(),
+            OverlordMsg::SignedProposal(signed_proposal.clone()),
+        )
+        .await;
 
         info!(
             "Overlord: state trigger SMR proposal height {}, round {}, hash {:?}",
@@ -933,10 +933,7 @@ where
         ctx: Context,
         signed_vote: SignedVote,
     ) -> ConsensusResult<()> {
-        if self.need_gossip(rlp::encode(&signed_vote)) {
-            self.broadcast(ctx.clone(), OverlordMsg::SignedVote(signed_vote.clone()))
-                .await;
-        } else {
+        if !self.need_gossip(rlp::encode(&signed_vote)) {
             return Ok(());
         }
 
@@ -1000,6 +997,9 @@ where
         if height > self.height {
             return Ok(());
         }
+
+        self.broadcast(ctx.clone(), OverlordMsg::SignedVote(signed_vote.clone()))
+            .await;
 
         let block_hash = self.counting_vote(vote_type.clone())?;
         if block_hash.is_none() {
@@ -1072,10 +1072,7 @@ where
         ctx: Context,
         aggregated_vote: AggregatedVote,
     ) -> ConsensusResult<()> {
-        if self.need_gossip(rlp::encode(&aggregated_vote)) {
-            self.broadcast(ctx, OverlordMsg::AggregatedVote(aggregated_vote.clone()))
-                .await;
-        } else {
+        if !self.need_gossip(rlp::encode(&aggregated_vote)) {
             return Ok(());
         }
 
@@ -1158,6 +1155,9 @@ where
         if !qc_hash.is_empty() && !self.try_get_full_txs(&qc_hash) {
             return Ok(());
         }
+
+        self.broadcast(ctx, OverlordMsg::AggregatedVote(aggregated_vote.clone()))
+            .await;
 
         info!(
             "Overlord: state trigger SMR {:?} QC height {}, round {}, hash {:?}",
