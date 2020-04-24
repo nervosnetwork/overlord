@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use creep::Context;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
-use futures::{select, StreamExt, TryFutureExt};
+use futures::{select, StreamExt};
 use log::{debug, error, info, warn};
 
 use crate::auth::{AuthCell, AuthFixedConfig, AuthManage};
@@ -18,8 +18,9 @@ use crate::sync::{
 };
 use crate::timeout::{TimeoutEvent, TimeoutInfo};
 use crate::types::{
-    Choke, ChokeQC, FetchedFullBlock, PreCommitQC, PreVoteQC, Proposal, SignedChoke, SignedHeight,
-    SignedPreCommit, SignedPreVote, SignedProposal, SyncRequest, SyncResponse, UpdateFrom, Vote,
+    Choke, ChokeQC, FetchedFullBlock, FullBlockWithProof, PreCommitQC, PreVoteQC, Proposal,
+    SignedChoke, SignedHeight, SignedPreCommit, SignedPreVote, SignedProposal, SyncRequest,
+    SyncResponse, UpdateFrom, Vote,
 };
 use crate::{
     Adapter, Address, Blk, ExecResult, Hash, Height, HeightRange, OverlordError, OverlordMsg,
@@ -721,14 +722,14 @@ where
         let old_sync = self.sync.handle_sync_request(&request)?;
         self.log_sync_update_of_msg(old_sync, &request.requester, request.clone().into());
         self.agent.set_clear_timeout(request.requester.clone());
-        let blocks = self
+        let block_with_proofs = self
             .adapter
             .get_block_with_proofs(Context::default(), request.request_range.clone())
             .await
             .map_err(OverlordError::local_get_block)?;
         let response = self
             .auth
-            .sign_sync_response(request.request_range.clone(), blocks)?;
+            .sign_sync_response(request.request_range.clone(), block_with_proofs)?;
         self.agent
             .transmit(request.requester, response.into())
             .await
@@ -740,14 +741,17 @@ where
         }
         self.auth.verify_sync_response(&response)?;
 
-        let map: HashMap<Height, (B, Proof)> = response
+        let map: HashMap<Height, FullBlockWithProof<B>> = response
             .block_with_proofs
             .clone()
             .into_iter()
-            .map(|(block, proof)| (block.get_height(), (block, proof)))
+            .map(|fbp| (fbp.block.get_height(), fbp))
             .collect();
 
-        while let Some(&(block, proof)) = map.get(&self.state.stage.height).as_ref() {
+        while let Some(full_block_with_proof) = map.get(&self.state.stage.height).as_ref() {
+            let block = &full_block_with_proof.block;
+            let proof = &full_block_with_proof.proof;
+
             let block_hash = block.get_block_hash().map_err(OverlordError::byz_hash)?;
             if proof.vote.block_hash != block_hash {
                 return Err(OverlordError::byz_sync(format!(
@@ -758,11 +762,8 @@ where
             }
             self.check_block(block).await?;
             self.auth.verify_pre_commit_qc(proof)?;
-            let full_block = self
-                .adapter
-                .sync_full_block(Context::default(), &response.responder, block.clone())
-                .map_err(|_| OverlordError::net_fetch(block_hash.clone()))
-                .await?;
+
+            let full_block = full_block_with_proof.full_block.clone();
             let exec_result = self
                 .adapter
                 .save_and_exec_block_with_proof(
@@ -1075,10 +1076,12 @@ async fn recover_propose_prepare_and_config<A: Adapter<B, S>, B: Blk, S: St>(
     let last_commit_height = adapter.get_latest_height(Context::default()).await.expect(
         "Cannot get the latest height from the adapter! It's meaningless to continue running",
     );
-    let (block, proof) = get_block_with_proof(adapter, last_commit_height)
+    let full_block_with_proof = get_block_with_proof(adapter, last_commit_height)
         .await
         .unwrap()
         .unwrap();
+    let block = full_block_with_proof.block;
+    let proof = full_block_with_proof.proof;
 
     let hash = block.get_block_hash().expect("hash block failed");
     let last_exec_height = block.get_exec_height();
@@ -1109,7 +1112,7 @@ async fn recover_propose_prepare_and_config<A: Adapter<B, S>, B: Blk, S: St>(
 async fn get_block_with_proof<A: Adapter<B, S>, B: Blk, S: St>(
     adapter: &Arc<A>,
     height: Height,
-) -> OverlordResult<Option<(B, Proof)>> {
+) -> OverlordResult<Option<FullBlockWithProof<B>>> {
     let vec = adapter
         .get_block_with_proofs(Context::default(), HeightRange::new(height, 1))
         .await

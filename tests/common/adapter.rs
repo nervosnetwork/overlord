@@ -16,6 +16,7 @@ use crate::common::executor::Executor;
 use crate::common::mem_pool::MemPool;
 use crate::common::network::Network;
 use crate::common::storage::Storage;
+use overlord::types::FullBlockWithProof;
 
 pub struct OverlordAdapter {
     network:  Arc<Network>,
@@ -192,19 +193,20 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         &self,
         _ctx: Context,
         range: HeightRange,
-    ) -> Result<Vec<(Block, Proof)>, Box<dyn Error + Send>> {
-        Ok(self.storage.get_block_with_proof(&self.address, range))
-    }
-
-    async fn sync_full_block(
-        &self,
-        _ctx: Context,
-        _from: &Address,
-        block: Block,
-    ) -> Result<Bytes, Box<dyn Error + Send>> {
-        let full_block = FullBlock { block };
-        let vec = bincode::serialize(&full_block).expect("serialize full block failed");
-        Ok(Bytes::from(vec))
+    ) -> Result<Vec<FullBlockWithProof<Block>>, Box<dyn Error + Send>> {
+        let block_with_proofs = self
+            .storage
+            .get_block_with_proof(&self.address, range)
+            .into_iter()
+            .map(|(block, proof)| {
+                let full_block = FullBlock {
+                    block: block.clone(),
+                };
+                let vec = bincode::serialize(&full_block).expect("serialize full block failed");
+                FullBlockWithProof::new(block, proof, Bytes::from(vec))
+            })
+            .collect();
+        Ok(block_with_proofs)
     }
 
     async fn get_latest_height(&self, _ctx: Context) -> Result<Height, Box<dyn Error + Send>> {

@@ -414,7 +414,7 @@ impl SyncRequest {
 )]
 pub struct SyncResponse<B: Blk> {
     pub request_range:     HeightRange,
-    pub block_with_proofs: Vec<(B, Proof)>,
+    pub block_with_proofs: Vec<FullBlockWithProof<B>>,
     pub responder:         Address,
     pub pub_key_hex:       String,
     pub signature:         Signature,
@@ -423,7 +423,7 @@ pub struct SyncResponse<B: Blk> {
 impl<B: Blk> SyncResponse<B> {
     pub fn new(
         request_range: HeightRange,
-        block_with_proofs: Vec<(B, Proof)>,
+        block_with_proofs: Vec<FullBlockWithProof<B>>,
         responder: Address,
         pub_key_hex: String,
         signature: Signature,
@@ -663,6 +663,23 @@ impl CumWeight {
             vote_type,
             round,
             block_hash,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FullBlockWithProof<B: Blk> {
+    pub block:      B,
+    pub proof:      Proof,
+    pub full_block: Bytes,
+}
+
+impl<B: Blk> FullBlockWithProof<B> {
+    pub fn new(block: B, proof: Proof, full_block: Bytes) -> Self {
+        FullBlockWithProof {
+            block,
+            proof,
+            full_block,
         }
     }
 }

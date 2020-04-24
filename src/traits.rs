@@ -11,8 +11,8 @@ use futures::channel::mpsc::UnboundedSender;
 use crate::crypto::PubKeyHex;
 use crate::error::OverlordError;
 use crate::types::{
-    Address, BlockState, CommonHex, ExecResult, Hash, Height, HeightRange, OverlordMsg,
-    PartyPubKeyHex, Proof, Signature,
+    Address, BlockState, CommonHex, ExecResult, FullBlockWithProof, Hash, Height, HeightRange,
+    OverlordMsg, PartyPubKeyHex, Proof, Signature,
 };
 use crate::PriKeyHex;
 
@@ -89,14 +89,7 @@ pub trait Adapter<B: Blk, S: St>: 'static + Send + Sync {
         &self,
         ctx: Context,
         height_range: HeightRange,
-    ) -> Result<Vec<(B, Proof)>, Box<dyn Error + Send>>;
-
-    async fn sync_full_block(
-        &self,
-        ctx: Context,
-        from: &Address,
-        block: B,
-    ) -> Result<Bytes, Box<dyn Error + Send>>;
+    ) -> Result<Vec<FullBlockWithProof<B>>, Box<dyn Error + Send>>;
 
     async fn get_latest_height(&self, ctx: Context) -> Result<Height, Box<dyn Error + Send>>;
 

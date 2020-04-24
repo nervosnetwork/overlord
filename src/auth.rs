@@ -8,9 +8,9 @@ use prime_tools::get_primes_less_than_x;
 use rlp::{encode, Encodable};
 
 use crate::types::{
-    Aggregates, Choke, ChokeQC, PreCommitQC, PreVoteQC, PriKeyHex, Proof, Proposal, PubKeyHex,
-    SelectMode, SignedChoke, SignedHeight, SignedPreCommit, SignedPreVote, SignedProposal,
-    SyncRequest, SyncResponse, UpdateFrom, Vote, VoteType, Weight,
+    Aggregates, Choke, ChokeQC, FullBlockWithProof, PreCommitQC, PreVoteQC, PriKeyHex, Proof,
+    Proposal, PubKeyHex, SelectMode, SignedChoke, SignedHeight, SignedPreCommit, SignedPreVote,
+    SignedProposal, SyncRequest, SyncResponse, UpdateFrom, Vote, VoteType, Weight,
 };
 use crate::{
     Adapter, Address, AuthConfig, Blk, CommonHex, Crypto, Hash, Height, HeightRange,
@@ -257,13 +257,13 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
     pub fn sign_sync_response(
         &self,
         range: HeightRange,
-        blocks: Vec<(B, Proof)>,
+        block_with_proofs: Vec<FullBlockWithProof<B>>,
     ) -> OverlordResult<SyncResponse<B>> {
         let hash = A::CryptoImpl::hash(&Bytes::from(rlp::encode(&range)));
         let signature = self.sign(&hash)?;
         Ok(SyncResponse::new(
             range,
-            blocks,
+            block_with_proofs,
             self.fixed_config.address.clone(),
             self.fixed_config.pub_key.clone(),
             signature,
