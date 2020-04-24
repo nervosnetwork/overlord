@@ -7,12 +7,12 @@ use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use log::info;
 
 use crate::error::ErrorInfo;
-use crate::exec::ExecRequest;
 use crate::smr::WrappedOverlordMsg;
 use crate::state::{Stage, Step};
-use crate::sync::{CLEAR_TIMEOUT_RATIO, HEIGHT_RATIO, SYNC_TIMEOUT_RATIO};
-use crate::timeout::{TimeoutEvent, TimeoutInfo};
 use crate::types::FetchedFullBlock;
+use crate::utils::exec::ExecRequest;
+use crate::utils::sync::{CLEAR_TIMEOUT_RATIO, HEIGHT_RATIO, SYNC_TIMEOUT_RATIO};
+use crate::utils::timeout::{TimeoutEvent, TimeoutInfo};
 use crate::{
     Adapter, Address, Blk, ExecResult, Hash, OverlordError, OverlordMsg, OverlordResult, St,
     TimeConfig, TinyHex,

@@ -3,11 +3,11 @@ use std::collections::{BTreeMap, HashMap};
 use bytes::Bytes;
 use derive_more::Display;
 
-use crate::auth::AuthManage;
 use crate::types::{
     ChokeQC, CumWeight, FetchedFullBlock, PreCommitQC, PreVoteQC, Proposal, SignedChoke,
     SignedPreCommit, SignedPreVote, SignedProposal, VoteType, Weight,
 };
+use crate::utils::auth::AuthManage;
 use crate::{Adapter, Address, Blk, Hash, Height, OverlordError, OverlordResult, Round, St};
 
 #[allow(clippy::large_enum_variant)]

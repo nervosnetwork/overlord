@@ -8,16 +8,10 @@ pub mod error;
 pub mod traits;
 pub mod types;
 
-mod agent;
-mod auth;
-mod cabinet;
 mod codec;
-mod exec;
 mod smr;
 mod state;
-mod sync;
-mod timeout;
-mod wal;
+mod utils;
 
 pub use crypto::{gen_key_pairs, AddressHex, BlsPubKeyHex, DefaultCrypto, PriKeyHex};
 pub use error::{OverlordError, OverlordResult};
@@ -33,11 +27,11 @@ use std::sync::Arc;
 use creep::Context;
 use futures::channel::mpsc::unbounded;
 
-use crate::auth::AuthFixedConfig;
-use crate::exec::Exec;
 use crate::smr::SMR;
 use crate::types::{PartyPubKeyHex, PubKeyHex};
-use crate::wal::Wal;
+use crate::utils::auth::AuthFixedConfig;
+use crate::utils::exec::Exec;
+use crate::utils::wal::Wal;
 
 pub const INIT_HEIGHT: Height = 0;
 pub const INIT_ROUND: Round = 0;
