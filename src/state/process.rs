@@ -655,6 +655,14 @@ where
             return Ok(());
         }
 
+        if self.need_gossip(rlp::encode(&signed_proposal)) {
+            self.broadcast(
+                ctx.clone(),
+                OverlordMsg::SignedProposal(signed_proposal.clone()),
+            )
+            .await;
+        }
+
         trace::receive_proposal(
             "receive_signed_proposal".to_string(),
             height,
@@ -711,11 +719,6 @@ where
         self.hash_with_block.insert(hash.clone(), proposal.content);
         self.proposals
             .insert(self.height, self.round, signed_proposal.clone())?;
-
-        if self.need_gossip(rlp::encode(&signed_proposal)) {
-            self.broadcast(ctx.clone(), OverlordMsg::SignedProposal(signed_proposal))
-                .await;
-        }
 
         info!(
             "Overlord: state trigger SMR proposal height {}, round {}, hash {:?}",
@@ -949,6 +952,11 @@ where
             return Ok(());
         }
 
+        if self.need_gossip(rlp::encode(&signed_vote)) {
+            self.broadcast(ctx.clone(), OverlordMsg::SignedVote(signed_vote.clone()))
+                .await;
+        }
+
         let tmp_type: String = vote_type.to_string();
         trace::receive_vote(
             "receive_signed_vote".to_string(),
@@ -987,11 +995,6 @@ where
 
         if height > self.height {
             return Ok(());
-        }
-
-        if self.need_gossip(rlp::encode(&signed_vote)) {
-            self.broadcast(ctx.clone(), OverlordMsg::SignedVote(signed_vote))
-                .await;
         }
 
         let block_hash = self.counting_vote(vote_type.clone())?;
@@ -1120,6 +1123,11 @@ where
             return Ok(());
         }
 
+        if self.need_gossip(rlp::encode(&aggregated_vote)) {
+            self.broadcast(ctx, OverlordMsg::AggregatedVote(aggregated_vote.clone()))
+                .await;
+        }
+
         trace::receive_vote(
             "receive_aggregated_vote".to_string(),
             height,
@@ -1140,11 +1148,6 @@ where
         // Check if the block hash has been verified.
         let qc_hash = aggregated_vote.block_hash.clone();
         self.votes.set_qc(aggregated_vote.clone());
-
-        if self.need_gossip(rlp::encode(&aggregated_vote)) {
-            self.broadcast(ctx, OverlordMsg::AggregatedVote(aggregated_vote))
-                .await;
-        }
 
         if !qc_hash.is_empty() && !self.try_get_full_txs(&qc_hash) {
             return Ok(());
