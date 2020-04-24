@@ -395,7 +395,9 @@ where
         let block_hash = resp.block_hash.clone();
         info!(
             "Overlord: state receive a verify response true, height {}, round {}, hash {:?}",
-            resp.height, resp.round, block_hash
+            resp.height,
+            resp.round,
+            hex::encode(block_hash.clone())
         );
 
         trace::custom(

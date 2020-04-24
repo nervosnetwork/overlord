@@ -438,7 +438,7 @@ impl StateMachine {
     }
 
     fn throw_event(&mut self, event: SMREvent) -> ConsensusResult<()> {
-        info!("Overlord: SMR throw {:?} event", event);
+        info!("Overlord: SMR throw {} event", event);
         self.event.0.unbounded_send(event.clone()).map_err(|err| {
             ConsensusError::ThrowEventErr(format!("event: {}, error: {:?}", event.clone(), err))
         })?;

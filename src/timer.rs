@@ -150,7 +150,7 @@ impl Timer {
             interval *= 2u32.pow(coef);
         }
 
-        info!("Overlord: timer set {:?} timer", event);
+        info!("Overlord: timer set {} timer", event);
         let smr_timer = TimeoutInfo::new(interval, event, self.sender.clone());
 
         tokio::spawn(async move {
