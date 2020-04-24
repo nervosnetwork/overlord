@@ -63,11 +63,11 @@ pub enum ErrorInfo {
     UnderStage,
     #[display(fmt = "abnormal lock, {}", _0)]
     AbnormalLock(String),
-    #[display(fmt = "transmit error")]
+    #[display(fmt = "transmit error, {}", _0)]
     Transmit(Box<dyn Error + Send>),
-    #[display(fmt = "broadcast error")]
+    #[display(fmt = "broadcast error, {}", _0)]
     Broadcast(Box<dyn Error + Send>),
-    #[display(fmt = "create block error")]
+    #[display(fmt = "create block error, {}", _0)]
     CreateBlock(Box<dyn Error + Send>),
     #[display(fmt = "lock empty vote in proposal")]
     EmptyLock,
