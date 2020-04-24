@@ -8,6 +8,7 @@ pub mod error;
 pub mod traits;
 pub mod types;
 
+mod agent;
 mod auth;
 mod cabinet;
 mod codec;
