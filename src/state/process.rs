@@ -640,6 +640,16 @@ where
         ctx: Context,
         signed_proposal: SignedProposal<T>,
     ) -> ConsensusResult<()> {
+        if self.need_gossip(rlp::encode(&signed_proposal)) {
+            self.broadcast(
+                ctx.clone(),
+                OverlordMsg::SignedProposal(signed_proposal.clone()),
+            )
+            .await;
+        } else {
+            return Ok(());
+        }
+
         let height = signed_proposal.proposal.height;
         let round = signed_proposal.proposal.round;
 
@@ -653,14 +663,6 @@ where
 
         if self.filter_signed_proposal(height, round, &signed_proposal)? {
             return Ok(());
-        }
-
-        if self.need_gossip(rlp::encode(&signed_proposal)) {
-            self.broadcast(
-                ctx.clone(),
-                OverlordMsg::SignedProposal(signed_proposal.clone()),
-            )
-            .await;
         }
 
         trace::receive_proposal(
@@ -931,6 +933,13 @@ where
         ctx: Context,
         signed_vote: SignedVote,
     ) -> ConsensusResult<()> {
+        if self.need_gossip(rlp::encode(&signed_vote)) {
+            self.broadcast(ctx.clone(), OverlordMsg::SignedVote(signed_vote.clone()))
+                .await;
+        } else {
+            return Ok(());
+        }
+
         let height = signed_vote.get_height();
         let round = signed_vote.get_round();
         let vote_type = if signed_vote.is_prevote() {
@@ -950,11 +959,6 @@ where
 
         if self.filter_message(height, round) {
             return Ok(());
-        }
-
-        if self.need_gossip(rlp::encode(&signed_vote)) {
-            self.broadcast(ctx.clone(), OverlordMsg::SignedVote(signed_vote.clone()))
-                .await;
         }
 
         let tmp_type: String = vote_type.to_string();
@@ -1068,6 +1072,13 @@ where
         ctx: Context,
         aggregated_vote: AggregatedVote,
     ) -> ConsensusResult<()> {
+        if self.need_gossip(rlp::encode(&aggregated_vote)) {
+            self.broadcast(ctx, OverlordMsg::AggregatedVote(aggregated_vote.clone()))
+                .await;
+        } else {
+            return Ok(());
+        }
+
         let height = aggregated_vote.get_height();
         let round = aggregated_vote.get_round();
         let qc_type = if aggregated_vote.is_prevote_qc() {
@@ -1121,11 +1132,6 @@ where
             && round < self.round
         {
             return Ok(());
-        }
-
-        if self.need_gossip(rlp::encode(&aggregated_vote)) {
-            self.broadcast(ctx, OverlordMsg::AggregatedVote(aggregated_vote.clone()))
-                .await;
         }
 
         trace::receive_vote(
