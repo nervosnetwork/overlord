@@ -276,7 +276,9 @@ pub struct SMRTrigger {
     /// SMR trigger hash, the meaning shown above.
     pub hash: Hash,
     /// SMR trigger round, the meaning shown above.
-    pub round: Option<u64>,
+    pub lock_round: Option<u64>,
+    ///
+    pub round: u64,
     /// **NOTICE**: This field is only for timer to signed timer's height. Therefore, the SMR can
     /// filter out the outdated timers.
     pub height: u64,

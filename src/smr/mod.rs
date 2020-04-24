@@ -2,9 +2,6 @@
 pub mod smr_types;
 ///
 mod state_machine;
-///
-#[cfg(test)]
-mod tests;
 
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -16,7 +13,7 @@ use log::error;
 use crate::smr::smr_types::{SMREvent, SMRStatus, SMRTrigger, TriggerSource, TriggerType};
 use crate::smr::state_machine::StateMachine;
 use crate::types::Hash;
-use crate::{error::ConsensusError, ConsensusResult};
+use crate::{error::ConsensusError, ConsensusResult, INIT_ROUND};
 
 ///
 #[derive(Debug)]
@@ -89,7 +86,8 @@ impl SMRHandler {
                 trigger_type: trigger.clone(),
                 source: TriggerSource::State,
                 hash: Hash::new(),
-                round: None,
+                lock_round: None,
+                round: INIT_ROUND,
                 height,
                 wal_info: None,
             })

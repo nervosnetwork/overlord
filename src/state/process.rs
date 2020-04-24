@@ -259,7 +259,8 @@ where
                     trigger_type: TriggerType::Stop,
                     source:       TriggerSource::State,
                     hash:         Hash::new(),
-                    round:        Some(self.round),
+                    lock_round:   None,
+                    round:        self.round,
                     height:       self.height,
                     wal_info:     None,
                 })?;
@@ -420,7 +421,8 @@ where
                 trigger_type: TriggerType::PrecommitQC,
                 source:       TriggerSource::State,
                 hash:         qc.block_hash,
-                round:        Some(self.round),
+                lock_round:   None,
+                round:        qc.round,
                 height:       self.height,
                 wal_info:     None,
             })?;
@@ -433,7 +435,8 @@ where
                     trigger_type: TriggerType::PrevoteQC,
                     source:       TriggerSource::State,
                     hash:         qc.block_hash,
-                    round:        Some(self.round),
+                    lock_round:   None,
+                    round:        qc.round,
                     height:       self.height,
                     wal_info:     None,
                 })?;
@@ -615,15 +618,15 @@ where
 
         self.state_machine.trigger(SMRTrigger {
             trigger_type: TriggerType::Proposal,
-            source:       TriggerSource::State,
-            hash:         hash.clone(),
-            round:        lock_round,
-            height:       self.height,
-            wal_info:     None,
+            source: TriggerSource::State,
+            hash: hash.clone(),
+            lock_round,
+            round: self.round,
+            height: self.height,
+            wal_info: None,
         })?;
 
         self.check_block(ctx, hash, block).await;
-        // self.vote_process(VoteType::Prevote).await?;
         Ok(())
     }
 
@@ -715,11 +718,12 @@ where
 
         self.state_machine.trigger(SMRTrigger {
             trigger_type: TriggerType::Proposal,
-            source:       TriggerSource::State,
-            hash:         hash.clone(),
-            round:        lock_round,
-            height:       self.height,
-            wal_info:     None,
+            source: TriggerSource::State,
+            hash: hash.clone(),
+            lock_round,
+            round,
+            height: self.height,
+            wal_info: None,
         })?;
 
         debug!("Overlord: state check the whole block");
@@ -1019,11 +1023,12 @@ where
 
         self.state_machine.trigger(SMRTrigger {
             trigger_type: vote_type.clone().into(),
-            source:       TriggerSource::State,
-            hash:         block_hash,
-            round:        Some(round),
-            height:       self.height,
-            wal_info:     None,
+            source: TriggerSource::State,
+            hash: block_hash,
+            lock_round: None,
+            round,
+            height: self.height,
+            wal_info: None,
         })?;
         Ok(())
     }
@@ -1136,11 +1141,12 @@ where
 
         self.state_machine.trigger(SMRTrigger {
             trigger_type: qc_type.into(),
-            source:       TriggerSource::State,
-            hash:         qc_hash,
-            round:        Some(round),
-            height:       self.height,
-            wal_info:     None,
+            source: TriggerSource::State,
+            hash: qc_hash,
+            lock_round: None,
+            round,
+            height: self.height,
+            wal_info: None,
         })?;
         Ok(())
     }
@@ -1174,7 +1180,8 @@ where
                     trigger_type: qc.vote_type.into(),
                     source:       TriggerSource::State,
                     hash:         block_hash,
-                    round:        Some(self.round),
+                    lock_round:   None,
+                    round:        self.round,
                     height:       self.height,
                     wal_info:     None,
                 })?;
@@ -1211,7 +1218,8 @@ where
                 trigger_type: vote_type.clone().into(),
                 source:       TriggerSource::State,
                 hash:         block_hash,
-                round:        Some(self.round),
+                lock_round:   None,
+                round:        self.round,
                 height:       self.height,
                 wal_info:     None,
             })?;
@@ -1322,7 +1330,8 @@ where
             trigger_type: TriggerType::ContinueRound,
             source:       TriggerSource::State,
             hash:         Hash::new(),
-            round:        Some(choke.round + 1),
+            lock_round:   None,
+            round:        choke.round + 1,
             height:       self.height,
             wal_info:     None,
         })?;
@@ -1677,7 +1686,8 @@ where
                 trigger_type: TriggerType::ContinueRound,
                 source:       TriggerSource::State,
                 hash:         Hash::new(),
-                round:        Some(round + 1),
+                round:        round + 1,
+                lock_round:   None,
                 height:       self.height,
                 wal_info:     None,
             })?;
@@ -1823,7 +1833,8 @@ where
             trigger_type: TriggerType::WalInfo,
             source:       TriggerSource::State,
             hash:         Hash::new(),
-            round:        None,
+            round:        self.round,
+            lock_round:   None,
             height:       self.height,
             wal_info:     Some(wal_info.into_smr_base()),
         })?;
