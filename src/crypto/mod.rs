@@ -185,12 +185,35 @@ pub fn gen_key_pairs(
     };
 
     for i in 0..number {
-        let key_pair = gen_keypair(pri_keys.get(i), common_ref_str.as_str().into());
+        let key_pair = gen_keypair(pri_keys.get(i), common_ref_str.clone());
         key_pairs.key_pairs.push(key_pair);
     }
 
     println!("{}", serde_json::to_string_pretty(&key_pairs).unwrap());
     key_pairs
+}
+
+pub fn gen_keypair(pri_key: Option<&PriKeyHex>, common_ref: CommonHex) -> KeyPair {
+    let mut key_pair = KeyPair::default();
+    let pri_key = if let Some(pri_key) = pri_key {
+        Bytes::from(hex_decode(pri_key).expect("decode pri_key failed"))
+    } else {
+        gen_random_pri_key()
+    };
+    let sec_key_pair =
+        SecioKeyPair::secp256k1_raw_key(pri_key.as_ref()).expect("build secp256k1 keypair failed");
+    let pub_key = sec_key_pair.to_public_key().inner();
+    let address = pub_key_to_address(Bytes::from(pub_key.clone()));
+
+    key_pair.private_key = add_0x(hex::encode(pri_key.as_ref()));
+    key_pair.public_key = add_0x(hex::encode(pub_key));
+    key_pair.address = add_0x(hex::encode(address.as_ref()));
+
+    let bls_pri_key =
+        BlsPrivateKey::try_from([&[0u8; 16], pri_key.as_ref()].concat().as_ref()).unwrap();
+    let bls_pub_key = bls_pri_key.pub_key(&common_ref.as_str().into());
+    key_pair.bls_public_key = add_0x(hex::encode(bls_pub_key.to_bytes()));
+    key_pair
 }
 
 pub fn hex_to_bls_pri_key(hex_str: &str) -> Result<BlsPrivateKey, CryptoError> {
@@ -249,29 +272,6 @@ fn pub_key_to_address(pub_key: Bytes) -> Bytes {
     let mut address = DefaultCrypto::hash(&pub_key);
     address.truncate(ADDRESS_LEN);
     address
-}
-
-fn gen_keypair(pri_key: Option<&PriKeyHex>, common_ref_str: BlsCommonReference) -> KeyPair {
-    let mut key_pair = KeyPair::default();
-    let pri_key = if let Some(pri_key) = pri_key {
-        Bytes::from(hex_decode(pri_key).expect("decode pri_key failed"))
-    } else {
-        gen_random_pri_key()
-    };
-    let sec_key_pair =
-        SecioKeyPair::secp256k1_raw_key(pri_key.as_ref()).expect("build secp256k1 keypair failed");
-    let pub_key = sec_key_pair.to_public_key().inner();
-    let address = pub_key_to_address(Bytes::from(pub_key.clone()));
-
-    key_pair.private_key = add_0x(hex::encode(pri_key.as_ref()));
-    key_pair.public_key = add_0x(hex::encode(pub_key));
-    key_pair.address = add_0x(hex::encode(address.as_ref()));
-
-    let bls_pri_key =
-        BlsPrivateKey::try_from([&[0u8; 16], pri_key.as_ref()].concat().as_ref()).unwrap();
-    let bls_pub_key = bls_pri_key.pub_key(&common_ref_str);
-    key_pair.bls_public_key = add_0x(hex::encode(bls_pub_key.to_bytes()));
-    key_pair
 }
 
 #[derive(Debug, Display)]
