@@ -17,6 +17,7 @@ use crate::common::mem_pool::MemPool;
 use crate::common::network::Network;
 use crate::common::storage::Storage;
 use overlord::types::FullBlockWithProof;
+use rlp::{Decodable, Encodable};
 
 pub struct OverlordAdapter {
     network:  Arc<Network>,
@@ -177,6 +178,7 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         _ctx: Context,
         msg: OverlordMsg<Block>,
     ) -> Result<(), Box<dyn Error + Send>> {
+        test_serialization(&msg);
         self.network.broadcast(&self.address, msg)
     }
 
@@ -186,6 +188,7 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         to: Address,
         msg: OverlordMsg<Block>,
     ) -> Result<(), Box<dyn Error + Send>> {
+        test_serialization(&msg);
         self.network.transmit(&to, msg)
     }
 
@@ -214,6 +217,48 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
     }
 
     async fn handle_error(&self, _ctx: Context, _err: OverlordError) {}
+}
+
+fn test_serialization(msg: &OverlordMsg<Block>) {
+    match msg {
+        OverlordMsg::SignedProposal(data) => {
+            test_rlp(data);
+        }
+        OverlordMsg::SignedPreVote(data) => {
+            test_rlp(data);
+        }
+        OverlordMsg::SignedPreCommit(data) => {
+            test_rlp(data);
+        }
+        OverlordMsg::PreVoteQC(data) => {
+            test_rlp(data);
+        }
+        OverlordMsg::PreCommitQC(data) => {
+            test_rlp(data);
+        }
+        OverlordMsg::SignedChoke(data) => {
+            test_rlp(data);
+        }
+        OverlordMsg::SignedHeight(data) => {
+            test_rlp(data);
+        }
+        OverlordMsg::SyncRequest(data) => {
+            test_rlp(data);
+        }
+        OverlordMsg::SyncResponse(data) => {
+            test_rlp(data);
+        }
+        _ => {}
+    }
+}
+
+fn test_rlp<T: Decodable + Encodable + PartialEq + Eq + std::fmt::Debug + std::fmt::Display>(
+    data: &T,
+) {
+    let encode = rlp::encode(data);
+    let decode: T =
+        rlp::decode(&encode).unwrap_or_else(|e| panic!("decode error {} of {}", e, data));
+    assert_eq!(data, &decode);
 }
 
 #[derive(Clone, Debug, Display)]

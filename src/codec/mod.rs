@@ -257,7 +257,7 @@ impl Decodable for SignedChoke {
                 let from: Option<UpdateFrom> = r.val_at(2)?;
                 let tmp: Vec<u8> = r.val_at(3)?;
                 let voter = Address::from(tmp);
-                let tmp: Vec<u8> = r.val_at(3)?;
+                let tmp: Vec<u8> = r.val_at(4)?;
                 let signature = Signature::from(tmp);
                 Ok(SignedChoke {
                     choke,

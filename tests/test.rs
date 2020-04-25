@@ -86,7 +86,7 @@ async fn test_sync() {
 
 #[tokio::test(threaded_scheduler)]
 async fn test_update_nodes() {
-    set_log(LevelFilter::Debug);
+    // set_log(LevelFilter::Debug);
     let platform = Platform::new(3);
     platform.update_interval(100);
     thread::sleep(Duration::from_secs(3));
