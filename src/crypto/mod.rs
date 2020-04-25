@@ -172,20 +172,22 @@ pub fn gen_key_pairs(
         panic!("private keys length cannot be larger than number");
     }
 
-    let common_ref_str: CommonHex = if let Some(common_ref) = common_ref {
+    let common_ref_str: String = if let Some(common_ref) = common_ref {
         CommonHex::from_utf8(hex_decode(&common_ref).expect("hex decode error"))
             .expect("common_ref should be a valid utf8 string")
     } else {
         gen_random_common_ref()
     };
 
+    let common_ref_hex: CommonHex = add_0x(hex::encode(common_ref_str.as_str()));
+
     let mut key_pairs = KeyPairs {
-        common_ref: add_0x(hex::encode(common_ref_str.as_str())),
+        common_ref: common_ref_hex.clone(),
         key_pairs:  vec![],
     };
 
     for i in 0..number {
-        let key_pair = gen_keypair(pri_keys.get(i), common_ref_str.clone());
+        let key_pair = gen_keypair(pri_keys.get(i), common_ref_hex.clone());
         key_pairs.key_pairs.push(key_pair);
     }
 
@@ -193,7 +195,8 @@ pub fn gen_key_pairs(
     key_pairs
 }
 
-pub fn gen_keypair(pri_key: Option<&PriKeyHex>, common_ref: CommonHex) -> KeyPair {
+pub fn gen_keypair(pri_key: Option<&PriKeyHex>, common_ref_hex: CommonHex) -> KeyPair {
+    let common_ref = hex_to_common_ref(&common_ref_hex).expect("decode common_ref failed");
     let mut key_pair = KeyPair::default();
     let pri_key = if let Some(pri_key) = pri_key {
         Bytes::from(hex_decode(pri_key).expect("decode pri_key failed"))
@@ -211,9 +214,19 @@ pub fn gen_keypair(pri_key: Option<&PriKeyHex>, common_ref: CommonHex) -> KeyPai
 
     let bls_pri_key =
         BlsPrivateKey::try_from([&[0u8; 16], pri_key.as_ref()].concat().as_ref()).unwrap();
-    let bls_pub_key = bls_pri_key.pub_key(&common_ref.as_str().into());
+    let bls_pub_key = bls_pri_key.pub_key(&common_ref);
     key_pair.bls_public_key = add_0x(hex::encode(bls_pub_key.to_bytes()));
     key_pair
+}
+
+#[test]
+fn test_bls_pub_key() {
+    let common_ref = gen_random_common_ref();
+    println!("common_ref: {}", common_ref);
+    let key_pair = gen_keypair(None, common_ref.clone());
+    println!("key_pair: {:?}", key_pair);
+    let key_pair2 = gen_keypair(Some(&key_pair.private_key), common_ref);
+    println!("key_pair2: {:?}", key_pair2);
 }
 
 pub fn hex_to_bls_pri_key(hex_str: &str) -> Result<BlsPrivateKey, CryptoError> {
@@ -243,11 +256,11 @@ fn add_0x(s: String) -> String {
     "0x".to_owned() + &s
 }
 
-fn gen_random_common_ref() -> CommonHex {
+fn gen_random_common_ref() -> String {
     rand::thread_rng()
         .sample_iter(&Alphanumeric)
         .take(10)
-        .collect::<CommonHex>()
+        .collect::<String>()
 }
 
 fn gen_random_pri_key() -> Bytes {
