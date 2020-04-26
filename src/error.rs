@@ -61,8 +61,6 @@ pub enum ErrorInfo {
     AdapterCheckBlock(Box<dyn Error + Send>),
     #[display(fmt = "under stage")]
     UnderStage,
-    #[display(fmt = "abnormal lock, {}", _0)]
-    AbnormalLock(String),
     #[display(fmt = "transmit error, {}", _0)]
     Transmit(Box<dyn Error + Send>),
     #[display(fmt = "broadcast error, {}", _0)]
@@ -241,13 +239,6 @@ impl OverlordError {
         OverlordError {
             kind: ErrorKind::Debug,
             info: ErrorInfo::UnderStage,
-        }
-    }
-
-    pub fn warn_abnormal_lock(str: String) -> Self {
-        OverlordError {
-            kind: ErrorKind::Warn,
-            info: ErrorInfo::AbnormalLock(str),
         }
     }
 

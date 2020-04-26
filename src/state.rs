@@ -52,7 +52,7 @@ impl<B: Blk> StateInfo<B> {
                     .expect("Unreachable! Have checked lock exists before"),
             ));
         }
-        self.update_lock(&sp.proposal)?;
+        self.update_lock(&sp.proposal);
         Ok(old_stage)
     }
 
@@ -117,17 +117,12 @@ impl<B: Blk> StateInfo<B> {
         }
     }
 
-    pub fn update_lock(&mut self, proposal: &Proposal<B>) -> OverlordResult<()> {
+    pub fn update_lock(&mut self, proposal: &Proposal<B>) {
         if let Some(qc) = &proposal.lock {
             if let Some(lock) = &self.lock {
                 if qc.vote.round > lock.vote.round {
                     self.lock = Some(qc.clone());
                     self.block = Some(proposal.block.clone());
-                } else {
-                    return Err(OverlordError::warn_abnormal_lock(format!(
-                        "proposal.lock_round < self.lock_round, {} < {}",
-                        qc.vote.round, lock.vote.round
-                    )));
                 }
             } else {
                 self.lock = Some(qc.clone());
@@ -136,7 +131,6 @@ impl<B: Blk> StateInfo<B> {
         } else if self.lock.is_none() {
             self.block = Some(proposal.block.clone());
         }
-        Ok(())
     }
 
     pub fn next_height(&mut self) {
