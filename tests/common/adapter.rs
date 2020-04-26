@@ -146,6 +146,7 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         Ok(Bytes::from(vec))
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn save_and_exec_block_with_proof(
         &self,
         _ctx: Context,
@@ -154,6 +155,7 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         proof: Proof,
         _last_exec_resp: ExecState,
         _last_commit_exec_resp: ExecState,
+        _is_sync: bool,
     ) -> Result<ExecResult<ExecState>, Box<dyn Error + Send>> {
         let full_block: FullBlock =
             bincode::deserialize(&full_block).expect("deserialize full block failed");

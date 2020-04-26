@@ -772,6 +772,7 @@ where
                         .block_states
                         .state
                         .clone(),
+                    true,
                 )
                 .await
                 .expect("Execution is down! It's meaningless to continue running");

@@ -53,6 +53,7 @@ pub trait Adapter<B: Blk, S: St>: 'static + Send + Sync {
         block: B,
     ) -> Result<Bytes, Box<dyn Error + Send>>;
 
+    #[allow(clippy::too_many_arguments)]
     async fn save_and_exec_block_with_proof(
         &self,
         ctx: Context,
@@ -61,6 +62,7 @@ pub trait Adapter<B: Blk, S: St>: 'static + Send + Sync {
         proof: Proof,
         last_exec_resp: S,
         last_commit_exec_resp: S,
+        is_sync: bool,
     ) -> Result<ExecResult<S>, Box<dyn Error + Send>>;
 
     async fn commit(&self, ctx: Context, commit_state: ExecResult<S>);
