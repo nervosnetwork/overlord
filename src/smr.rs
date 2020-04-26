@@ -743,6 +743,16 @@ where
             .map(|fbp| (fbp.block.get_height(), fbp))
             .collect();
 
+        info!(
+            "[RECEIVE] \n\t<{}> <- {}\n\t<message> {} \n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n\n",
+            self.address.tiny_hex(),
+            response.responder.tiny_hex(),
+            response,
+            self.state,
+            self.prepare,
+            self.sync,
+        );
+
         while let Some(full_block_with_proof) = map.get(&self.state.stage.height).as_ref() {
             let block = &full_block_with_proof.block;
             let proof = &full_block_with_proof.proof;
