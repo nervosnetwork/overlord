@@ -958,6 +958,9 @@ where
             return Ok(());
         }
 
+        self.broadcast(ctx.clone(), OverlordMsg::SignedVote(signed_vote.clone()))
+            .await;
+
         if !self.is_leader {
             return Ok(());
         }
@@ -1001,9 +1004,6 @@ where
         if height > self.height {
             return Ok(());
         }
-
-        self.broadcast(ctx.clone(), OverlordMsg::SignedVote(signed_vote.clone()))
-            .await;
 
         let block_hash = self.counting_vote(vote_type.clone())?;
         if block_hash.is_none() {
