@@ -288,12 +288,8 @@ where
         self.agent.set_step_timeout(self.state.stage.clone());
         self.wal.save_state(&self.state)?;
 
-        let height = self.state.stage.height;
-        let round = self.state.stage.round;
-        let vote = Vote::empty_vote(height, round);
-        let signed_vote = self.auth.sign_pre_vote(vote)?;
-        let leader = self.auth.get_leader(height, round);
-        self.agent.transmit(leader, signed_vote.into()).await
+        let signed_pre_vote = self.create_signed_pre_vote()?;
+        self.transmit_vote(signed_pre_vote.into()).await
     }
 
     async fn handle_pre_vote_timeout(&mut self, stage: Stage) -> OverlordResult<()> {
@@ -302,22 +298,8 @@ where
         self.agent.set_step_timeout(self.state.stage.clone());
         self.wal.save_state(&self.state)?;
 
-        let height = self.state.stage.height;
-        let round = self.state.stage.round;
-        let vote = if let Some(lock) = self.state.lock.as_ref() {
-            Vote::new(height, round, lock.vote.block_hash.clone())
-        } else {
-            Vote::empty_vote(height, round)
-        };
-        let signed_vote = self.auth.sign_pre_commit(vote)?;
-        let leader = self.auth.get_leader(height, round);
-        self.agent
-            .transmit(leader, signed_vote.clone().into())
-            .await?;
-        // new design, when leader is down, next leader can aggregate votes to view change fast
-        let next_leader = self.auth.get_leader(height, round + 1);
-        self.agent.transmit(next_leader, signed_vote.into()).await?;
-        Ok(())
+        let signed_pre_commit = self.create_empty_signed_pre_commit()?;
+        self.transmit_vote(signed_pre_commit.into()).await
     }
 
     async fn handle_pre_commit_timeout(&mut self, stage: Stage) -> OverlordResult<()> {
@@ -326,13 +308,8 @@ where
         self.agent.set_step_timeout(self.state.stage.clone());
         self.wal.save_state(&self.state)?;
 
-        let height = self.state.stage.height;
-        let round = self.state.stage.round;
-        let from = self.state.from.clone();
-        let choke = Choke::new(height, round);
-        let signed_choke = self.auth.sign_choke(choke, from)?;
-        self.agent.broadcast(signed_choke.into()).await?;
-        Ok(())
+        let signed_choke = self.create_signed_choke()?;
+        self.agent.broadcast(signed_choke.into()).await
     }
 
     async fn handle_brake_timeout(&mut self, stage: Stage) -> OverlordResult<()> {
@@ -340,13 +317,8 @@ where
         self.log_state_update_of_timeout(old_state, stage.into());
         self.agent.set_step_timeout(self.state.stage.clone());
 
-        let height = self.state.stage.height;
-        let round = self.state.stage.round;
-        let from = self.state.from.clone();
-        let choke = Choke::new(height, round);
-        let signed_choke = self.auth.sign_choke(choke, from)?;
-        self.agent.broadcast(signed_choke.into()).await?;
-        Ok(())
+        let signed_choke = self.create_signed_choke()?;
+        self.agent.broadcast(signed_choke.into()).await
     }
 
     async fn handle_next_height_timeout(&mut self) -> OverlordResult<()> {
@@ -378,12 +350,8 @@ where
         self.agent.set_step_timeout(self.state.stage.clone());
         self.wal.save_state(&self.state)?;
 
-        let vote = self.auth.sign_pre_vote(sp.proposal.as_vote())?;
-        self.agent
-            .transmit(sp.proposal.proposer, vote.clone().into())
-            .await?;
-        let next_leader = self.auth.get_leader(msg_h, msg_r + 1);
-        self.agent.transmit(next_leader, vote.into()).await
+        let signed_pre_vote = self.auth.sign_pre_vote(sp.proposal.as_vote())?;
+        self.transmit_vote(signed_pre_vote.into()).await
     }
 
     async fn handle_signed_pre_vote(&mut self, sv: SignedPreVote) -> OverlordResult<()> {
@@ -517,29 +485,24 @@ where
         if exist_uncertain {
             self.cabinet.insert(msg_h, msg_r, (&qc).into())?;
         }
-        if self
-            .cabinet
-            .get_full_block(msg_h, &qc.vote.block_hash)
-            .is_some()
-        {
-            let block = self
-                .cabinet
-                .get_block(msg_h, &qc.vote.block_hash)
-                .expect("Unreachable! Lost a block which full block exist");
-            let leader = self.auth.get_leader(msg_h, msg_r);
-            let old_state = self.state.handle_pre_vote_qc(&qc, block.clone())?;
-            self.log_state_update_of_msg(old_state, &leader, (&qc).into());
 
+        if qc.vote.is_empty_vote()
+            || self
+                .cabinet
+                .get_full_block(msg_h, &qc.vote.block_hash)
+                .is_some()
+        {
+            let block = self.cabinet.get_block(msg_h, &qc.vote.block_hash);
+            let leader = self.auth.get_leader(msg_h, msg_r);
+            let old_state = self.state.handle_pre_vote_qc(&qc, block)?;
+            self.log_state_update_of_msg(old_state, &leader, (&qc).into());
             self.agent.set_step_timeout(self.state.stage.clone());
             self.wal.save_state(&self.state)?;
 
-            let vote = self.auth.sign_pre_commit(qc.vote.clone())?;
-            self.agent.transmit(leader, vote.clone().into()).await?;
-            // new design, when leader is down, next leader can aggregate votes to view change fast
-            let next_leader = self.auth.get_leader(msg_h, msg_r + 1);
-            self.agent.transmit(next_leader, vote.into()).await?;
+            let signed_pre_commit = self.auth.sign_pre_commit(qc.vote)?;
+            self.transmit_vote(signed_pre_commit.into()).await?;
         }
-        Ok(())
+        Err(OverlordError::warn_wait())
     }
 
     async fn handle_pre_commit_qc(
@@ -555,25 +518,28 @@ where
         if exist_uncertain {
             self.cabinet.insert(msg_h, msg_r, (&qc).into())?;
         }
-        if self
-            .cabinet
-            .get_full_block(msg_h, &qc.vote.block_hash)
-            .is_some()
-        {
-            let block = self
+
+        if qc.vote.is_empty_vote()
+            || self
                 .cabinet
-                .get_block(msg_h, &qc.vote.block_hash)
-                .expect("Unreachable! Lost a block which full block exist");
+                .get_full_block(msg_h, &qc.vote.block_hash)
+                .is_some()
+        {
+            let block = self.cabinet.get_block(msg_h, &qc.vote.block_hash);
             let leader = self.auth.get_leader(msg_h, msg_r);
-            let old_state = self.state.handle_pre_commit_qc(&qc, block.clone())?;
+            let old_state = self.state.handle_pre_commit_qc(&qc, block)?;
             self.log_state_update_of_msg(old_state, &leader, (&qc).into());
             self.wal.save_state(&self.state)?;
 
-            let (commit_hash, proof, commit_exec_h) = self.save_and_exec_block().await;
-            self.handle_commit(commit_hash, proof, commit_exec_h)
-                .await?;
+            if qc.vote.is_empty_vote() {
+                self.new_round().await?;
+            } else {
+                let (commit_hash, proof, commit_exec_h) = self.save_and_exec_block().await;
+                self.handle_commit(commit_hash, proof, commit_exec_h)
+                    .await?;
+            }
         }
-        Ok(())
+        Err(OverlordError::warn_wait())
     }
 
     async fn handle_choke_qc(&mut self, qc: ChokeQC) -> OverlordResult<()> {
@@ -944,19 +910,20 @@ where
     async fn create_signed_proposal(&self) -> OverlordResult<SignedProposal<B>> {
         let height = self.state.stage.height;
         let round = self.state.stage.round;
-        let proposal = if let Some(lock) = &self.state.lock {
+        let lock = &self.state.lock;
+        let proposal = if lock.is_some() && !lock.as_ref().unwrap().vote.is_empty_vote() {
             let block = self
                 .state
                 .block
                 .as_ref()
                 .expect("Unreachable! Block is none when lock is some");
-            let hash = lock.vote.block_hash.clone();
+            let hash = lock.as_ref().unwrap().vote.block_hash.clone();
             Proposal::new(
                 height,
                 round,
                 block.clone(),
                 hash,
-                Some(lock.clone()),
+                lock.clone(),
                 self.address.clone(),
             )
         } else {
@@ -965,6 +932,42 @@ where
             Proposal::new(height, round, block, hash, None, self.address.clone())
         };
         self.auth.sign_proposal(proposal)
+    }
+
+    fn create_signed_pre_vote(&self) -> OverlordResult<SignedPreVote> {
+        let height = self.state.stage.height;
+        let round = self.state.stage.round;
+        let vote = if let Some(lock) = self.state.lock.as_ref() {
+            Vote::new(height, round, lock.vote.block_hash.clone())
+        } else {
+            Vote::empty_vote(height, round)
+        };
+        self.auth.sign_pre_vote(vote)
+    }
+
+    fn create_empty_signed_pre_commit(&self) -> OverlordResult<SignedPreCommit> {
+        let height = self.state.stage.height;
+        let round = self.state.stage.round;
+        let vote = Vote::empty_vote(height, round);
+        self.auth.sign_pre_commit(vote)
+    }
+
+    fn create_signed_choke(&self) -> OverlordResult<SignedChoke> {
+        let height = self.state.stage.height;
+        let round = self.state.stage.round;
+        let from = self.state.from.clone();
+        let choke = Choke::new(height, round);
+        self.auth.sign_choke(choke, from)
+    }
+
+    async fn transmit_vote(&self, vote: OverlordMsg<B>) -> OverlordResult<()> {
+        let height = self.state.stage.height;
+        let round = self.state.stage.round;
+        let leader = self.auth.get_leader(height, round);
+        self.agent.transmit(leader, vote.clone()).await?;
+        // new design, when leader is down, next leader can aggregate votes to view change fast
+        let next_leader = self.auth.get_leader(height, round + 1);
+        self.agent.transmit(next_leader, vote).await
     }
 
     fn filter_msg(

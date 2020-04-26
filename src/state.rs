@@ -56,27 +56,26 @@ impl<B: Blk> StateInfo<B> {
         Ok(old_stage)
     }
 
-    pub fn handle_pre_vote_qc(&mut self, qc: &PreVoteQC, block: B) -> OverlordResult<StateInfo<B>> {
+    pub fn handle_pre_vote_qc(
+        &mut self,
+        qc: &PreVoteQC,
+        block: Option<&B>,
+    ) -> OverlordResult<StateInfo<B>> {
         let next_stage = self.filter_stage(qc)?;
 
         let old_stage = self.clone();
         if self.stage.update_stage(next_stage) {
             self.from = Some(UpdateFrom::PreVoteQC(qc.clone()));
         }
-        if qc.vote.is_empty_vote() {
-            self.lock = None;
-            self.block = None;
-        } else {
-            self.lock = Some(qc.clone());
-            self.block = Some(block);
-        }
+        self.lock = Some(qc.clone());
+        self.block = block.cloned();
         Ok(old_stage)
     }
 
     pub fn handle_pre_commit_qc(
         &mut self,
         qc: &PreCommitQC,
-        block: B,
+        block: Option<&B>,
     ) -> OverlordResult<StateInfo<B>> {
         let next_stage = self.filter_stage(qc)?;
 
@@ -86,7 +85,7 @@ impl<B: Blk> StateInfo<B> {
         }
         if !qc.vote.is_empty_vote() {
             self.pre_commit_qc = Some(qc.clone());
-            self.block = Some(block);
+            self.block = block.cloned();
         }
         Ok(old_stage)
     }
@@ -233,7 +232,7 @@ impl NextStage for PreVoteQC {
 impl NextStage for PreCommitQC {
     fn next_stage(&self) -> Stage {
         if self.vote.is_empty_vote() {
-            Stage::new(self.vote.height, self.vote.round, Step::Brake)
+            Stage::new(self.vote.height, self.vote.round + 1, Step::Propose)
         } else {
             Stage::new(self.vote.height, Round::max_value(), Step::Commit)
         }

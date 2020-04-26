@@ -85,6 +85,8 @@ pub enum ErrorInfo {
     Sync(String),
     #[display(fmt = "hash block error, {}", _0)]
     HashBlock(Box<dyn Error + Send>),
+    #[display(fmt = "wait for full block")]
+    WaitFullBlock,
 }
 
 #[derive(Debug, Display)]
@@ -337,6 +339,13 @@ impl OverlordError {
         OverlordError {
             kind: ErrorKind::Byzantine,
             info: ErrorInfo::HashBlock(e),
+        }
+    }
+
+    pub fn warn_wait() -> Self {
+        OverlordError {
+            kind: ErrorKind::Warn,
+            info: ErrorInfo::WaitFullBlock,
         }
     }
 }
