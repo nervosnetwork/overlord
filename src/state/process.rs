@@ -789,7 +789,7 @@ where
                 hex::encode(hash)
             );
 
-            self.transmit(Context::new(), OverlordMsg::SignedVote(signed_vote))
+            self.broadcast(Context::new(), OverlordMsg::SignedVote(signed_vote))
                 .await;
         }
 
@@ -955,6 +955,10 @@ where
         );
 
         if self.filter_message(height, round) {
+            return Ok(());
+        }
+
+        if !self.is_leader {
             return Ok(());
         }
 
@@ -1483,6 +1487,7 @@ where
                 "Overlord: state self become leader, height {}, round {}",
                 self.height, self.round
             );
+            self.is_leader = true;
             return Ok(true);
         }
 
@@ -1493,6 +1498,7 @@ where
             self.round
         );
         self.leader_address = proposer;
+        self.is_leader = false;
         Ok(false)
     }
 
@@ -1628,7 +1634,7 @@ where
         Ok(())
     }
 
-    async fn transmit(&self, ctx: Context, msg: OverlordMsg<T>) {
+    async fn _transmit(&self, ctx: Context, msg: OverlordMsg<T>) {
         debug!(
             "Overlord: state transmit a message to leader height {}, round {}",
             self.height, self.round
