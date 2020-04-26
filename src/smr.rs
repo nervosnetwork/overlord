@@ -1142,5 +1142,10 @@ async fn get_exec_result<A: Adapter<B, S>, B: Blk, S: St>(
     adapter
         .get_block_exec_result(Context::default(), height)
         .await
-        .unwrap_or_else(|_| panic!("Unreachable! Cannot get exec result of height {}", height))
+        .unwrap_or_else(|e| {
+            panic!(
+                "Unreachable! Cannot get exec result of height {}, {}",
+                height, e
+            )
+        })
 }
