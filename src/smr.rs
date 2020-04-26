@@ -777,6 +777,15 @@ where
                 .await
                 .expect("Execution is down! It's meaningless to continue running");
             self.prepare.handle_exec_result(exec_result);
+            info!(
+                "[SYNC] \n\t<{}> <- {}\n\t<message> {} \n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n\n",
+                self.address.tiny_hex(),
+                response.responder.tiny_hex(),
+                full_block_with_proof,
+                self.state,
+                self.prepare,
+                self.sync,
+            );
             self.handle_commit(block_hash, proof.clone(), block.get_exec_height())
                 .await?;
         }

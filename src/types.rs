@@ -667,7 +667,13 @@ impl CumWeight {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Display, PartialEq, Eq, Serialize, Deserialize)]
+#[display(
+    fmt = "{{ block: {}, proof: {}, full_block: {} }}",
+    block,
+    proof,
+    "full_block.tiny_hex()"
+)]
 pub struct FullBlockWithProof<B: Blk> {
     pub block:      B,
     pub proof:      Proof,

@@ -463,4 +463,10 @@ mod test {
         let signature = Secp256k1::sign_message(&hash, &pri_key).unwrap().to_bytes();
         Secp256k1::verify_signature(&hash, &signature, &pub_key).unwrap();
     }
+
+    #[test]
+    fn test_gen_keypair() {
+        let keypair = gen_keypair(None, "0x6e6f573042615a355954".to_owned());
+        println!("{:?}", keypair);
+    }
 }
