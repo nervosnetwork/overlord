@@ -754,9 +754,18 @@ where
         );
 
         while let Some(full_block_with_proof) = map.get(&self.state.stage.height).as_ref() {
+            info!(
+                "[SYNC] \n\t<{}> <- {}\n\t<message> full_block_with_proof: {} \n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n\n",
+                self.address.tiny_hex(),
+                response.responder.tiny_hex(),
+                full_block_with_proof,
+                self.state,
+                self.prepare,
+                self.sync,
+            );
+
             let block = &full_block_with_proof.block;
             let proof = &full_block_with_proof.proof;
-
             let block_hash = block.get_block_hash().map_err(OverlordError::byz_hash)?;
             if proof.vote.block_hash != block_hash {
                 return Err(OverlordError::byz_sync(format!(
@@ -787,15 +796,6 @@ where
                 .await
                 .expect("Execution is down! It's meaningless to continue running");
             self.prepare.handle_exec_result(exec_result);
-            info!(
-                "[SYNC] \n\t<{}> <- {}\n\t<message> full_block_with_proof: {} \n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n\n",
-                self.address.tiny_hex(),
-                response.responder.tiny_hex(),
-                full_block_with_proof,
-                self.state,
-                self.prepare,
-                self.sync,
-            );
             self.handle_commit(block_hash, proof.clone(), block.get_exec_height())
                 .await?;
         }
