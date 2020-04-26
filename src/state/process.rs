@@ -958,10 +958,9 @@ where
             return Ok(());
         }
 
-        self.broadcast(ctx.clone(), OverlordMsg::SignedVote(signed_vote.clone()))
-            .await;
-
         if !self.is_leader {
+            self.broadcast(ctx.clone(), OverlordMsg::SignedVote(signed_vote.clone()))
+                .await;
             return Ok(());
         }
 
