@@ -556,7 +556,9 @@ fn update_vote_weight_map(
 }
 
 fn update_max_vote_weight(max_weight: &mut CumWeight, cum_weight: CumWeight) {
-    if max_weight.cum_weight < cum_weight.cum_weight {
+    if max_weight.cum_weight < cum_weight.cum_weight
+        || (max_weight.cum_weight == cum_weight.cum_weight && max_weight.round < cum_weight.round)
+    {
         *max_weight = cum_weight;
     }
 }
