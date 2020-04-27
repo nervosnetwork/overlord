@@ -12,7 +12,7 @@ use crate::state::{ProposePrepare, Stage, StateInfo, Step};
 use crate::types::{
     Choke, ChokeQC, CumWeight, FetchedFullBlock, FullBlockWithProof, PreCommitQC, PreVoteQC,
     Proposal, SignedChoke, SignedHeight, SignedPreCommit, SignedPreVote, SignedProposal,
-    SyncRequest, SyncResponse, UpdateFrom, VoteType,
+    SyncRequest, SyncResponse, UpdateFrom,
 };
 use crate::utils::agent::EventAgent;
 use crate::utils::auth::{AuthCell, AuthFixedConfig, AuthManage};
@@ -285,10 +285,10 @@ where
     async fn handle_propose_timeout(&mut self, stage: Stage) -> OverlordResult<()> {
         let old_state = self.state.handle_timeout(&stage)?;
         self.log_state_update_of_timeout(old_state, stage.into());
-        self.set_vote_timeout();
+        self.set_pre_vote_timeout();
         self.wal.save_state(&self.state)?;
 
-        // self.try_handle_pre_vote_qc().await?;
+        self.try_handle_pre_vote_qc().await?;
 
         let signed_pre_vote = self.create_signed_pre_vote()?;
         self.transmit_vote(signed_pre_vote.into()).await
@@ -297,10 +297,10 @@ where
     async fn handle_pre_vote_timeout(&mut self, stage: Stage) -> OverlordResult<()> {
         let old_state = self.state.handle_timeout(&stage)?;
         self.log_state_update_of_timeout(old_state, stage.into());
-        self.set_vote_timeout();
+        self.set_pre_commit_timeout();
         self.wal.save_state(&self.state)?;
 
-        // self.try_handle_pre_commit_qc().await?;
+        self.try_handle_pre_commit_qc().await?;
 
         let signed_pre_commit = self.create_signed_pre_commit()?;
         self.transmit_vote(signed_pre_commit.into()).await
@@ -334,7 +334,6 @@ where
         let msg_r = sp.proposal.round;
 
         self.filter_msg(msg_h, msg_r, (&sp).into())?;
-        // only msg of current height will go down
         self.check_proposal(&sp.proposal)?;
         self.auth.verify_signed_proposal(&sp)?;
         self.cabinet.insert(msg_h, msg_r, (&sp).into())?;
@@ -351,10 +350,10 @@ where
 
         let old_state = self.state.handle_signed_proposal(&sp)?;
         self.log_state_update_of_msg(old_state, &sp.proposal.proposer, (&sp).into());
-        self.set_vote_timeout();
+        self.set_pre_vote_timeout();
         self.wal.save_state(&self.state)?;
 
-        // self.try_handle_pre_vote_qc().await?;
+        self.try_handle_pre_vote_qc().await?;
 
         let vote = self.state.get_vote_for_proposal();
         let signed_pre_vote = self.auth.sign_pre_vote(vote)?;
@@ -375,8 +374,8 @@ where
             .expect("Unreachable! pre_vote_max_vote_weight has been set before");
         self.log_vote_received(&sv.voter, (&sv).into(), &max_w);
 
-        self.try_set_vote_timeout();
-        self.try_handle_qc(msg_h, msg_r, max_w).await
+        self.try_set_pre_vote_timeout();
+        self.try_aggregate_pre_votes(msg_h, msg_r, max_w).await
     }
 
     async fn handle_signed_pre_commit(&mut self, sv: SignedPreCommit) -> OverlordResult<()> {
@@ -393,8 +392,8 @@ where
             .expect("Unreachable! pre_commit_max_vote_weight has been set before");
         self.log_vote_received(&sv.voter, (&sv).into(), &max_w);
 
-        self.try_set_vote_timeout();
-        self.try_handle_qc(msg_h, msg_r, max_w).await
+        self.try_set_pre_commit_timeout();
+        self.try_aggregate_pre_commit(msg_h, msg_r, max_w).await
     }
 
     async fn handle_signed_choke(&mut self, sc: SignedChoke) -> OverlordResult<()> {
@@ -411,7 +410,7 @@ where
             .expect("Unreachable! choke_vote_weight has been set before");
         self.log_vote_received(&sc.voter, (&sc).into(), &sum_w);
 
-        self.try_handle_qc(msg_h, msg_r, sum_w).await?;
+        self.try_aggregate_choke(msg_h, msg_r, sum_w).await?;
         if let Some(from) = sc.from {
             match from {
                 UpdateFrom::PreVoteQC(qc) => self.handle_pre_vote_qc(qc, true).await?,
@@ -446,9 +445,10 @@ where
             let leader = self.auth.get_leader(msg_h, msg_r);
             let old_state = self.state.handle_pre_vote_qc(&qc, block)?;
             self.log_state_update_of_msg(old_state, &leader, (&qc).into());
-            self.set_vote_timeout();
+            self.set_pre_commit_timeout();
             self.wal.save_state(&self.state)?;
 
+            // Todo: break the recursive call to enable this check
             // self.try_handle_pre_commit_qc().await?;
 
             let signed_pre_commit = self.create_signed_pre_commit()?;
@@ -899,80 +899,94 @@ where
         self.auth.sign_choke(choke, from)
     }
 
-    async fn try_handle_qc(
+    async fn try_handle_pre_vote_qc(&mut self) -> OverlordResult<()> {
+        let height = self.state.stage.height;
+        let round = self.state.stage.round;
+        if let Some(qc) = self.cabinet.get_pre_vote_qc(height, round) {
+            self.handle_pre_vote_qc(qc.clone(), false).await?;
+        }
+        Ok(())
+    }
+
+    async fn try_handle_pre_commit_qc(&mut self) -> OverlordResult<()> {
+        let height = self.state.stage.height;
+        let round = self.state.stage.round;
+        if let Some(qc) = self.cabinet.get_pre_commit_qc(height, round) {
+            self.handle_pre_commit_qc(qc.clone(), false).await?;
+        }
+        Ok(())
+    }
+
+    async fn try_aggregate_pre_votes(
         &mut self,
         height: Height,
         round: Round,
         max_w: CumWeight,
     ) -> OverlordResult<()> {
         if self.auth.current_auth.beyond_majority(max_w.cum_weight) {
-            match max_w.vote_type {
-                VoteType::PreVote => {
-                    let votes = self
-                        .cabinet
-                        .get_signed_pre_votes_by_hash(
-                            height,
-                            round,
-                            &max_w
-                                .block_hash
-                                .expect("Unreachable! Lost the vote_hash while beyond majority"),
-                        )
-                        .expect("Unreachable! Lost signed_pre_votes while beyond majority");
-                    let pre_vote_qc = self.auth.aggregate_pre_votes(votes)?;
-                    self.agent.broadcast(pre_vote_qc.clone().into()).await?;
-                }
-                VoteType::PreCommit => {
-                    let votes = self
-                        .cabinet
-                        .get_signed_pre_commits_by_hash(
-                            height,
-                            round,
-                            &max_w
-                                .block_hash
-                                .expect("Unreachable! Lost the vote_hash while beyond majority"),
-                        )
-                        .expect("Unreachable! Lost signed_pre_commits while beyond majority");
-                    let pre_commit_qc = self.auth.aggregate_pre_commits(votes)?;
-                    self.agent.broadcast(pre_commit_qc.clone().into()).await?;
-                }
-                VoteType::Choke => {
-                    let chokes = self
-                        .cabinet
-                        .get_signed_chokes(height, round)
-                        .expect("Unreachable! Lost signed_chokes while beyond majority");
-
-                    let choke_qc = self.auth.aggregate_chokes(chokes)?;
-                    self.handle_choke_qc(choke_qc).await?;
-                }
-            }
+            let votes = self
+                .cabinet
+                .get_signed_pre_votes_by_hash(
+                    height,
+                    round,
+                    &max_w
+                        .block_hash
+                        .expect("Unreachable! Lost the vote_hash while beyond majority"),
+                )
+                .expect("Unreachable! Lost signed_pre_votes while beyond majority");
+            let pre_vote_qc = self.auth.aggregate_pre_votes(votes)?;
+            self.agent.broadcast(pre_vote_qc.clone().into()).await?;
         }
         Ok(())
     }
 
-    // async fn try_handle_pre_vote_qc(&mut self) -> OverlordResult<()> {
-    //     let height = self.state.stage.height;
-    //     let round = self.state.stage.round;
-    //     if let Some(max_w) = self.cabinet.get_pre_vote_max_vote_weight(height, round) {
-    //         self.try_handle_qc(height, round, max_w).await?;
-    //     }
-    //     Ok(())
-    // }
+    async fn try_aggregate_pre_commit(
+        &mut self,
+        height: Height,
+        round: Round,
+        max_w: CumWeight,
+    ) -> OverlordResult<()> {
+        if self.auth.current_auth.beyond_majority(max_w.cum_weight) {
+            let votes = self
+                .cabinet
+                .get_signed_pre_commits_by_hash(
+                    height,
+                    round,
+                    &max_w
+                        .block_hash
+                        .expect("Unreachable! Lost the vote_hash while beyond majority"),
+                )
+                .expect("Unreachable! Lost signed_pre_commits while beyond majority");
+            let pre_commit_qc = self.auth.aggregate_pre_commits(votes)?;
+            self.agent.broadcast(pre_commit_qc.clone().into()).await?;
+        }
+        Ok(())
+    }
 
-    // async fn try_handle_pre_commit_qc(&mut self) -> OverlordResult<()> {
-    //     let height = self.state.stage.height;
-    //     let round = self.state.stage.round;
-    //     if let Some(max_w) = self.cabinet.get_pre_commit_max_vote_weight(height, round) {
-    //         self.try_handle_qc(height, round, max_w).await?;
-    //     }
-    //     Ok(())
-    // }
+    async fn try_aggregate_choke(
+        &mut self,
+        height: Height,
+        round: Round,
+        max_w: CumWeight,
+    ) -> OverlordResult<()> {
+        if self.auth.current_auth.beyond_majority(max_w.cum_weight) {
+            let chokes = self
+                .cabinet
+                .get_signed_chokes(height, round)
+                .expect("Unreachable! Lost signed_chokes while beyond majority");
 
-    // Leader set pre_vote/pre_commit timeout only after collects majority vote_weight
-    fn try_set_vote_timeout(&self) {
+            let choke_qc = self.auth.aggregate_chokes(chokes)?;
+            self.handle_choke_qc(choke_qc).await?;
+        }
+        Ok(())
+    }
+
+    fn try_set_pre_vote_timeout(&self) {
         if self.is_current_leader() {
             let height = self.state.stage.height;
             let round = self.state.stage.round;
             if let Some(sum_w) = self.cabinet.get_pre_vote_weight_sum(height, round) {
+                // The timeout may triggered multiple times, but it doesn't matter
                 if self.auth.current_auth.beyond_majority(sum_w) {
                     self.agent.set_step_timeout(self.state.stage.clone());
                 }
@@ -980,9 +994,33 @@ where
         }
     }
 
-    // Node (not leader) set pre_vote/pre_commit timeout once step into pre_vote/pre_commit step
-    fn set_vote_timeout(&self) {
-        if !self.is_current_leader() {
+    fn try_set_pre_commit_timeout(&self) {
+        if self.is_current_leader() {
+            let height = self.state.stage.height;
+            let round = self.state.stage.round;
+            if let Some(sum_w) = self.cabinet.get_pre_commit_weight_sum(height, round) {
+                // The timeout may triggered multiple times, but it doesn't matter
+                if self.auth.current_auth.beyond_majority(sum_w) {
+                    self.agent.set_step_timeout(self.state.stage.clone());
+                }
+            }
+        }
+    }
+
+    // Leader set pre_vote/pre_commit timeout only after collects majority vote_weight
+    // Other nodes set pre_vote/pre_commit timeout once step into pre_vote/pre_commit step
+    fn set_pre_vote_timeout(&self) {
+        if self.is_current_leader() {
+            self.try_set_pre_vote_timeout();
+        } else {
+            self.agent.set_step_timeout(self.state.stage.clone());
+        }
+    }
+
+    fn set_pre_commit_timeout(&self) {
+        if self.is_current_leader() {
+            self.try_set_pre_commit_timeout();
+        } else {
             self.agent.set_step_timeout(self.state.stage.clone());
         }
     }

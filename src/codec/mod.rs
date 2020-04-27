@@ -413,9 +413,9 @@ impl<B: Blk> Decodable for StateInfo<B> {
             Prototype::List(6) => {
                 let stage: Stage = r.val_at(0)?;
                 let lock: Option<PreVoteQC> = r.val_at(1)?;
-                let pre_commit_qc: Option<PreCommitQC> = r.val_at(2)?;
-                let tmp: Option<Vec<u8>> = r.val_at(3)?;
+                let tmp: Option<Vec<u8>> = r.val_at(2)?;
                 let block_hash = tmp.map(Hash::from);
+                let pre_commit_qc: Option<PreCommitQC> = r.val_at(3)?;
                 let from: Option<UpdateFrom> = r.val_at(4)?;
                 let tmp: Option<Vec<u8>> = r.val_at(5)?;
                 let block = if let Some(v) = tmp {
