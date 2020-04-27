@@ -297,7 +297,7 @@ where
     async fn handle_pre_vote_timeout(&mut self, stage: Stage) -> OverlordResult<()> {
         let old_state = self.state.handle_timeout(&stage)?;
         self.log_state_update_of_timeout(old_state, stage.into());
-        self.set_pre_commit_timeout();
+        self.agent.set_step_timeout(self.state.stage.clone());
         self.wal.save_state(&self.state)?;
 
         self.try_handle_pre_commit_qc().await?;
@@ -374,7 +374,6 @@ where
             .expect("Unreachable! pre_vote_max_vote_weight has been set before");
         self.log_vote_received(&sv.voter, (&sv).into(), &max_w);
 
-        self.try_set_pre_vote_timeout();
         self.try_aggregate_pre_votes(msg_h, msg_r, max_w).await
     }
 
@@ -392,7 +391,6 @@ where
             .expect("Unreachable! pre_commit_max_vote_weight has been set before");
         self.log_vote_received(&sv.voter, (&sv).into(), &max_w);
 
-        self.try_set_pre_commit_timeout();
         self.try_aggregate_pre_commit(msg_h, msg_r, max_w).await
     }
 
@@ -445,7 +443,7 @@ where
             let leader = self.auth.get_leader(msg_h, msg_r);
             let old_state = self.state.handle_pre_vote_qc(&qc, block)?;
             self.log_state_update_of_msg(old_state, &leader, (&qc).into());
-            self.set_pre_commit_timeout();
+            self.agent.set_step_timeout(self.state.stage.clone());
             self.wal.save_state(&self.state)?;
 
             // Todo: break the recursive call to enable this check
@@ -981,45 +979,10 @@ where
         Ok(())
     }
 
-    fn try_set_pre_vote_timeout(&self) {
-        if self.is_current_leader() {
-            let height = self.state.stage.height;
-            let round = self.state.stage.round;
-            if let Some(sum_w) = self.cabinet.get_pre_vote_weight_sum(height, round) {
-                // The timeout may triggered multiple times, but it doesn't matter
-                if self.auth.current_auth.beyond_majority(sum_w) {
-                    self.agent.set_step_timeout(self.state.stage.clone());
-                }
-            }
-        }
-    }
-
-    fn try_set_pre_commit_timeout(&self) {
-        if self.is_current_leader() {
-            let height = self.state.stage.height;
-            let round = self.state.stage.round;
-            if let Some(sum_w) = self.cabinet.get_pre_commit_weight_sum(height, round) {
-                // The timeout may triggered multiple times, but it doesn't matter
-                if self.auth.current_auth.beyond_majority(sum_w) {
-                    self.agent.set_step_timeout(self.state.stage.clone());
-                }
-            }
-        }
-    }
-
-    // Leader set pre_vote/pre_commit timeout only after collects majority vote_weight
-    // Other nodes set pre_vote/pre_commit timeout once step into pre_vote/pre_commit step
     fn set_pre_vote_timeout(&self) {
-        if self.is_current_leader() {
-            self.try_set_pre_vote_timeout();
-        } else {
-            self.agent.set_step_timeout(self.state.stage.clone());
-        }
-    }
-
-    fn set_pre_commit_timeout(&self) {
-        if self.is_current_leader() {
-            self.try_set_pre_commit_timeout();
+        if self.is_current_leader() && self.state.stage.round == INIT_ROUND {
+            self.agent
+                .set_leader_pre_vote_timeout_of_round_0(self.state.stage.clone());
         } else {
             self.agent.set_step_timeout(self.state.stage.clone());
         }

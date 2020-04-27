@@ -183,6 +183,12 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         false
     }
 
+    pub fn set_leader_pre_vote_timeout_of_round_0(&self, stage: Stage) {
+        let delay = Duration::from_millis(self.time_config.interval);
+        let timeout_info = TimeoutInfo::new(delay, stage.into(), self.to_timeout.clone());
+        self.set_timeout(timeout_info, delay);
+    }
+
     pub fn set_height_timeout(&self) {
         let delay = Duration::from_millis(self.time_config.interval * HEIGHT_RATIO / TIME_DIVISOR);
         let timeout_info =

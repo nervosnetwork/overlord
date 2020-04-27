@@ -211,18 +211,6 @@ impl<B: Blk> Cabinet<B> {
             .get(&height)
             .and_then(|drawer| drawer.get_choke_vote_weight(round))
     }
-
-    pub fn get_pre_vote_weight_sum(&self, height: Height, round: Round) -> Option<Weight> {
-        self.0
-            .get(&height)
-            .and_then(|drawer| drawer.get_pre_vote_weight_sum(round))
-    }
-
-    pub fn get_pre_commit_weight_sum(&self, height: Height, round: Round) -> Option<Weight> {
-        self.0
-            .get(&height)
-            .and_then(|drawer| drawer.get_pre_commit_weight_sum(round))
-    }
 }
 
 #[derive(Default)]
@@ -352,18 +340,6 @@ impl<B: Blk> Drawer<B> {
             .get(&round)
             .map(|grid| grid.get_choke_vote_weight())
     }
-
-    fn get_pre_vote_weight_sum(&self, round: Round) -> Option<Weight> {
-        self.grids
-            .get(&round)
-            .map(|grid| grid.get_pre_vote_weight_sum())
-    }
-
-    fn get_pre_commit_weight_sum(&self, round: Round) -> Option<Weight> {
-        self.grids
-            .get(&round)
-            .map(|grid| grid.get_pre_commit_weight_sum())
-    }
 }
 
 #[derive(Clone, Default)]
@@ -373,13 +349,11 @@ pub struct Grid<B: Blk> {
     signed_pre_votes:         HashMap<Address, SignedPreVote>,
     pre_vote_sets:            HashMap<Hash, Vec<SignedPreVote>>,
     pre_vote_vote_weights:    HashMap<Hash, Weight>,
-    pre_vote_weight_sum:      Weight,
     pre_vote_max_vote_weight: CumWeight,
 
     signed_pre_commits:         HashMap<Address, SignedPreCommit>,
     pre_commit_sets:            HashMap<Hash, Vec<SignedPreCommit>>,
     pre_commit_vote_weights:    HashMap<Hash, Weight>,
-    pre_commit_weight_sum:      Weight,
     pre_commit_max_vote_weight: CumWeight,
 
     signed_chokes:     HashMap<Address, SignedChoke>,
@@ -450,14 +424,6 @@ impl<B: Blk> Grid<B> {
         self.choke_vote_weight.clone()
     }
 
-    fn get_pre_vote_weight_sum(&self) -> Weight {
-        self.pre_vote_weight_sum
-    }
-
-    fn get_pre_commit_weight_sum(&self) -> Weight {
-        self.pre_commit_weight_sum
-    }
-
     fn insert(&mut self, data: Capsule<B>) -> OverlordResult<()> {
         match data {
             Capsule::SignedProposal(signed_proposal) => {
@@ -487,7 +453,6 @@ impl<B: Blk> Grid<B> {
         let voter = signed_pre_vote.voter.clone();
         check_exist(self.signed_pre_votes.get(&voter), &signed_pre_vote)?;
 
-        self.pre_vote_weight_sum += signed_pre_vote.vote_weight;
         let hash = signed_pre_vote.vote.block_hash.clone();
         let cum_weight = update_vote_weight_map(
             &mut self.pre_vote_vote_weights,
@@ -513,7 +478,6 @@ impl<B: Blk> Grid<B> {
         let voter = signed_pre_commit.voter.clone();
         check_exist(self.signed_pre_commits.get(&voter), &signed_pre_commit)?;
 
-        self.pre_commit_weight_sum += signed_pre_commit.vote_weight;
         let hash = signed_pre_commit.vote.block_hash.clone();
         let cum_weight = update_vote_weight_map(
             &mut self.pre_commit_vote_weights,
