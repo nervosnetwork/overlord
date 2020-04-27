@@ -290,8 +290,9 @@ impl StateMachine {
         }
 
         info!(
-            "Overlord: SMR triggered by prevote QC hash {:?} from {:?}, height {}, round {}",
+            "Overlord: SMR triggered by prevote QC hash {:?} qc round {} from {:?}, height {}, round {}",
             hex::encode(prevote_hash.clone()),
+            prevote_round,
             source,
             self.height,
             self.round
@@ -329,16 +330,15 @@ impl StateMachine {
             return Ok(());
         }
 
-        let vote_round = prevote_round;
-        self.update_polc(prevote_hash, vote_round);
+        self.update_polc(prevote_hash, prevote_round);
 
-        if vote_round > self.round {
+        if prevote_round > self.round {
             let (lock_round, lock_proposal) = self
                 .lock
                 .clone()
                 .map_or_else(|| (None, None), |lock| (Some(lock.round), Some(lock.hash)));
 
-            self.round = vote_round;
+            self.round = prevote_round;
             self.throw_event(SMREvent::NewRoundInfo {
                 height: self.height,
                 round: self.round + 1,
@@ -346,7 +346,7 @@ impl StateMachine {
                 lock_proposal,
                 new_interval: None,
                 new_config: None,
-                from_where: FromWhere::PrevoteQC(vote_round),
+                from_where: FromWhere::PrevoteQC(prevote_round),
             })?;
             self.goto_next_round();
         }
@@ -387,8 +387,9 @@ impl StateMachine {
         }
 
         info!(
-            "Overlord: SMR triggered by precommit QC hash {:?}, from {:?}, height {}, round {}",
+            "Overlord: SMR triggered by precommit QC hash {:?} qc round {} from {:?}, height {}, round {}",
             hex::encode(precommit_hash.clone()),
+            precommit_round,
             source,
             self.height,
             self.round
