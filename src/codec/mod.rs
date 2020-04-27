@@ -397,9 +397,10 @@ impl<B: Blk> Encodable for StateInfo<B> {
             .block
             .clone()
             .map(|block| block.fixed_encode().unwrap().to_vec());
-        s.begin_list(5)
+        s.begin_list(6)
             .append(&self.stage)
             .append(&self.lock)
+            .append(&self.block_hash.clone().map(|hash| hash.to_vec()))
             .append(&self.pre_commit_qc)
             .append(&self.from)
             .append(&block);
@@ -409,12 +410,14 @@ impl<B: Blk> Encodable for StateInfo<B> {
 impl<B: Blk> Decodable for StateInfo<B> {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         match r.prototype()? {
-            Prototype::List(5) => {
+            Prototype::List(6) => {
                 let stage: Stage = r.val_at(0)?;
                 let lock: Option<PreVoteQC> = r.val_at(1)?;
                 let pre_commit_qc: Option<PreCommitQC> = r.val_at(2)?;
-                let from: Option<UpdateFrom> = r.val_at(3)?;
-                let tmp: Option<Vec<u8>> = r.val_at(4)?;
+                let tmp: Option<Vec<u8>> = r.val_at(3)?;
+                let block_hash = tmp.map(Hash::from);
+                let from: Option<UpdateFrom> = r.val_at(4)?;
+                let tmp: Option<Vec<u8>> = r.val_at(5)?;
                 let block = if let Some(v) = tmp {
                     Some(
                         B::fixed_decode(&Bytes::from(v))
@@ -426,6 +429,7 @@ impl<B: Blk> Decodable for StateInfo<B> {
                 Ok(StateInfo {
                     stage,
                     lock,
+                    block_hash,
                     pre_commit_qc,
                     from,
                     block,

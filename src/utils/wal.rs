@@ -184,6 +184,7 @@ mod test {
         let state = StateInfo {
             stage:         Stage::default(),
             lock:          Some(PreVoteQC::new(vote.clone(), aggregates.clone())),
+            block_hash:    Some(Bytes::from("uhcicbei")),
             block:         Some(TestBlock::default()),
             pre_commit_qc: Some(PreCommitQC::new(vote, aggregates.clone())),
             from:          Some(UpdateFrom::ChokeQC(ChokeQC::new(

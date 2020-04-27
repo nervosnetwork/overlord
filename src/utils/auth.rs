@@ -280,15 +280,11 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         )
     }
 
-    pub fn am_i_leader(&self, height: Height, round: Round) -> bool {
-        self.fixed_config.address == self.current_auth.calculate_leader(height, round)
-    }
-
     pub fn get_leader(&self, height: Height, round: Round) -> Address {
         self.current_auth.calculate_leader(height, round)
     }
 
-    pub fn am_i_auth(&self) -> OverlordResult<()> {
+    pub fn is_auth(&self) -> OverlordResult<()> {
         if self.current_auth.vote_weight == 0 {
             return Err(OverlordError::debug_un_auth());
         }
@@ -297,7 +293,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
 
     fn party_sign(&self, hash: &Hash, need_auth: bool) -> OverlordResult<Signature> {
         if need_auth {
-            self.am_i_auth()?;
+            self.is_auth()?;
         }
         A::CryptoImpl::party_sign_msg(self.fixed_config.pri_key.clone(), hash)
             .map_err(OverlordError::local_crypto)

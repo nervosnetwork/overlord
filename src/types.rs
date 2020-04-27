@@ -25,9 +25,9 @@ pub type Weight = u32;
 pub enum OverlordMsg<B: Blk> {
     #[display(fmt = "signed_proposal: {}", _0)]
     SignedProposal(SignedProposal<B>),
-    #[display(fmt = "signed_Pre_vote: {}", _0)]
+    #[display(fmt = "signed_pre_vote: {}", _0)]
     SignedPreVote(SignedPreVote),
-    #[display(fmt = "signed_Pre_vote: {}", _0)]
+    #[display(fmt = "signed_pre_commit: {}", _0)]
     SignedPreCommit(SignedPreCommit),
     #[display(fmt = "pre_vote_qc: {}", _0)]
     PreVoteQC(PreVoteQC),
@@ -116,14 +116,6 @@ impl<B: Blk> Proposal<B> {
             block_hash,
             lock,
             proposer,
-        }
-    }
-
-    pub fn as_vote(&self) -> Vote {
-        Vote {
-            height:     self.height,
-            round:      self.round,
-            block_hash: self.block_hash.clone(),
         }
     }
 }
@@ -225,6 +217,10 @@ pub struct PreVoteQC {
 impl PreVoteQC {
     pub fn new(vote: Vote, aggregates: Aggregates) -> Self {
         PreVoteQC { vote, aggregates }
+    }
+
+    pub fn empty() -> Self {
+        PreVoteQC::default()
     }
 }
 
@@ -561,10 +557,10 @@ impl Default for TimeConfig {
     fn default() -> TimeConfig {
         TimeConfig {
             interval:         1000,
-            propose_ratio:    5,
-            pre_vote_ratio:   15,
-            pre_commit_ratio: 5,
-            brake_ratio:      10,
+            propose_ratio:    3,
+            pre_vote_ratio:   5,
+            pre_commit_ratio: 2,
+            brake_ratio:      3,
         }
     }
 }
@@ -638,30 +634,22 @@ impl From<u8> for VoteType {
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq)]
 #[display(
-    fmt = "{{ cum_weight: {}, vote_type: {}, round: {}, block_hash: {} }}",
+    fmt = "{{ cum_weight: {}, vote_type: {}, block_hash: {} }}",
     cum_weight,
     vote_type,
-    round,
     "block_hash.clone().map_or(\"None\".to_owned(), |hash| hash.tiny_hex())"
 )]
 pub struct CumWeight {
     pub cum_weight: Weight,
     pub vote_type:  VoteType,
-    pub round:      Round,
     pub block_hash: Option<Hash>,
 }
 
 impl CumWeight {
-    pub fn new(
-        cum_weight: Weight,
-        vote_type: VoteType,
-        round: Round,
-        block_hash: Option<Hash>,
-    ) -> Self {
+    pub fn new(cum_weight: Weight, vote_type: VoteType, block_hash: Option<Hash>) -> Self {
         CumWeight {
             cum_weight,
             vote_type,
-            round,
             block_hash,
         }
     }

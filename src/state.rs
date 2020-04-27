@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 
 use derive_more::Display;
 
-use crate::types::{ChokeQC, PreCommitQC, PreVoteQC, Proposal, SignedProposal, UpdateFrom};
+use crate::types::{ChokeQC, PreCommitQC, PreVoteQC, Proposal, SignedProposal, UpdateFrom, Vote};
 use crate::{
     Blk, BlockState, ExecResult, Hash, Height, OverlordError, OverlordResult, Proof, Round, St,
     TinyHex, INIT_ROUND,
@@ -11,17 +11,20 @@ use crate::{
 
 #[derive(Clone, Debug, Display, Default, Eq, PartialEq)]
 #[display(
-    fmt = "{{ stage: {}, lock: {}, pre_commit_qc: {}, from: {} }}",
+    fmt = "{{ stage: {}, lock: {}, block_hash: {}, pre_commit_qc: {}, from: {} }}",
     stage,
     "lock.clone().map_or(\"None\".to_owned(), |lock| format!(\"{}\", lock))",
+    "block_hash.clone().map_or(\"None\".to_owned(), |hash| hash.tiny_hex())",
     "pre_commit_qc.clone().map_or(\"None\".to_owned(), |qc| format!(\"{}\", qc))",
     "from.clone().map_or(\"None\".to_owned(), |from| format!(\"{}\", from))"
 )]
 pub struct StateInfo<B: Blk> {
     pub stage: Stage,
 
-    pub lock:          Option<PreVoteQC>,
-    pub block:         Option<B>,
+    pub lock:       Option<PreVoteQC>,
+    pub block:      Option<B>,
+    pub block_hash: Option<Hash>,
+
     pub pre_commit_qc: Option<PreCommitQC>,
     pub from:          Option<UpdateFrom>,
 }
@@ -33,6 +36,7 @@ impl<B: Blk> StateInfo<B> {
             lock:          None,
             pre_commit_qc: None,
             block:         None,
+            block_hash:    None,
             from:          None,
         }
     }
@@ -44,7 +48,8 @@ impl<B: Blk> StateInfo<B> {
         let next_stage = self.filter_stage(sp)?;
 
         let old_stage = self.clone();
-        if self.stage.update_stage(next_stage) {
+        let is_round_up = self.stage.update_stage(next_stage);
+        if is_round_up {
             self.from = Some(UpdateFrom::PreVoteQC(
                 sp.proposal
                     .lock
@@ -64,11 +69,16 @@ impl<B: Blk> StateInfo<B> {
         let next_stage = self.filter_stage(qc)?;
 
         let old_stage = self.clone();
-        if self.stage.update_stage(next_stage) {
+        let is_round_up = self.stage.update_stage(next_stage);
+        if is_round_up {
             self.from = Some(UpdateFrom::PreVoteQC(qc.clone()));
         }
-        self.lock = Some(qc.clone());
-        self.block = block.cloned();
+        if qc.vote.is_empty_vote() {
+            self.lock = None;
+        } else {
+            self.lock = Some(qc.clone());
+            self.block = block.cloned();
+        }
         Ok(old_stage)
     }
 
@@ -80,7 +90,8 @@ impl<B: Blk> StateInfo<B> {
         let next_stage = self.filter_stage(qc)?;
 
         let old_stage = self.clone();
-        if self.stage.update_stage(next_stage) {
+        let is_round_up = self.stage.update_stage(next_stage);
+        if is_round_up {
             self.from = Some(UpdateFrom::PreCommitQC(qc.clone()));
         }
         if !qc.vote.is_empty_vote() {
@@ -94,7 +105,8 @@ impl<B: Blk> StateInfo<B> {
         let next_stage = self.filter_stage(choke_qc)?;
 
         let old_stage = self.clone();
-        if self.stage.update_stage(next_stage) {
+        let is_round_up = self.stage.update_stage(next_stage);
+        if is_round_up {
             self.from = Some(UpdateFrom::ChokeQC(choke_qc.clone()));
         }
         Ok(old_stage)
@@ -117,19 +129,42 @@ impl<B: Blk> StateInfo<B> {
         }
     }
 
+    pub fn get_vote_for_proposal(&self) -> Vote {
+        Vote::new(
+            self.stage.height,
+            self.stage.round,
+            self.block_hash
+                .clone()
+                .expect("Unreachable! self.block_hash must have been set before"),
+        )
+    }
+
+    pub fn get_vote(&self) -> Vote {
+        Vote::new(
+            self.stage.height,
+            self.stage.round,
+            self.lock
+                .clone()
+                .unwrap_or_else(PreVoteQC::empty)
+                .vote
+                .block_hash,
+        )
+    }
+
     pub fn update_lock(&mut self, proposal: &Proposal<B>) {
         if let Some(qc) = &proposal.lock {
+            // proposal.lock.is_some() && self.lock.is_some()
             if let Some(lock) = &self.lock {
                 if qc.vote.round > lock.vote.round {
-                    self.lock = Some(qc.clone());
-                    self.block = Some(proposal.block.clone());
+                    self.set_lock(proposal);
                 }
+            // proposal.lock.is_some() && self.lock.is_none()
             } else {
-                self.lock = Some(qc.clone());
-                self.block = Some(proposal.block.clone());
+                self.set_lock(proposal);
             }
+        // proposal.lock.is_none() && self.lock.is_none()
         } else if self.lock.is_none() {
-            self.block = Some(proposal.block.clone());
+            self.set_block(proposal);
         }
     }
 
@@ -138,7 +173,18 @@ impl<B: Blk> StateInfo<B> {
         self.lock = None;
         self.pre_commit_qc = None;
         self.block = None;
+        self.block_hash = None;
         self.from = None;
+    }
+
+    fn set_lock(&mut self, proposal: &Proposal<B>) {
+        self.lock = proposal.lock.clone();
+        self.set_block(proposal);
+    }
+
+    fn set_block(&mut self, proposal: &Proposal<B>) {
+        self.block = Some(proposal.block.clone());
+        self.block_hash = Some(proposal.block_hash.clone());
     }
 }
 

@@ -92,12 +92,7 @@ impl<B: Blk> Cabinet<B> {
     }
 
     // Return max vote_weight when insert signed_pre_vote/signed_pre_commit/signed_choke
-    pub fn insert(
-        &mut self,
-        height: Height,
-        round: Round,
-        data: Capsule<B>,
-    ) -> OverlordResult<Option<CumWeight>> {
+    pub fn insert(&mut self, height: Height, round: Round, data: Capsule<B>) -> OverlordResult<()> {
         self.0
             .entry(height)
             .or_insert_with(Drawer::default)
@@ -194,6 +189,40 @@ impl<B: Blk> Cabinet<B> {
             .get(&height)
             .and_then(|drawer| drawer.get_choke_qc(round))
     }
+
+    pub fn get_pre_vote_max_vote_weight(&self, height: Height, round: Round) -> Option<CumWeight> {
+        self.0
+            .get(&height)
+            .and_then(|drawer| drawer.get_pre_vote_max_vote_weight(round))
+    }
+
+    pub fn get_pre_commit_max_vote_weight(
+        &self,
+        height: Height,
+        round: Round,
+    ) -> Option<CumWeight> {
+        self.0
+            .get(&height)
+            .and_then(|drawer| drawer.get_pre_commit_max_vote_weight(round))
+    }
+
+    pub fn get_choke_vote_weight(&self, height: Height, round: Round) -> Option<CumWeight> {
+        self.0
+            .get(&height)
+            .and_then(|drawer| drawer.get_choke_vote_weight(round))
+    }
+
+    pub fn get_pre_vote_weight_sum(&self, height: Height, round: Round) -> Option<Weight> {
+        self.0
+            .get(&height)
+            .and_then(|drawer| drawer.get_pre_vote_weight_sum(round))
+    }
+
+    pub fn get_pre_commit_weight_sum(&self, height: Height, round: Round) -> Option<Weight> {
+        self.0
+            .get(&height)
+            .and_then(|drawer| drawer.get_pre_commit_weight_sum(round))
+    }
 }
 
 #[derive(Default)]
@@ -203,14 +232,10 @@ struct Drawer<B: Blk> {
     full_blocks:    HashMap<Hash, Bytes>,
     pre_vote_qcs:   HashMap<Hash, PreVoteQC>,
     pre_commit_qcs: HashMap<Hash, PreCommitQC>,
-
-    pre_vote_max_vote_weight:   CumWeight,
-    pre_commit_max_vote_weight: CumWeight,
-    choke_max_vote_weight:      CumWeight,
 }
 
 impl<B: Blk> Drawer<B> {
-    fn insert(&mut self, round: Round, data: Capsule<B>) -> OverlordResult<Option<CumWeight>> {
+    fn insert(&mut self, round: Round, data: Capsule<B>) -> OverlordResult<()> {
         match data {
             Capsule::SignedProposal(sp) => self.insert_block(&sp.proposal),
             Capsule::PreVoteQC(qc) => self.insert_pre_vote_qc(qc),
@@ -218,29 +243,10 @@ impl<B: Blk> Drawer<B> {
             _ => {}
         }
 
-        let opt = self
-            .grids
+        self.grids
             .entry(round)
             .or_insert_with(Grid::default)
-            .insert(data)?;
-
-        if let Some(cum_weight) = opt {
-            return match cum_weight.vote_type {
-                VoteType::PreVote => {
-                    update_max_vote_weight(&mut self.pre_vote_max_vote_weight, cum_weight);
-                    Ok(Some(self.pre_vote_max_vote_weight.clone()))
-                }
-                VoteType::PreCommit => {
-                    update_max_vote_weight(&mut self.pre_commit_max_vote_weight, cum_weight);
-                    Ok(Some(self.pre_commit_max_vote_weight.clone()))
-                }
-                VoteType::Choke => {
-                    update_max_vote_weight(&mut self.choke_max_vote_weight, cum_weight);
-                    Ok(Some(self.choke_max_vote_weight.clone()))
-                }
-            };
-        }
-        Ok(None)
+            .insert(data)
     }
 
     fn insert_block(&mut self, proposal: &Proposal<B>) {
@@ -328,6 +334,36 @@ impl<B: Blk> Drawer<B> {
     fn get_choke_qc(&self, round: Round) -> Option<ChokeQC> {
         self.grids.get(&round).and_then(|grid| grid.get_choke_qc())
     }
+
+    fn get_pre_vote_max_vote_weight(&self, round: Round) -> Option<CumWeight> {
+        self.grids
+            .get(&round)
+            .map(|grid| grid.get_pre_vote_max_vote_weight())
+    }
+
+    fn get_pre_commit_max_vote_weight(&self, round: Round) -> Option<CumWeight> {
+        self.grids
+            .get(&round)
+            .map(|grid| grid.get_pre_commit_max_vote_weight())
+    }
+
+    fn get_choke_vote_weight(&self, round: Round) -> Option<CumWeight> {
+        self.grids
+            .get(&round)
+            .map(|grid| grid.get_choke_vote_weight())
+    }
+
+    fn get_pre_vote_weight_sum(&self, round: Round) -> Option<Weight> {
+        self.grids
+            .get(&round)
+            .map(|grid| grid.get_pre_vote_weight_sum())
+    }
+
+    fn get_pre_commit_weight_sum(&self, round: Round) -> Option<Weight> {
+        self.grids
+            .get(&round)
+            .map(|grid| grid.get_pre_commit_weight_sum())
+    }
 }
 
 #[derive(Clone, Default)]
@@ -337,11 +373,13 @@ pub struct Grid<B: Blk> {
     signed_pre_votes:         HashMap<Address, SignedPreVote>,
     pre_vote_sets:            HashMap<Hash, Vec<SignedPreVote>>,
     pre_vote_vote_weights:    HashMap<Hash, Weight>,
+    pre_vote_weight_sum:      Weight,
     pre_vote_max_vote_weight: CumWeight,
 
     signed_pre_commits:         HashMap<Address, SignedPreCommit>,
     pre_commit_sets:            HashMap<Hash, Vec<SignedPreCommit>>,
     pre_commit_vote_weights:    HashMap<Hash, Weight>,
+    pre_commit_weight_sum:      Weight,
     pre_commit_max_vote_weight: CumWeight,
 
     signed_chokes:     HashMap<Address, SignedChoke>,
@@ -400,7 +438,27 @@ impl<B: Blk> Grid<B> {
         self.pre_commit_sets.get(block_hash).cloned()
     }
 
-    fn insert(&mut self, data: Capsule<B>) -> OverlordResult<Option<CumWeight>> {
+    fn get_pre_vote_max_vote_weight(&self) -> CumWeight {
+        self.pre_vote_max_vote_weight.clone()
+    }
+
+    fn get_pre_commit_max_vote_weight(&self) -> CumWeight {
+        self.pre_commit_max_vote_weight.clone()
+    }
+
+    fn get_choke_vote_weight(&self) -> CumWeight {
+        self.choke_vote_weight.clone()
+    }
+
+    fn get_pre_vote_weight_sum(&self) -> Weight {
+        self.pre_vote_weight_sum
+    }
+
+    fn get_pre_commit_weight_sum(&self) -> Weight {
+        self.pre_commit_weight_sum
+    }
+
+    fn insert(&mut self, data: Capsule<B>) -> OverlordResult<()> {
         match data {
             Capsule::SignedProposal(signed_proposal) => {
                 self.insert_signed_proposal(signed_proposal.clone())
@@ -418,35 +476,25 @@ impl<B: Blk> Grid<B> {
         }
     }
 
-    fn insert_signed_proposal(
-        &mut self,
-        signed_proposal: SignedProposal<B>,
-    ) -> OverlordResult<Option<CumWeight>> {
+    fn insert_signed_proposal(&mut self, signed_proposal: SignedProposal<B>) -> OverlordResult<()> {
         check_exist(self.signed_proposal.as_ref(), &signed_proposal)?;
 
         self.signed_proposal = Some(signed_proposal);
-        Ok(None)
+        Ok(())
     }
 
-    fn insert_signed_pre_vote(
-        &mut self,
-        signed_pre_vote: SignedPreVote,
-    ) -> OverlordResult<Option<CumWeight>> {
+    fn insert_signed_pre_vote(&mut self, signed_pre_vote: SignedPreVote) -> OverlordResult<()> {
         let voter = signed_pre_vote.voter.clone();
         check_exist(self.signed_pre_votes.get(&voter), &signed_pre_vote)?;
 
+        self.pre_vote_weight_sum += signed_pre_vote.vote_weight;
         let hash = signed_pre_vote.vote.block_hash.clone();
         let cum_weight = update_vote_weight_map(
             &mut self.pre_vote_vote_weights,
             &hash,
             signed_pre_vote.vote_weight,
         );
-        let cum_weight = CumWeight::new(
-            cum_weight,
-            VoteType::PreVote,
-            signed_pre_vote.vote.round,
-            Some(hash.clone()),
-        );
+        let cum_weight = CumWeight::new(cum_weight, VoteType::PreVote, Some(hash.clone()));
         update_max_vote_weight(&mut self.pre_vote_max_vote_weight, cum_weight);
 
         self.signed_pre_votes.insert(voter, signed_pre_vote.clone());
@@ -455,28 +503,24 @@ impl<B: Blk> Grid<B> {
             .or_insert_with(Vec::new)
             .push(signed_pre_vote);
 
-        Ok(Some(self.pre_vote_max_vote_weight.clone()))
+        Ok(())
     }
 
     fn insert_signed_pre_commit(
         &mut self,
         signed_pre_commit: SignedPreCommit,
-    ) -> OverlordResult<Option<CumWeight>> {
+    ) -> OverlordResult<()> {
         let voter = signed_pre_commit.voter.clone();
         check_exist(self.signed_pre_commits.get(&voter), &signed_pre_commit)?;
 
+        self.pre_commit_weight_sum += signed_pre_commit.vote_weight;
         let hash = signed_pre_commit.vote.block_hash.clone();
         let cum_weight = update_vote_weight_map(
             &mut self.pre_commit_vote_weights,
             &hash,
             signed_pre_commit.vote_weight,
         );
-        let cum_weight = CumWeight::new(
-            cum_weight,
-            VoteType::PreCommit,
-            signed_pre_commit.vote.round,
-            Some(hash.clone()),
-        );
+        let cum_weight = CumWeight::new(cum_weight, VoteType::PreCommit, Some(hash.clone()));
         update_max_vote_weight(&mut self.pre_commit_max_vote_weight, cum_weight);
 
         self.signed_pre_commits
@@ -486,43 +530,39 @@ impl<B: Blk> Grid<B> {
             .or_insert_with(Vec::new)
             .push(signed_pre_commit);
 
-        Ok(Some(self.pre_commit_max_vote_weight.clone()))
+        Ok(())
     }
 
-    fn insert_signed_choke(
-        &mut self,
-        signed_choke: SignedChoke,
-    ) -> OverlordResult<Option<CumWeight>> {
+    fn insert_signed_choke(&mut self, signed_choke: SignedChoke) -> OverlordResult<()> {
         let voter = signed_choke.voter.clone();
         check_exist(self.signed_chokes.get(&voter), &signed_choke)?;
 
         let vote_weight = signed_choke.vote_weight;
         let cum_weight = self.choke_vote_weight.cum_weight + vote_weight;
-        let cum_weight =
-            CumWeight::new(cum_weight, VoteType::Choke, signed_choke.choke.round, None);
+        let cum_weight = CumWeight::new(cum_weight, VoteType::Choke, None);
         update_max_vote_weight(&mut self.choke_vote_weight, cum_weight);
 
         self.signed_chokes.insert(voter, signed_choke);
 
-        Ok(Some(self.choke_vote_weight.clone()))
+        Ok(())
     }
 
-    fn insert_pre_vote_qc(&mut self, pre_vote_qc: PreVoteQC) -> OverlordResult<Option<CumWeight>> {
+    fn insert_pre_vote_qc(&mut self, pre_vote_qc: PreVoteQC) -> OverlordResult<()> {
         check_exist(self.pre_vote_qc.as_ref(), &pre_vote_qc)?;
         self.pre_vote_qc = Some(pre_vote_qc);
-        Ok(None)
+        Ok(())
     }
 
-    fn insert_pre_commit_qc(&mut self, qc: PreCommitQC) -> OverlordResult<Option<CumWeight>> {
+    fn insert_pre_commit_qc(&mut self, qc: PreCommitQC) -> OverlordResult<()> {
         check_exist(self.pre_commit_qc.as_ref(), &qc)?;
         self.pre_commit_qc = Some(qc);
-        Ok(None)
+        Ok(())
     }
 
-    fn insert_choke_qc(&mut self, qc: ChokeQC) -> OverlordResult<Option<CumWeight>> {
+    fn insert_choke_qc(&mut self, qc: ChokeQC) -> OverlordResult<()> {
         check_exist(self.choke_qc.as_ref(), &qc)?;
         self.choke_qc = Some(qc);
-        Ok(None)
+        Ok(())
     }
 }
 
@@ -556,9 +596,7 @@ fn update_vote_weight_map(
 }
 
 fn update_max_vote_weight(max_weight: &mut CumWeight, cum_weight: CumWeight) {
-    if max_weight.cum_weight < cum_weight.cum_weight
-        || (max_weight.cum_weight == cum_weight.cum_weight && max_weight.round < cum_weight.round)
-    {
+    if max_weight.cum_weight < cum_weight.cum_weight {
         *max_weight = cum_weight;
     }
 }
