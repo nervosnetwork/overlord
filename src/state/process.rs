@@ -1030,7 +1030,8 @@ where
             hex::encode(block_hash.clone())
         );
 
-        self.broadcast(ctx, OverlordMsg::AggregatedVote(qc)).await;
+        self.broadcast(ctx, OverlordMsg::AggregatedVote(qc.clone()))
+            .await;
 
         if !self.try_get_full_txs(&block_hash) {
             return Ok(());
@@ -1046,12 +1047,12 @@ where
 
         self.state_machine.trigger(SMRTrigger {
             trigger_type: vote_type.clone().into(),
-            source: TriggerSource::State,
-            hash: block_hash,
-            lock_round: None,
-            round,
-            height: self.height,
-            wal_info: None,
+            source:       TriggerSource::State,
+            hash:         block_hash,
+            lock_round:   None,
+            round:        qc.round,
+            height:       qc.height,
+            wal_info:     None,
         })?;
         Ok(())
     }
