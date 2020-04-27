@@ -1155,12 +1155,12 @@ where
         let qc_hash = aggregated_vote.block_hash.clone();
         self.votes.set_qc(aggregated_vote.clone());
 
+        self.broadcast(ctx, OverlordMsg::AggregatedVote(aggregated_vote.clone()))
+            .await;
+
         if !qc_hash.is_empty() && !self.try_get_full_txs(&qc_hash) {
             return Ok(());
         }
-
-        self.broadcast(ctx, OverlordMsg::AggregatedVote(aggregated_vote.clone()))
-            .await;
 
         info!(
             "Overlord: state trigger SMR {:?} QC height {}, round {}, hash {:?}",
