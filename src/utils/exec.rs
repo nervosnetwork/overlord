@@ -7,14 +7,18 @@ use derive_more::Display;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use futures::stream::StreamExt;
 
-use crate::{Adapter, Blk, ExecResult, Height, Proof, St};
+use crate::{Adapter, Blk, ExecResult, Height, St};
 
 #[derive(Display)]
-#[display(fmt = "{{ height: {}, proof: {} }}", height, proof)]
+#[display(
+    fmt = "{{ height: {}, last_exec_resp: {}, last_commit_exec_resp: {} }}",
+    height,
+    last_exec_resp,
+    last_commit_exec_resp
+)]
 pub struct ExecRequest<S: St> {
     height:                Height,
     full_block:            Bytes,
-    proof:                 Proof,
     last_exec_resp:        S,
     last_commit_exec_resp: S,
 }
@@ -23,14 +27,12 @@ impl<S: St> ExecRequest<S> {
     pub fn new(
         height: Height,
         full_block: Bytes,
-        proof: Proof,
         last_exec_resp: S,
         last_commit_exec_resp: S,
     ) -> Self {
         ExecRequest {
             height,
             full_block,
-            proof,
             last_exec_resp,
             last_commit_exec_resp,
         }
@@ -75,11 +77,10 @@ impl<A: Adapter<B, S>, B: Blk, S: St> Exec<A, B, S> {
     async fn save_and_exec_block(&self, request: ExecRequest<S>) {
         let exec_result = self
             .adapter
-            .save_and_exec_block_with_proof(
+            .exec_full_block(
                 Context::default(),
                 request.height,
                 request.full_block,
-                request.proof,
                 request.last_exec_resp,
                 request.last_commit_exec_resp,
                 false,

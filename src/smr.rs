@@ -511,7 +511,6 @@ where
         let request = ExecRequest::new(
             height,
             full_block.clone(),
-            proof.clone(),
             self.prepare.last_exec_result.block_states.state.clone(),
             self.prepare
                 .last_commit_exec_result
@@ -519,7 +518,16 @@ where
                 .state
                 .clone(),
         );
-        self.agent.save_and_exec_block(request);
+        self.adapter
+            .save_full_block_with_proof(
+                Context::default(),
+                height,
+                full_block.clone(),
+                proof.clone(),
+            )
+            .await
+            .expect("Unreachable! Commit block with proof must store success");
+        self.agent.exec_block(request);
 
         let commit_exec_h = self
             .state
@@ -612,7 +620,7 @@ where
         self.agent.set_clear_timeout(request.requester.clone());
         let block_with_proofs = self
             .adapter
-            .get_block_with_proofs(Context::default(), request.request_range.clone())
+            .get_full_block_with_proofs(Context::default(), request.request_range.clone())
             .await
             .map_err(OverlordError::local_get_block)?;
         let response = self
@@ -671,13 +679,21 @@ where
             self.auth.verify_pre_commit_qc(proof)?;
 
             let full_block = full_block_with_proof.full_block.clone();
+            self.adapter
+                .save_full_block_with_proof(
+                    Context::default(),
+                    self.state.stage.height,
+                    full_block.clone(),
+                    proof.clone(),
+                )
+                .await
+                .map_err(OverlordError::byz_save_block)?;
             let exec_result = self
                 .adapter
-                .save_and_exec_block_with_proof(
+                .exec_full_block(
                     Context::default(),
                     block.get_height(),
                     full_block,
-                    proof.clone(),
                     self.prepare.last_exec_result.block_states.state.clone(),
                     self.prepare
                         .last_commit_exec_result
@@ -687,7 +703,7 @@ where
                     true,
                 )
                 .await
-                .map_err(OverlordError::byz_save_exec)?;
+                .map_err(OverlordError::byz_exec_block)?;
             self.prepare.handle_exec_result(exec_result);
             self.handle_commit(block_hash, proof.clone(), block.get_exec_height())
                 .await?;
@@ -1183,7 +1199,7 @@ async fn recover_propose_prepare_and_config<A: Adapter<B, S>, B: Blk, S: St>(
     let last_commit_height = adapter.get_latest_height(Context::default()).await.expect(
         "Cannot get the latest height from the adapter! It's meaningless to continue running",
     );
-    let full_block_with_proof = get_block_with_proof(adapter, last_commit_height)
+    let full_block_with_proof = get_full_block_with_proofs(adapter, last_commit_height)
         .await
         .unwrap()
         .unwrap();
@@ -1216,12 +1232,12 @@ async fn recover_propose_prepare_and_config<A: Adapter<B, S>, B: Blk, S: St>(
     )
 }
 
-async fn get_block_with_proof<A: Adapter<B, S>, B: Blk, S: St>(
+async fn get_full_block_with_proofs<A: Adapter<B, S>, B: Blk, S: St>(
     adapter: &Arc<A>,
     height: Height,
 ) -> OverlordResult<Option<FullBlockWithProof<B>>> {
     let vec = adapter
-        .get_block_with_proofs(Context::default(), HeightRange::new(height, 1))
+        .get_full_block_with_proofs(Context::default(), HeightRange::new(height, 1))
         .await
         .map_err(OverlordError::local_get_block)?;
     Ok(Some(vec[0].clone()))

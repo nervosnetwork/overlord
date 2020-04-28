@@ -163,7 +163,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         });
     }
 
-    pub fn save_and_exec_block(&self, request: ExecRequest<S>) {
+    pub fn exec_block(&self, request: ExecRequest<S>) {
         info!(
             "[EXEC]\n\t<{}> -> exec\n\t<request> exec_request: {}\n\n\n\n\n",
             self.address.tiny_hex(),

@@ -146,22 +146,33 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         Ok(Bytes::from(vec))
     }
 
-    #[allow(clippy::too_many_arguments)]
-    async fn save_and_exec_block_with_proof(
+    async fn save_full_block_with_proof(
         &self,
         _ctx: Context,
         height: Height,
         full_block: Bytes,
         proof: Proof,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        let full_block: FullBlock =
+            bincode::deserialize(&full_block).expect("deserialize full block failed");
+        let block = full_block.block;
+        self.storage
+            .save_block_with_proof(self.address.clone(), height, block, proof);
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn exec_full_block(
+        &self,
+        _ctx: Context,
+        _height: Height,
+        full_block: Bytes,
         _last_exec_resp: ExecState,
         _last_commit_exec_resp: ExecState,
         _is_sync: bool,
     ) -> Result<ExecResult<ExecState>, Box<dyn Error + Send>> {
         let full_block: FullBlock =
             bincode::deserialize(&full_block).expect("deserialize full block failed");
-        let block = full_block.block.clone();
-        self.storage
-            .save_block_with_proof(self.address.clone(), height, block, proof);
         Ok(Executor::exec(&full_block))
     }
 
@@ -194,7 +205,7 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         self.network.transmit(&to, msg)
     }
 
-    async fn get_block_with_proofs(
+    async fn get_full_block_with_proofs(
         &self,
         _ctx: Context,
         range: HeightRange,

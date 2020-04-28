@@ -53,13 +53,20 @@ pub trait Adapter<B: Blk, S: St>: 'static + Send + Sync {
         block: B,
     ) -> Result<Bytes, Box<dyn Error + Send>>;
 
-    #[allow(clippy::too_many_arguments)]
-    async fn save_and_exec_block_with_proof(
+    // Todo: abstract full_block to trait
+    async fn save_full_block_with_proof(
         &self,
         ctx: Context,
         height: Height,
         full_block: Bytes,
         proof: Proof,
+    ) -> Result<(), Box<dyn Error + Send>>;
+
+    async fn exec_full_block(
+        &self,
+        ctx: Context,
+        height: Height,
+        full_block: Bytes,
         last_exec_resp: S,
         last_commit_exec_resp: S,
         is_sync: bool,
@@ -87,7 +94,7 @@ pub trait Adapter<B: Blk, S: St>: 'static + Send + Sync {
     ) -> Result<(), Box<dyn Error + Send>>;
 
     /// should return empty vec if the required blocks are not exist
-    async fn get_block_with_proofs(
+    async fn get_full_block_with_proofs(
         &self,
         ctx: Context,
         height_range: HeightRange,

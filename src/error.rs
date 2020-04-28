@@ -39,8 +39,6 @@ pub enum ErrorInfo {
     GetBlock(Box<dyn Error + Send>),
     #[display(fmt = "fetch full block of {} failed", "_0.tiny_hex()")]
     FetchFullBlock(Hash),
-    #[display(fmt = "exec block failed {}", _0)]
-    Exec(Box<dyn Error + Send>),
     #[display(fmt = "operate wal file failed, {:?}", _0)]
     WalFile(std::io::Error),
     #[display(fmt = "other error, {}", _0)]
@@ -85,8 +83,10 @@ pub enum ErrorInfo {
     HashBlock(Box<dyn Error + Send>),
     #[display(fmt = "wait for full block")]
     WaitFullBlock,
-    #[display(fmt = "save and exec sync block failed, {}", _0)]
-    SaveAndExec(Box<dyn Error + Send>),
+    #[display(fmt = "save block failed, {}", _0)]
+    SaveBlock(Box<dyn Error + Send>),
+    #[display(fmt = "exec block failed, {}", _0)]
+    ExecBlock(Box<dyn Error + Send>),
 }
 
 #[derive(Debug, Display)]
@@ -170,7 +170,7 @@ impl OverlordError {
     pub fn local_exec(e: Box<dyn Error + Send>) -> Self {
         OverlordError {
             kind: ErrorKind::LocalError,
-            info: ErrorInfo::Exec(e),
+            info: ErrorInfo::ExecBlock(e),
         }
     }
 
@@ -342,10 +342,17 @@ impl OverlordError {
         }
     }
 
-    pub fn byz_save_exec(e: Box<dyn Error + Send>) -> Self {
+    pub fn byz_save_block(e: Box<dyn Error + Send>) -> Self {
         OverlordError {
             kind: ErrorKind::Byzantine,
-            info: ErrorInfo::SaveAndExec(e),
+            info: ErrorInfo::SaveBlock(e),
+        }
+    }
+
+    pub fn byz_exec_block(e: Box<dyn Error + Send>) -> Self {
+        OverlordError {
+            kind: ErrorKind::Byzantine,
+            info: ErrorInfo::ExecBlock(e),
         }
     }
 }
