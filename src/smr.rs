@@ -690,7 +690,7 @@ where
                     true,
                 )
                 .await
-                .expect("Execution is down! It's meaningless to continue running");
+                .map_err(OverlordError::byz_save_exec)?;
             self.prepare.handle_exec_result(exec_result);
             self.handle_commit(block_hash, proof.clone(), block.get_exec_height())
                 .await?;

@@ -85,6 +85,8 @@ pub enum ErrorInfo {
     HashBlock(Box<dyn Error + Send>),
     #[display(fmt = "wait for full block")]
     WaitFullBlock,
+    #[display(fmt = "save and exec sync block failed, {}", _0)]
+    SaveAndExec(Box<dyn Error + Send>),
 }
 
 #[derive(Debug, Display)]
@@ -337,6 +339,13 @@ impl OverlordError {
         OverlordError {
             kind: ErrorKind::Warn,
             info: ErrorInfo::WaitFullBlock,
+        }
+    }
+
+    pub fn byz_save_exec(e: Box<dyn Error + Send>) -> Self {
+        OverlordError {
+            kind: ErrorKind::Byzantine,
+            info: ErrorInfo::SaveAndExec(e),
         }
     }
 }
