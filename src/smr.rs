@@ -285,7 +285,7 @@ where
     async fn handle_propose_timeout(&mut self, stage: Stage) -> OverlordResult<()> {
         let old_state = self.state.handle_timeout(&stage)?;
         self.log_state_update_of_timeout(old_state, stage.into());
-        self.set_pre_vote_timeout();
+        self.agent.set_step_timeout(self.state.stage.clone());
         self.wal.save_state(&self.state)?;
 
         let signed_pre_vote = self.create_signed_pre_vote()?;
@@ -346,7 +346,7 @@ where
 
         let old_state = self.state.handle_signed_proposal(&sp)?;
         self.log_state_update_of_msg(old_state, &sp.proposal.proposer, (&sp).into());
-        self.set_pre_vote_timeout();
+        self.agent.set_step_timeout(self.state.stage.clone());
         self.wal.save_state(&self.state)?;
 
         let vote = self.state.get_vote_for_proposal();
@@ -439,9 +439,6 @@ where
             self.log_state_update_of_msg(old_state, &leader, (&qc).into());
             self.agent.set_step_timeout(self.state.stage.clone());
             self.wal.save_state(&self.state)?;
-
-            // Todo: break the recursive call to enable this check
-            // self.try_handle_pre_commit_qc().await?;
 
             let signed_pre_commit = self.create_signed_pre_commit()?;
             self.transmit_vote(signed_pre_commit.into()).await?;
@@ -740,7 +737,7 @@ where
         let h = self.state.stage.height;
         let r = self.state.stage.round;
 
-        self.agent.set_step_timeout(self.state.stage.clone());
+        self.set_propose_timeout();
 
         if self.is_current_leader() {
             let signed_proposal = self.create_signed_proposal().await?;
@@ -981,10 +978,10 @@ where
         Ok(())
     }
 
-    fn set_pre_vote_timeout(&self) {
-        if self.is_current_leader() && self.state.stage.round == INIT_ROUND {
+    fn set_propose_timeout(&self) {
+        if !self.is_current_leader() && self.state.stage.round == INIT_ROUND {
             self.agent
-                .set_leader_pre_vote_timeout_of_round_0(self.state.stage.clone());
+                .set_propose_timeout_of_round_0(self.state.stage.clone());
         } else {
             self.agent.set_step_timeout(self.state.stage.clone());
         }
