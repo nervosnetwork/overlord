@@ -288,8 +288,6 @@ where
         self.set_pre_vote_timeout();
         self.wal.save_state(&self.state)?;
 
-        self.try_handle_pre_vote_qc().await?;
-
         let signed_pre_vote = self.create_signed_pre_vote()?;
         self.transmit_vote(signed_pre_vote.into()).await
     }
@@ -299,8 +297,6 @@ where
         self.log_state_update_of_timeout(old_state, stage.into());
         self.agent.set_step_timeout(self.state.stage.clone());
         self.wal.save_state(&self.state)?;
-
-        self.try_handle_pre_commit_qc().await?;
 
         let signed_pre_commit = self.create_signed_pre_commit()?;
         self.transmit_vote(signed_pre_commit.into()).await
@@ -352,8 +348,6 @@ where
         self.log_state_update_of_msg(old_state, &sp.proposal.proposer, (&sp).into());
         self.set_pre_vote_timeout();
         self.wal.save_state(&self.state)?;
-
-        self.try_handle_pre_vote_qc().await?;
 
         let vote = self.state.get_vote_for_proposal();
         let signed_pre_vote = self.auth.sign_pre_vote(vote)?;
@@ -556,7 +550,6 @@ where
         let next_height = self.state.stage.height + 1;
         self.auth
             .handle_commit(commit_exec_result.consensus_config.auth_config.clone());
-        self.cabinet.handle_commit(next_height, &self.auth);
         self.agent
             .handle_commit(commit_exec_result.consensus_config.time_config.clone());
         self.wal.handle_commit(next_height)?;
@@ -729,6 +722,8 @@ where
         );
         self.wal.save_state(&self.state)?;
         self.agent.next_height();
+        self.cabinet.next_height(self.state.stage.height);
+        self.replay_msg_received();
         self.new_round().await
     }
 
@@ -897,22 +892,29 @@ where
         self.auth.sign_choke(choke, from)
     }
 
-    async fn try_handle_pre_vote_qc(&mut self) -> OverlordResult<()> {
-        let height = self.state.stage.height;
-        let round = self.state.stage.round;
-        if let Some(qc) = self.cabinet.get_pre_vote_qc(height, round) {
-            self.handle_pre_vote_qc(qc.clone(), false).await?;
+    fn replay_msg_received(&mut self) {
+        if let Some(grids) = self.cabinet.pop(self.state.stage.height) {
+            for mut grid in grids {
+                for sc in grid.get_signed_chokes() {
+                    self.agent.send_to_myself(sc.into());
+                }
+                if let Some(qc) = grid.get_pre_commit_qc() {
+                    self.agent.send_to_myself(qc.into());
+                }
+                if let Some(qc) = grid.get_pre_vote_qc() {
+                    self.agent.send_to_myself(qc.into());
+                }
+                for sv in grid.get_signed_pre_commits() {
+                    self.agent.send_to_myself(sv.into());
+                }
+                for sv in grid.get_signed_pre_votes() {
+                    self.agent.send_to_myself(sv.into());
+                }
+                if let Some(sp) = grid.take_signed_proposal() {
+                    self.agent.send_to_myself(sp.into());
+                }
+            }
         }
-        Ok(())
-    }
-
-    async fn try_handle_pre_commit_qc(&mut self) -> OverlordResult<()> {
-        let height = self.state.stage.height;
-        let round = self.state.stage.round;
-        if let Some(qc) = self.cabinet.get_pre_commit_qc(height, round) {
-            self.handle_pre_commit_qc(qc.clone(), false).await?;
-        }
-        Ok(())
     }
 
     async fn try_aggregate_pre_votes(

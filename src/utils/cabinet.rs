@@ -7,8 +7,7 @@ use crate::types::{
     ChokeQC, CumWeight, FetchedFullBlock, PreCommitQC, PreVoteQC, Proposal, SignedChoke,
     SignedPreCommit, SignedPreVote, SignedProposal, VoteType, Weight,
 };
-use crate::utils::auth::AuthManage;
-use crate::{Adapter, Address, Blk, Hash, Height, OverlordError, OverlordResult, Round, St};
+use crate::{Address, Blk, Hash, Height, OverlordError, OverlordResult, Round};
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, Display)]
@@ -52,43 +51,6 @@ impl<B: Blk> Cabinet<B> {
 
     pub fn next_height(&mut self, new_height: Height) {
         self.0 = self.0.split_off(&new_height);
-    }
-
-    pub fn handle_commit<A: Adapter<B, S>, S: St>(
-        &mut self,
-        next_height: Height,
-        next_auth: &AuthManage<A, B, S>,
-    ) {
-        if let Some(grids) = self.pop(next_height) {
-            for mut grid in grids {
-                if let Some(sp) = grid.take_signed_proposal() {
-                    if next_auth.verify_signed_proposal(&sp).is_ok() {
-                        let _ = self.insert(sp.proposal.height, sp.proposal.round, (&sp).into());
-                    }
-                }
-                if let Some(qc) = grid.get_pre_vote_qc() {
-                    if next_auth.verify_pre_vote_qc(&qc).is_ok() {
-                        let _ = self.insert(qc.vote.height, qc.vote.round, (&qc).into());
-                    }
-                }
-                if let Some(qc) = grid.get_pre_commit_qc() {
-                    if next_auth.verify_pre_commit_qc(&qc).is_ok() {
-                        let _ = self.insert(qc.vote.height, qc.vote.round, (&qc).into());
-                    }
-                }
-                for sv in grid.get_signed_pre_votes() {
-                    if next_auth.verify_signed_pre_vote(&sv).is_ok() {
-                        let _ = self.insert(sv.vote.height, sv.vote.round, (&sv).into());
-                    }
-                }
-                for sv in grid.get_signed_pre_commits() {
-                    if next_auth.verify_signed_pre_commit(&sv).is_ok() {
-                        let _ = self.insert(sv.vote.height, sv.vote.round, (&sv).into());
-                    }
-                }
-            }
-        }
-        self.next_height(next_height);
     }
 
     // Return max vote_weight when insert signed_pre_vote/signed_pre_commit/signed_choke
@@ -249,16 +211,24 @@ impl<B: Blk> Drawer<B> {
 
     fn insert_pre_vote_qc(&mut self, pre_vote_qc: &PreVoteQC) {
         let hash = pre_vote_qc.vote.block_hash.clone();
-        self.pre_vote_qcs
-            .entry(hash)
-            .or_insert_with(|| pre_vote_qc.clone());
+        if let Some(qc) = self.pre_vote_qcs.get(&hash) {
+            if qc.vote.round < pre_vote_qc.vote.round {
+                self.pre_vote_qcs.insert(hash, pre_vote_qc.clone());
+            }
+        } else {
+            self.pre_vote_qcs.insert(hash, pre_vote_qc.clone());
+        }
     }
 
     fn insert_pre_commit_qc(&mut self, pre_commit_qc: &PreCommitQC) {
         let hash = pre_commit_qc.vote.block_hash.clone();
-        self.pre_commit_qcs
-            .entry(hash)
-            .or_insert_with(|| pre_commit_qc.clone());
+        if let Some(qc) = self.pre_commit_qcs.get(&hash) {
+            if qc.vote.round < pre_commit_qc.vote.round {
+                self.pre_commit_qcs.insert(hash, pre_commit_qc.clone());
+            }
+        } else {
+            self.pre_commit_qcs.insert(hash, pre_commit_qc.clone());
+        }
     }
 
     fn get_block(&self, hash: &Hash) -> Option<&B> {

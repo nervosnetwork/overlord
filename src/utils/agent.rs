@@ -88,9 +88,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         );
 
         if self.address == to {
-            self.to_net
-                .unbounded_send((Context::default(), msg))
-                .expect("Net Channel is down! It's meaningless to continue running");
+            self.send_to_myself(msg);
             Ok(())
         } else {
             self.adapter
@@ -107,13 +105,17 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
             msg
         );
 
-        self.to_net
-            .unbounded_send((Context::default(), msg.clone()))
-            .expect("Net Channel is down! It's meaningless to continue running");
+        self.send_to_myself(msg.clone());
         self.adapter
             .broadcast(Context::default(), msg)
             .await
             .map_err(OverlordError::local_broadcast)
+    }
+
+    pub fn send_to_myself(&self, msg: OverlordMsg<B>) {
+        self.to_net
+            .unbounded_send((Context::default(), msg))
+            .expect("Net Channel is down! It's meaningless to continue running");
     }
 
     pub fn handle_fetch(
