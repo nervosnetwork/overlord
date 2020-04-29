@@ -753,7 +753,7 @@ where
         let h = self.state.stage.height;
         let r = self.state.stage.round;
 
-        self.set_propose_timeout();
+        self.agent.set_step_timeout(self.state.stage.clone());
 
         if self.is_current_leader() {
             let signed_proposal = self.create_signed_proposal().await?;
@@ -992,15 +992,6 @@ where
             self.handle_choke_qc(choke_qc).await?;
         }
         Ok(())
-    }
-
-    fn set_propose_timeout(&self) {
-        if !self.is_current_leader() && self.state.stage.round == INIT_ROUND {
-            self.agent
-                .set_propose_timeout_of_round_0(self.state.stage.clone());
-        } else {
-            self.agent.set_step_timeout(self.state.stage.clone());
-        }
     }
 
     async fn transmit_vote(&self, vote: OverlordMsg<B>) -> OverlordResult<()> {

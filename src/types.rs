@@ -557,10 +557,10 @@ impl Default for TimeConfig {
     fn default() -> TimeConfig {
         TimeConfig {
             interval:         1000,
-            propose_ratio:    3,
-            pre_vote_ratio:   5,
-            pre_commit_ratio: 2,
-            brake_ratio:      3,
+            propose_ratio:    15,
+            pre_vote_ratio:   10,
+            pre_commit_ratio: 10,
+            brake_ratio:      7,
         }
     }
 }
