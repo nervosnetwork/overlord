@@ -423,7 +423,7 @@ where
                 hash:         qc.block_hash,
                 lock_round:   None,
                 round:        qc.round,
-                height:       self.height,
+                height:       qc.height,
                 wal_info:     None,
             })?;
         } else if let Some(qc) =
@@ -437,7 +437,7 @@ where
                     hash:         qc.block_hash,
                     lock_round:   None,
                     round:        qc.round,
-                    height:       self.height,
+                    height:       qc.height,
                     wal_info:     None,
                 })?;
             }
@@ -637,25 +637,25 @@ where
         ctx: Context,
         signed_proposal: SignedProposal<T>,
     ) -> ConsensusResult<()> {
-        let height = signed_proposal.proposal.height;
-        let round = signed_proposal.proposal.round;
+        let proposal_height = signed_proposal.proposal.height;
+        let proposal_round = signed_proposal.proposal.round;
 
         info!(
             "Overlord: state receive a signed proposal height {}, round {}, from {:?}, hash {:?}",
-            height,
-            round,
+            proposal_height,
+            proposal_round,
             hex::encode(signed_proposal.proposal.proposer.clone()),
             hex::encode(signed_proposal.proposal.block_hash.clone())
         );
 
-        if self.filter_signed_proposal(height, round, &signed_proposal)? {
+        if self.filter_signed_proposal(proposal_height, proposal_round, &signed_proposal)? {
             return Ok(());
         }
 
         trace::receive_proposal(
             "receive_signed_proposal".to_string(),
-            height,
-            round,
+            proposal_height,
+            proposal_round,
             hex::encode(signed_proposal.proposal.proposer.clone()),
             hex::encode(signed_proposal.proposal.block_hash.clone()),
             None,
@@ -664,7 +664,7 @@ where
         //  Verify proposal signature.
         let proposal = signed_proposal.proposal.clone();
         let signature = signed_proposal.signature.clone();
-        self.verify_proposer(height, round, &proposal.proposer)?;
+        self.verify_proposer(proposal_height, proposal_round, &proposal.proposer)?;
         self.verify_signature(
             self.util.hash(Bytes::from(encode(&proposal))),
             signature,
@@ -721,8 +721,8 @@ where
             source: TriggerSource::State,
             hash: hash.clone(),
             lock_round,
-            round,
-            height: self.height,
+            round: proposal_round,
+            height: proposal_height,
             wal_info: None,
         })?;
 
@@ -1053,8 +1053,8 @@ where
         _ctx: Context,
         aggregated_vote: AggregatedVote,
     ) -> ConsensusResult<()> {
-        let height = aggregated_vote.get_height();
-        let round = aggregated_vote.get_round();
+        let vote_height = aggregated_vote.get_height();
+        let vote_round = aggregated_vote.get_round();
         let qc_type = if aggregated_vote.is_prevote_qc() {
             VoteType::Prevote
         } else {
@@ -1064,28 +1064,28 @@ where
         info!(
             "Overlord: state receive an {:?} QC height {}, round {}, from {:?}, hash {:?}",
             qc_type,
-            height,
-            round,
+            vote_height,
+            vote_round,
             hex::encode(aggregated_vote.leader.clone()),
             hex::encode(aggregated_vote.block_hash.clone())
         );
 
         // If the vote height is lower than the current height, ignore it directly. If the vote
         // height is higher than current height, save it and return Ok;
-        match height.cmp(&self.height) {
+        match vote_height.cmp(&self.height) {
             Ordering::Less => {
                 debug!(
                     "Overlord: state receive an outdated QC, height {}, round {}",
-                    height, round,
+                    vote_height, vote_round,
                 );
                 return Ok(());
             }
 
             Ordering::Greater => {
-                if self.height + FUTURE_HEIGHT_GAP > height && round < FUTURE_ROUND_GAP {
+                if self.height + FUTURE_HEIGHT_GAP > vote_height && vote_round < FUTURE_ROUND_GAP {
                     debug!(
                         "Overlord: state receive a future QC, height {}, round {}",
-                        height, round,
+                        vote_height, vote_round,
                     );
                     self.votes.set_qc(aggregated_vote);
                 } else {
@@ -1098,20 +1098,20 @@ where
         }
 
         // State do not handle outdated prevote QC.
-        if qc_type == VoteType::Prevote && round < self.round {
+        if qc_type == VoteType::Prevote && vote_round < self.round {
             debug!("Overlord: state receive a outdated prevote qc.");
             return Ok(());
         } else if qc_type == VoteType::Precommit
             && aggregated_vote.block_hash.is_empty()
-            && round < self.round
+            && vote_round < self.round
         {
             return Ok(());
         }
 
         trace::receive_vote(
             "receive_aggregated_vote".to_string(),
-            height,
-            round,
+            vote_height,
+            vote_round,
             hex::encode(aggregated_vote.leader.clone()),
             hex::encode(aggregated_vote.block_hash.clone()),
             Some(json!({ "qc type": qc_type.to_string() })),
@@ -1143,12 +1143,12 @@ where
 
         self.state_machine.trigger(SMRTrigger {
             trigger_type: qc_type.into(),
-            source: TriggerSource::State,
-            hash: qc_hash,
-            lock_round: None,
-            round,
-            height: self.height,
-            wal_info: None,
+            source:       TriggerSource::State,
+            hash:         qc_hash,
+            lock_round:   None,
+            round:        vote_round,
+            height:       vote_height,
+            wal_info:     None,
         })?;
         Ok(())
     }
@@ -1838,8 +1838,8 @@ where
             trigger_type: TriggerType::WalInfo,
             source:       TriggerSource::State,
             hash:         Hash::new(),
-            round:        self.round,
             lock_round:   None,
+            round:        self.round,
             height:       self.height,
             wal_info:     Some(wal_info.into_smr_base()),
         })?;
