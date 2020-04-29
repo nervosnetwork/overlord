@@ -1288,9 +1288,8 @@ async fn recover_propose_prepare_and_config<A: Adapter<B, S>, B: Blk, S: St>(
     for h in last_exec_height..=last_commit_height {
         let exec_result = get_exec_result(adapter, ctx.clone(), h).await;
         max_exec_behind = exec_result.consensus_config.max_exec_behind;
-        if h == last_exec_height {
-            last_exec_result = exec_result;
-        } else {
+        last_exec_result = exec_result.clone();
+        if h > last_exec_height {
             exec_results.push(exec_result);
         }
     }

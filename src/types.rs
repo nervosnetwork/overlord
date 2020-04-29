@@ -473,10 +473,7 @@ impl FetchedFullBlock {
 }
 
 #[derive(Clone, Debug, Display, Default)]
-#[display(
-    fmt = "{{ block_states: {} }}",
-    block_states
-)]
+#[display(fmt = "{{ block_states: {} }}", block_states)]
 pub struct ExecResult<S: St> {
     pub consensus_config: OverlordConfig,
     pub block_states:     BlockState<S>,
