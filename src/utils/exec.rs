@@ -8,7 +8,7 @@ use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use futures::stream::StreamExt;
 
 use crate::utils::agent::{WrappedExecRequest, WrappedExecResult};
-use crate::{Adapter, Blk, Height, St};
+use crate::{Adapter, Blk, Height, St, INIT_HEIGHT};
 
 #[derive(Display)]
 #[display(
@@ -45,7 +45,8 @@ pub struct Exec<A: Adapter<B, S>, B: Blk, S: St> {
     from_smr: UnboundedReceiver<WrappedExecRequest<S>>,
     to_smr:   UnboundedSender<WrappedExecResult<S>>,
 
-    last_exec_resp: Option<S>,
+    last_exec_resp:   Option<S>,
+    last_exec_height: Height,
 
     phantom: PhantomData<B>,
 }
@@ -61,6 +62,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> Exec<A, B, S> {
             from_smr,
             to_smr,
             last_exec_resp: None,
+            last_exec_height: INIT_HEIGHT,
             phantom: PhantomData,
         }
     }
@@ -79,7 +81,9 @@ impl<A: Adapter<B, S>, B: Blk, S: St> Exec<A, B, S> {
     }
 
     async fn save_and_exec_block(&mut self, ctx: Context, request: ExecRequest<S>) {
-        if self.last_exec_resp.is_none() {
+        let height = request.height;
+        // sync block will make exec's last_exec_height < height - 1
+        if self.last_exec_resp.is_none() || self.last_exec_height < height - 1 {
             self.last_exec_resp = Some(request.last_exec_resp.clone());
         }
 
@@ -87,7 +91,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> Exec<A, B, S> {
             .adapter
             .exec_full_block(
                 ctx.clone(),
-                request.height,
+                height,
                 request.full_block,
                 self.last_exec_resp.clone().unwrap(),
                 request.last_commit_exec_resp,
@@ -96,6 +100,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> Exec<A, B, S> {
             .expect("Execution is down! It's meaningless to continue running");
 
         self.last_exec_resp = Some(exec_result.block_states.state.clone());
+        self.last_exec_height = height;
 
         self.to_smr
             .unbounded_send((ctx, exec_result))
