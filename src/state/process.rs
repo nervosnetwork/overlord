@@ -1127,7 +1127,7 @@ where
 
         // Check if the block hash has been verified.
         let qc_hash = aggregated_vote.block_hash.clone();
-        self.votes.set_qc(aggregated_vote.clone());
+        self.votes.set_qc(aggregated_vote);
 
         if !qc_hash.is_empty() && !self.try_get_full_txs(&qc_hash) {
             return Ok(());
