@@ -65,7 +65,6 @@ pub struct State<T: Codec, F: Consensus<T>, C: Crypto, W: Wal> {
     block_interval:      u64,
     consensus_power:     bool,
     stopped:             bool,
-    height_msg_set:      HashSet<Bytes>,
 
     resp_tx:  UnboundedSender<VerifyResp>,
     function: Arc<F>,
@@ -112,7 +111,6 @@ where
             block_interval:      interval,
             consensus_power:     false,
             stopped:             false,
-            height_msg_set:      HashSet::new(),
 
             resp_tx:  tx,
             function: consensus,
@@ -497,7 +495,6 @@ where
         self.votes.flush(new_height - 1);
         self.hash_with_block.clear();
         self.chokes.clear();
-        self.height_msg_set.clear();
 
         // Re-check proposals that have been in the proposal collector, of the current height.
         if let Some(proposals) = self.proposals.get_height_proposals(self.height) {
@@ -640,10 +637,6 @@ where
         ctx: Context,
         signed_proposal: SignedProposal<T>,
     ) -> ConsensusResult<()> {
-        if !self.need_gossip(rlp::encode(&signed_proposal)) {
-            return Ok(());
-        }
-
         let height = signed_proposal.proposal.height;
         let round = signed_proposal.proposal.round;
 
@@ -716,12 +709,6 @@ where
         self.proposals
             .insert(self.height, self.round, signed_proposal.clone())?;
 
-        self.broadcast(
-            ctx.clone(),
-            OverlordMsg::SignedProposal(signed_proposal.clone()),
-        )
-        .await;
-
         info!(
             "Overlord: state trigger SMR proposal height {}, round {}, hash {:?}",
             self.height,
@@ -789,7 +776,7 @@ where
                 hex::encode(hash)
             );
 
-            self.broadcast(Context::new(), OverlordMsg::SignedVote(signed_vote))
+            self.transmit(Context::new(), OverlordMsg::SignedVote(signed_vote))
                 .await;
         }
 
@@ -933,10 +920,6 @@ where
         ctx: Context,
         signed_vote: SignedVote,
     ) -> ConsensusResult<()> {
-        if !self.need_gossip(rlp::encode(&signed_vote)) {
-            return Ok(());
-        }
-
         let height = signed_vote.get_height();
         let round = signed_vote.get_round();
         let vote_type = if signed_vote.is_prevote() {
@@ -955,12 +938,6 @@ where
         );
 
         if self.filter_message(height, round) {
-            return Ok(());
-        }
-
-        if !self.is_leader {
-            self.broadcast(ctx.clone(), OverlordMsg::SignedVote(signed_vote.clone()))
-                .await;
             return Ok(());
         }
 
@@ -1073,13 +1050,9 @@ where
     /// 4. Other cases, return `Ok(())` directly.
     async fn handle_aggregated_vote(
         &mut self,
-        ctx: Context,
+        _ctx: Context,
         aggregated_vote: AggregatedVote,
     ) -> ConsensusResult<()> {
-        if !self.need_gossip(rlp::encode(&aggregated_vote)) {
-            return Ok(());
-        }
-
         let height = aggregated_vote.get_height();
         let round = aggregated_vote.get_round();
         let qc_type = if aggregated_vote.is_prevote_qc() {
@@ -1155,9 +1128,6 @@ where
         // Check if the block hash has been verified.
         let qc_hash = aggregated_vote.block_hash.clone();
         self.votes.set_qc(aggregated_vote.clone());
-
-        self.broadcast(ctx, OverlordMsg::AggregatedVote(aggregated_vote.clone()))
-            .await;
 
         if !qc_hash.is_empty() && !self.try_get_full_txs(&qc_hash) {
             return Ok(());
@@ -1488,6 +1458,7 @@ where
                 self.height, self.round
             );
             self.is_leader = true;
+            self.leader_address = self.address.clone();
             return Ok(true);
         }
 
@@ -1634,7 +1605,7 @@ where
         Ok(())
     }
 
-    async fn _transmit(&self, ctx: Context, msg: OverlordMsg<T>) {
+    async fn transmit(&self, ctx: Context, msg: OverlordMsg<T>) {
         debug!(
             "Overlord: state transmit a message to leader height {}, round {}",
             self.height, self.round
@@ -1985,11 +1956,6 @@ where
         }
 
         false
-    }
-
-    fn need_gossip(&mut self, msg: Vec<u8>) -> bool {
-        let hash = self.util.hash(Bytes::from(msg));
-        self.height_msg_set.insert(hash)
     }
 }
 
