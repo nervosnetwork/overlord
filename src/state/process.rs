@@ -259,7 +259,8 @@ where
                     trigger_type: TriggerType::Stop,
                     source:       TriggerSource::State,
                     hash:         Hash::new(),
-                    round:        Some(self.round),
+                    lock_round:   None,
+                    round:        self.round,
                     height:       self.height,
                     wal_info:     None,
                 })?;
@@ -395,7 +396,9 @@ where
         let block_hash = resp.block_hash.clone();
         info!(
             "Overlord: state receive a verify response true, height {}, round {}, hash {:?}",
-            resp.height, resp.round, block_hash
+            resp.height,
+            resp.round,
+            hex::encode(block_hash.clone())
         );
 
         trace::custom(
@@ -418,8 +421,9 @@ where
                 trigger_type: TriggerType::PrecommitQC,
                 source:       TriggerSource::State,
                 hash:         qc.block_hash,
-                round:        Some(self.round),
-                height:       self.height,
+                lock_round:   None,
+                round:        qc.round,
+                height:       qc.height,
                 wal_info:     None,
             })?;
         } else if let Some(qc) =
@@ -431,8 +435,9 @@ where
                     trigger_type: TriggerType::PrevoteQC,
                     source:       TriggerSource::State,
                     hash:         qc.block_hash,
-                    round:        Some(self.round),
-                    height:       self.height,
+                    lock_round:   None,
+                    round:        qc.round,
+                    height:       qc.height,
                     wal_info:     None,
                 })?;
             }
@@ -613,15 +618,15 @@ where
 
         self.state_machine.trigger(SMRTrigger {
             trigger_type: TriggerType::Proposal,
-            source:       TriggerSource::State,
-            hash:         hash.clone(),
-            round:        lock_round,
-            height:       self.height,
-            wal_info:     None,
+            source: TriggerSource::State,
+            hash: hash.clone(),
+            lock_round,
+            round: self.round,
+            height: self.height,
+            wal_info: None,
         })?;
 
         self.check_block(ctx, hash, block).await;
-        // self.vote_process(VoteType::Prevote).await?;
         Ok(())
     }
 
@@ -632,25 +637,25 @@ where
         ctx: Context,
         signed_proposal: SignedProposal<T>,
     ) -> ConsensusResult<()> {
-        let height = signed_proposal.proposal.height;
-        let round = signed_proposal.proposal.round;
+        let proposal_height = signed_proposal.proposal.height;
+        let proposal_round = signed_proposal.proposal.round;
 
         info!(
             "Overlord: state receive a signed proposal height {}, round {}, from {:?}, hash {:?}",
-            height,
-            round,
+            proposal_height,
+            proposal_round,
             hex::encode(signed_proposal.proposal.proposer.clone()),
             hex::encode(signed_proposal.proposal.block_hash.clone())
         );
 
-        if self.filter_signed_proposal(height, round, &signed_proposal)? {
+        if self.filter_signed_proposal(proposal_height, proposal_round, &signed_proposal)? {
             return Ok(());
         }
 
         trace::receive_proposal(
             "receive_signed_proposal".to_string(),
-            height,
-            round,
+            proposal_height,
+            proposal_round,
             hex::encode(signed_proposal.proposal.proposer.clone()),
             hex::encode(signed_proposal.proposal.block_hash.clone()),
             None,
@@ -659,7 +664,7 @@ where
         //  Verify proposal signature.
         let proposal = signed_proposal.proposal.clone();
         let signature = signed_proposal.signature.clone();
-        self.verify_proposer(height, round, &proposal.proposer)?;
+        self.verify_proposer(proposal_height, proposal_round, &proposal.proposer)?;
         self.verify_signature(
             self.util.hash(Bytes::from(encode(&proposal))),
             signature,
@@ -702,7 +707,7 @@ where
         let block = proposal.content.clone();
         self.hash_with_block.insert(hash.clone(), proposal.content);
         self.proposals
-            .insert(self.height, self.round, signed_proposal)?;
+            .insert(self.height, self.round, signed_proposal.clone())?;
 
         info!(
             "Overlord: state trigger SMR proposal height {}, round {}, hash {:?}",
@@ -713,11 +718,12 @@ where
 
         self.state_machine.trigger(SMRTrigger {
             trigger_type: TriggerType::Proposal,
-            source:       TriggerSource::State,
-            hash:         hash.clone(),
-            round:        lock_round,
-            height:       self.height,
-            wal_info:     None,
+            source: TriggerSource::State,
+            hash: hash.clone(),
+            lock_round,
+            round: proposal_round,
+            height: proposal_height,
+            wal_info: None,
         })?;
 
         debug!("Overlord: state check the whole block");
@@ -969,7 +975,7 @@ where
         }
 
         self.votes
-            .insert_vote(signed_vote.get_hash(), signed_vote, voter);
+            .insert_vote(signed_vote.get_hash(), signed_vote.clone(), voter);
 
         if height > self.height {
             return Ok(());
@@ -1001,7 +1007,8 @@ where
             hex::encode(block_hash.clone())
         );
 
-        self.broadcast(ctx, OverlordMsg::AggregatedVote(qc)).await;
+        self.broadcast(ctx, OverlordMsg::AggregatedVote(qc.clone()))
+            .await;
 
         if !self.try_get_full_txs(&block_hash) {
             return Ok(());
@@ -1019,8 +1026,9 @@ where
             trigger_type: vote_type.clone().into(),
             source:       TriggerSource::State,
             hash:         block_hash,
-            round:        Some(round),
-            height:       self.height,
+            lock_round:   None,
+            round:        qc.round,
+            height:       qc.height,
             wal_info:     None,
         })?;
         Ok(())
@@ -1045,8 +1053,8 @@ where
         _ctx: Context,
         aggregated_vote: AggregatedVote,
     ) -> ConsensusResult<()> {
-        let height = aggregated_vote.get_height();
-        let round = aggregated_vote.get_round();
+        let vote_height = aggregated_vote.get_height();
+        let vote_round = aggregated_vote.get_round();
         let qc_type = if aggregated_vote.is_prevote_qc() {
             VoteType::Prevote
         } else {
@@ -1056,28 +1064,28 @@ where
         info!(
             "Overlord: state receive an {:?} QC height {}, round {}, from {:?}, hash {:?}",
             qc_type,
-            height,
-            round,
+            vote_height,
+            vote_round,
             hex::encode(aggregated_vote.leader.clone()),
             hex::encode(aggregated_vote.block_hash.clone())
         );
 
         // If the vote height is lower than the current height, ignore it directly. If the vote
         // height is higher than current height, save it and return Ok;
-        match height.cmp(&self.height) {
+        match vote_height.cmp(&self.height) {
             Ordering::Less => {
                 debug!(
                     "Overlord: state receive an outdated QC, height {}, round {}",
-                    height, round,
+                    vote_height, vote_round,
                 );
                 return Ok(());
             }
 
             Ordering::Greater => {
-                if self.height + FUTURE_HEIGHT_GAP > height && round < FUTURE_ROUND_GAP {
+                if self.height + FUTURE_HEIGHT_GAP > vote_height && vote_round < FUTURE_ROUND_GAP {
                     debug!(
                         "Overlord: state receive a future QC, height {}, round {}",
-                        height, round,
+                        vote_height, vote_round,
                     );
                     self.votes.set_qc(aggregated_vote);
                 } else {
@@ -1090,20 +1098,20 @@ where
         }
 
         // State do not handle outdated prevote QC.
-        if qc_type == VoteType::Prevote && round < self.round {
+        if qc_type == VoteType::Prevote && vote_round < self.round {
             debug!("Overlord: state receive a outdated prevote qc.");
             return Ok(());
         } else if qc_type == VoteType::Precommit
             && aggregated_vote.block_hash.is_empty()
-            && round < self.round
+            && vote_round < self.round
         {
             return Ok(());
         }
 
         trace::receive_vote(
             "receive_aggregated_vote".to_string(),
-            height,
-            round,
+            vote_height,
+            vote_round,
             hex::encode(aggregated_vote.leader.clone()),
             hex::encode(aggregated_vote.block_hash.clone()),
             Some(json!({ "qc type": qc_type.to_string() })),
@@ -1120,6 +1128,7 @@ where
         // Check if the block hash has been verified.
         let qc_hash = aggregated_vote.block_hash.clone();
         self.votes.set_qc(aggregated_vote);
+
         if !qc_hash.is_empty() && !self.try_get_full_txs(&qc_hash) {
             return Ok(());
         }
@@ -1136,8 +1145,9 @@ where
             trigger_type: qc_type.into(),
             source:       TriggerSource::State,
             hash:         qc_hash,
-            round:        Some(round),
-            height:       self.height,
+            lock_round:   None,
+            round:        vote_round,
+            height:       vote_height,
             wal_info:     None,
         })?;
         Ok(())
@@ -1172,7 +1182,8 @@ where
                     trigger_type: qc.vote_type.into(),
                     source:       TriggerSource::State,
                     hash:         block_hash,
-                    round:        Some(self.round),
+                    lock_round:   None,
+                    round:        self.round,
                     height:       self.height,
                     wal_info:     None,
                 })?;
@@ -1209,7 +1220,8 @@ where
                 trigger_type: vote_type.clone().into(),
                 source:       TriggerSource::State,
                 hash:         block_hash,
-                round:        Some(self.round),
+                lock_round:   None,
+                round:        self.round,
                 height:       self.height,
                 wal_info:     None,
             })?;
@@ -1320,7 +1332,8 @@ where
             trigger_type: TriggerType::ContinueRound,
             source:       TriggerSource::State,
             hash:         Hash::new(),
-            round:        Some(choke.round + 1),
+            lock_round:   None,
+            round:        choke.round + 1,
             height:       self.height,
             wal_info:     None,
         })?;
@@ -1444,6 +1457,8 @@ where
                 "Overlord: state self become leader, height {}, round {}",
                 self.height, self.round
             );
+            self.is_leader = true;
+            self.leader_address = self.address.clone();
             return Ok(true);
         }
 
@@ -1454,6 +1469,7 @@ where
             self.round
         );
         self.leader_address = proposer;
+        self.is_leader = false;
         Ok(false)
     }
 
@@ -1675,7 +1691,8 @@ where
                 trigger_type: TriggerType::ContinueRound,
                 source:       TriggerSource::State,
                 hash:         Hash::new(),
-                round:        Some(round + 1),
+                round:        round + 1,
+                lock_round:   None,
                 height:       self.height,
                 wal_info:     None,
             })?;
@@ -1821,7 +1838,8 @@ where
             trigger_type: TriggerType::WalInfo,
             source:       TriggerSource::State,
             hash:         Hash::new(),
-            round:        None,
+            lock_round:   None,
+            round:        self.round,
             height:       self.height,
             wal_info:     Some(wal_info.into_smr_base()),
         })?;

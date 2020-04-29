@@ -49,9 +49,13 @@ impl Stream for StateMachine {
                     TriggerType::NewHeight(status) => {
                         Some(self.handle_new_height(status, msg.source))
                     }
-                    TriggerType::Proposal => {
-                        Some(self.handle_proposal(msg.hash, msg.round, msg.source, msg.height))
-                    }
+                    TriggerType::Proposal => Some(self.handle_proposal(
+                        msg.hash,
+                        msg.round,
+                        msg.lock_round,
+                        msg.source,
+                        msg.height,
+                    )),
                     TriggerType::PrevoteQC => {
                         Some(self.handle_prevote(msg.hash, msg.round, msg.source, msg.height))
                     }
@@ -98,9 +102,7 @@ impl StateMachine {
         (state_machine, Event::new(rx_state), Event::new(rx_timer))
     }
 
-    fn handle_brake_timeout(&mut self, height: u64, round: Option<u64>) -> ConsensusResult<()> {
-        let round = round.ok_or_else(|| ConsensusError::BrakeErr("No round".to_string()))?;
-
+    fn handle_brake_timeout(&mut self, height: u64, round: u64) -> ConsensusResult<()> {
         if height != self.height || round != self.round {
             Ok(())
         } else {
@@ -116,9 +118,7 @@ impl StateMachine {
         }
     }
 
-    fn handle_continue_round(&mut self, height: u64, round: Option<u64>) -> ConsensusResult<()> {
-        let round = round.ok_or_else(|| ConsensusError::BrakeErr("No new round".to_string()))?;
-
+    fn handle_continue_round(&mut self, height: u64, round: u64) -> ConsensusResult<()> {
         if height != self.height || round <= self.round {
             return Ok(());
         }
@@ -192,11 +192,12 @@ impl StateMachine {
     fn handle_proposal(
         &mut self,
         proposal_hash: Hash,
+        round: u64,
         lock_round: Option<u64>,
         source: TriggerSource,
         height: u64,
     ) -> ConsensusResult<()> {
-        if self.height != height {
+        if self.height != height || self.round != round {
             return Ok(());
         }
 
@@ -276,13 +277,10 @@ impl StateMachine {
     fn handle_prevote(
         &mut self,
         prevote_hash: Hash,
-        prevote_round: Option<u64>,
+        prevote_round: u64,
         source: TriggerSource,
         height: u64,
     ) -> ConsensusResult<()> {
-        let prevote_round =
-            prevote_round.ok_or_else(|| ConsensusError::PrevoteErr("No vote round".to_string()))?;
-
         if self.height != height {
             return Ok(());
         }
@@ -292,8 +290,9 @@ impl StateMachine {
         }
 
         info!(
-            "Overlord: SMR triggered by prevote QC hash {:?} from {:?}, height {}, round {}",
+            "Overlord: SMR triggered by prevote QC hash {:?} qc round {} from {:?}, height {}, round {}",
             hex::encode(prevote_hash.clone()),
+            prevote_round,
             source,
             self.height,
             self.round
@@ -326,16 +325,20 @@ impl StateMachine {
         // only prevote QCs from state will update the PoLC. If the prevote QC is from timer, goto
         // precommit step directly.
         self.check()?;
-        let vote_round = prevote_round;
-        self.update_polc(prevote_hash, vote_round);
 
-        if vote_round > self.round {
+        if prevote_round < self.round {
+            return Ok(());
+        }
+
+        self.update_polc(prevote_hash, prevote_round);
+
+        if prevote_round > self.round {
             let (lock_round, lock_proposal) = self
                 .lock
                 .clone()
                 .map_or_else(|| (None, None), |lock| (Some(lock.round), Some(lock.hash)));
 
-            self.round = vote_round;
+            self.round = prevote_round;
             self.throw_event(SMREvent::NewRoundInfo {
                 height: self.height,
                 round: self.round + 1,
@@ -343,7 +346,7 @@ impl StateMachine {
                 lock_proposal,
                 new_interval: None,
                 new_config: None,
-                from_where: FromWhere::PrevoteQC(vote_round),
+                from_where: FromWhere::PrevoteQC(prevote_round),
             })?;
             self.goto_next_round();
         }
@@ -371,13 +374,10 @@ impl StateMachine {
     fn handle_precommit(
         &mut self,
         precommit_hash: Hash,
-        precommit_round: Option<u64>,
+        precommit_round: u64,
         source: TriggerSource,
         height: u64,
     ) -> ConsensusResult<()> {
-        let precommit_round = precommit_round
-            .ok_or_else(|| ConsensusError::PrevoteErr("No vote round".to_string()))?;
-
         if self.height != height {
             return Ok(());
         }
@@ -387,8 +387,9 @@ impl StateMachine {
         }
 
         info!(
-            "Overlord: SMR triggered by precommit QC hash {:?}, from {:?}, height {}, round {}",
+            "Overlord: SMR triggered by precommit QC hash {:?} qc round {} from {:?}, height {}, round {}",
             hex::encode(precommit_hash.clone()),
+            precommit_round,
             source,
             self.height,
             self.round
@@ -416,6 +417,10 @@ impl StateMachine {
                 lock_round,
             });
         } else if precommit_hash.is_empty() {
+            if precommit_round < self.round {
+                return Ok(());
+            }
+
             self.round = precommit_round;
             self.throw_event(SMREvent::NewRoundInfo {
                 height: self.height,
@@ -438,7 +443,7 @@ impl StateMachine {
     }
 
     fn throw_event(&mut self, event: SMREvent) -> ConsensusResult<()> {
-        info!("Overlord: SMR throw {:?} event", event);
+        info!("Overlord: SMR throw {} event", event);
         self.event.0.unbounded_send(event.clone()).map_err(|err| {
             ConsensusError::ThrowEventErr(format!("event: {}, error: {:?}", event.clone(), err))
         })?;
@@ -579,19 +584,6 @@ impl StateMachine {
         //     )));
         // }
         Ok(())
-    }
-
-    #[cfg(test)]
-    pub fn set_status(&mut self, round: u64, step: Step, proposal_hash: Hash, lock: Option<Lock>) {
-        self.round = round;
-        self.goto_step(step);
-        self.set_proposal(proposal_hash);
-        self.lock = lock;
-    }
-
-    #[cfg(test)]
-    pub fn get_lock(&mut self) -> Option<Lock> {
-        self.lock.clone()
     }
 }
 

@@ -106,7 +106,12 @@ pub enum SMREvent {
     /// New round event,
     /// for state: update round,
     /// for timer: set a propose step timer. If `round == 0`, set an extra total height timer.
-    #[display(fmt = "New round {} event", round)]
+    #[display(
+        fmt = "New round {} event, lock round {:?}, lock proposal {:?}",
+        round,
+        lock_round,
+        lock_proposal
+    )]
     NewRoundInfo {
         height:        u64,
         round:         u64,
@@ -120,7 +125,13 @@ pub enum SMREvent {
     /// Prevote event,
     /// for state: transmit a prevote vote,
     /// for timer: set a prevote step timer.
-    #[display(fmt = "Prevote event")]
+    #[display(
+        fmt = "Prevote event height {}, round {}, block hash {:?}, lock round {:?}",
+        height,
+        round,
+        "hex::encode(block_hash)",
+        lock_round
+    )]
     PrevoteVote {
         height:     u64,
         round:      u64,
@@ -131,7 +142,13 @@ pub enum SMREvent {
     /// Precommit event,
     /// for state: transmit a precommit vote,
     /// for timer: set a precommit step timer.
-    #[display(fmt = "Precommit event")]
+    #[display(
+        fmt = "Precommit event height {}, round {}, block hash {:?}, lock round {:?}",
+        height,
+        round,
+        "hex::encode(block_hash)",
+        lock_round
+    )]
     PrecommitVote {
         height:     u64,
         round:      u64,
@@ -141,13 +158,18 @@ pub enum SMREvent {
     /// Commit event,
     /// for state: do commit,
     /// for timer: do nothing.
-    #[display(fmt = "Commit event")]
+    #[display(fmt = "Commit event hash {:?}", "hex::encode(_0)")]
     Commit(Hash),
 
     /// Brake event,
     /// for state: broadcast Choke message,
     /// for timer: set a retry timeout timer.
-    #[display(fmt = "Brake event")]
+    #[display(
+        fmt = "Brake event height {}, round {}, lock round {:?}",
+        height,
+        round,
+        lock_round
+    )]
     Brake {
         height:     u64,
         round:      u64,
@@ -254,7 +276,9 @@ pub struct SMRTrigger {
     /// SMR trigger hash, the meaning shown above.
     pub hash: Hash,
     /// SMR trigger round, the meaning shown above.
-    pub round: Option<u64>,
+    pub lock_round: Option<u64>,
+    ///
+    pub round: u64,
     /// **NOTICE**: This field is only for timer to signed timer's height. Therefore, the SMR can
     /// filter out the outdated timers.
     pub height: u64,

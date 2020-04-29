@@ -150,7 +150,7 @@ impl Timer {
             interval *= 2u32.pow(coef);
         }
 
-        info!("Overlord: timer set {:?} timer", event);
+        info!("Overlord: timer set {} timer", event);
         let smr_timer = TimeoutInfo::new(interval, event, self.sender.clone());
 
         tokio::spawn(async move {
@@ -166,7 +166,7 @@ impl Timer {
                 if height < self.height || round < self.round {
                     return Ok(());
                 }
-                (TriggerType::Proposal, None, height)
+                (TriggerType::Proposal, round, height)
             }
 
             SMREvent::PrevoteVote {
@@ -175,7 +175,7 @@ impl Timer {
                 if height < self.height {
                     return Ok(());
                 }
-                (TriggerType::PrevoteQC, Some(round), height)
+                (TriggerType::PrevoteQC, round, height)
             }
 
             SMREvent::PrecommitVote {
@@ -184,14 +184,14 @@ impl Timer {
                 if height < self.height {
                     return Ok(());
                 }
-                (TriggerType::PrecommitQC, Some(round), height)
+                (TriggerType::PrecommitQC, round, height)
             }
 
             SMREvent::Brake {height, round, ..} => {
                 if height < self.height {
                     return Ok(());
                 }
-                (TriggerType::BrakeTimeout, Some(round), height)
+                (TriggerType::BrakeTimeout, round, height)
             }
 
             _ => return Err(ConsensusError::TimerErr("No commit timer".to_string())),
@@ -204,6 +204,7 @@ impl Timer {
             hash: Hash::new(),
             trigger_type,
             round,
+            lock_round:   None,
             height,
             wal_info: None,
         })
@@ -284,12 +285,13 @@ mod test {
         }
     }
 
-    fn gen_output(trigger_type: TriggerType, round: Option<u64>, height: u64) -> SMRTrigger {
+    fn gen_output(trigger_type: TriggerType, round: u64, height: u64) -> SMRTrigger {
         SMRTrigger {
             source: TriggerSource::Timer,
             hash: Hash::new(),
             trigger_type,
             round,
+            lock_round: None,
             height,
             wal_info: None,
         }
@@ -308,7 +310,7 @@ mod test {
                 new_config:    None,
                 from_where:    FromWhere::PrecommitQC(0),
             },
-            gen_output(TriggerType::Proposal, None, 0),
+            gen_output(TriggerType::Proposal, 0, 0),
         )
         .await;
 
@@ -320,7 +322,7 @@ mod test {
                 block_hash: Hash::new(),
                 lock_round: None,
             },
-            gen_output(TriggerType::PrevoteQC, Some(0), 0),
+            gen_output(TriggerType::PrevoteQC, 0, 0),
         )
         .await;
 
@@ -332,7 +334,7 @@ mod test {
                 block_hash: Hash::new(),
                 lock_round: None,
             },
-            gen_output(TriggerType::PrecommitQC, Some(0), 0),
+            gen_output(TriggerType::PrecommitQC, 0, 0),
         )
         .await;
     }
@@ -388,9 +390,9 @@ mod test {
         let mut count = 1u32;
         let mut output = Vec::new();
         let predict = vec![
-            gen_output(TriggerType::PrecommitQC, Some(0), 0),
-            gen_output(TriggerType::PrevoteQC, Some(0), 0),
-            gen_output(TriggerType::Proposal, None, 0),
+            gen_output(TriggerType::PrecommitQC, 0, 0),
+            gen_output(TriggerType::PrevoteQC, 0, 0),
+            gen_output(TriggerType::Proposal, 0, 0),
         ];
 
         while let Some(res) = trigger_rx.next().await {
