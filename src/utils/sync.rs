@@ -87,7 +87,7 @@ impl<B: Blk> Sync<B> {
 
     pub fn handle_sync_response(&mut self) -> Sync<B> {
         let old_sync = self.clone();
-        self.state = SyncStat::Off;
+        self.turn_off_sync();
         old_sync
     }
 
@@ -96,7 +96,7 @@ impl<B: Blk> Sync<B> {
             return Err(OverlordError::debug_old());
         }
         let old_sync = self.clone();
-        self.state = SyncStat::Off;
+        self.turn_off_sync();
         Ok(old_sync)
     }
 
@@ -104,5 +104,9 @@ impl<B: Blk> Sync<B> {
         let old_sync = self.clone();
         self.black_list.remove(address);
         old_sync
+    }
+
+    pub fn turn_off_sync(&mut self) {
+        self.state = SyncStat::Off;
     }
 }

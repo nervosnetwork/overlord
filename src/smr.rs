@@ -720,6 +720,16 @@ where
                 self.sync,
             );
 
+            let sync_height = self.state.stage.height;
+            let prepare_height = self.prepare.last_exec_result.block_states.height;
+            if prepare_height != sync_height - 1 {
+                self.sync.turn_off_sync();
+                return Err(OverlordError::warn_not_ready(format!(
+                    "prepare_height != sync_height - 1, {} != {} - 1",
+                    prepare_height, sync_height
+                )));
+            }
+
             let block = &full_block_with_proof.block;
             let proof = &full_block_with_proof.proof;
             let block_hash = block.get_block_hash().map_err(OverlordError::byz_hash)?;
@@ -737,7 +747,7 @@ where
             self.adapter
                 .save_full_block_with_proof(
                     ctx.clone(),
-                    self.state.stage.height,
+                    sync_height,
                     full_block.clone(),
                     proof.clone(),
                     true,

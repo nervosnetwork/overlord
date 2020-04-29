@@ -45,6 +45,8 @@ pub struct Exec<A: Adapter<B, S>, B: Blk, S: St> {
     from_smr: UnboundedReceiver<WrappedExecRequest<S>>,
     to_smr:   UnboundedSender<WrappedExecResult<S>>,
 
+    last_exec_resp: Option<S>,
+
     phantom: PhantomData<B>,
 }
 
@@ -58,6 +60,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> Exec<A, B, S> {
             adapter: Arc::<A>::clone(adapter),
             from_smr,
             to_smr,
+            last_exec_resp: None,
             phantom: PhantomData,
         }
     }
@@ -75,18 +78,25 @@ impl<A: Adapter<B, S>, B: Blk, S: St> Exec<A, B, S> {
         });
     }
 
-    async fn save_and_exec_block(&self, ctx: Context, request: ExecRequest<S>) {
+    async fn save_and_exec_block(&mut self, ctx: Context, request: ExecRequest<S>) {
+        if self.last_exec_resp.is_none() {
+            self.last_exec_resp = Some(request.last_exec_resp.clone());
+        }
+
         let exec_result = self
             .adapter
             .exec_full_block(
                 ctx.clone(),
                 request.height,
                 request.full_block,
-                request.last_exec_resp,
+                self.last_exec_resp.clone().unwrap(),
                 request.last_commit_exec_resp,
             )
             .await
             .expect("Execution is down! It's meaningless to continue running");
+
+        self.last_exec_resp = Some(exec_result.block_states.state.clone());
+
         self.to_smr
             .unbounded_send((ctx, exec_result))
             .expect("Exec Channel is down! It's meaningless to continue running");

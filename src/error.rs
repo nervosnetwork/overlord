@@ -355,6 +355,13 @@ impl OverlordError {
             info: ErrorInfo::ExecBlock(e),
         }
     }
+
+    pub fn warn_not_ready(str: String) -> Self {
+        OverlordError {
+            kind: ErrorKind::Warn,
+            info: ErrorInfo::NotReady(str),
+        }
+    }
 }
 
 impl Error for OverlordError {}
