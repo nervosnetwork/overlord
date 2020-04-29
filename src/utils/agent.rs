@@ -123,9 +123,9 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         fetch_result: OverlordResult<FetchedFullBlock>,
     ) -> OverlordResult<FetchedFullBlock> {
         if let Err(error) = fetch_result {
-            if let ErrorInfo::FetchFullBlock(hash) = error.info {
+            if let ErrorInfo::FetchFullBlock(hash, e) = error.info {
                 self.fetch_set.remove(&hash);
-                return Err(OverlordError::net_fetch(hash));
+                return Err(OverlordError::net_fetch(hash, e));
             }
             unreachable!()
         } else {
@@ -156,7 +156,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
                 .fetch_full_block(Context::default(), block)
                 .await
                 .map(|full_block| FetchedFullBlock::new(height, block_hash.clone(), full_block))
-                .map_err(|_| OverlordError::net_fetch(block_hash));
+                .map_err(|e| OverlordError::net_fetch(block_hash, e));
             to_fetch
                 .unbounded_send(rst)
                 .expect("Fetch Channel is down! It's meaningless to continue running");

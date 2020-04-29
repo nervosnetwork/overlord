@@ -37,8 +37,8 @@ pub enum ErrorInfo {
     MultiVersion(String),
     #[display(fmt = "get block failed: {}", _0)]
     GetBlock(Box<dyn Error + Send>),
-    #[display(fmt = "fetch full block of {} failed", "_0.tiny_hex()")]
-    FetchFullBlock(Hash),
+    #[display(fmt = "fetch full block of {} failed, {}", "_0.tiny_hex()", _1)]
+    FetchFullBlock(Hash, Box<dyn Error + Send>),
     #[display(fmt = "operate wal file failed, {:?}", _0)]
     WalFile(std::io::Error),
     #[display(fmt = "other error, {}", _0)]
@@ -160,10 +160,10 @@ impl OverlordError {
         }
     }
 
-    pub fn net_fetch(hash: Hash) -> Self {
+    pub fn net_fetch(hash: Hash, e: Box<dyn Error + Send>) -> Self {
         OverlordError {
             kind: ErrorKind::Network,
-            info: ErrorInfo::FetchFullBlock(hash),
+            info: ErrorInfo::FetchFullBlock(hash, e),
         }
     }
 
