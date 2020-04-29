@@ -332,13 +332,13 @@ impl From<u8> for Step {
 
 #[derive(Clone, Debug, Display)]
 #[display(
-    fmt = "exec_height: {}, last_commit_exec_height: {}, exec_cache: {:?}, pre_proof: {}, pre_hash: {}, max_exec_behind: {}",
+    fmt = "exec_height: {}, last_commit_exec_height: {}, pre_proof: {}, pre_hash: {}, max_exec_behind: {}, exec_cache: {:?}",
     exec_height,
     last_commit_exec_height,
-    "exec_results.keys()",
     pre_proof,
     "pre_hash.tiny_hex()",
-    max_exec_behind
+    max_exec_behind,
+    "exec_results.iter().map(|(h, r)| (*h, format!(\"{}\", r))).collect::<Vec<(Height, String)>>()"
 )]
 pub struct ProposePrepare<S: St> {
     pub max_exec_behind:         u64,
