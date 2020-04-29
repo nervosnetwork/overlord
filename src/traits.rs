@@ -60,6 +60,7 @@ pub trait Adapter<B: Blk, S: St>: 'static + Send + Sync {
         height: Height,
         full_block: Bytes,
         proof: Proof,
+        is_sync: bool,
     ) -> Result<(), Box<dyn Error + Send>>;
 
     async fn exec_full_block(
@@ -69,7 +70,6 @@ pub trait Adapter<B: Blk, S: St>: 'static + Send + Sync {
         full_block: Bytes,
         last_exec_resp: S,
         last_commit_exec_resp: S,
-        is_sync: bool,
     ) -> Result<ExecResult<S>, Box<dyn Error + Send>>;
 
     async fn commit(&self, ctx: Context, commit_state: ExecResult<S>);

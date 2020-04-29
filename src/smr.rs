@@ -555,7 +555,13 @@ where
                 .clone(),
         );
         self.adapter
-            .save_full_block_with_proof(ctx.clone(), height, full_block.clone(), proof.clone())
+            .save_full_block_with_proof(
+                ctx.clone(),
+                height,
+                full_block.clone(),
+                proof.clone(),
+                false,
+            )
             .await
             .expect("Unreachable! Commit block with proof must store success");
         self.agent.exec_block(ctx, request);
@@ -734,6 +740,7 @@ where
                     self.state.stage.height,
                     full_block.clone(),
                     proof.clone(),
+                    true,
                 )
                 .await
                 .map_err(OverlordError::byz_save_block)?;
@@ -749,7 +756,6 @@ where
                         .block_states
                         .state
                         .clone(),
-                    true,
                 )
                 .await
                 .map_err(OverlordError::byz_exec_block)?;

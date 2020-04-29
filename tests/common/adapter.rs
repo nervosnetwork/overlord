@@ -152,6 +152,7 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         height: Height,
         full_block: Bytes,
         proof: Proof,
+        _is_sync: bool,
     ) -> Result<(), Box<dyn Error + Send>> {
         let full_block: FullBlock =
             bincode::deserialize(&full_block).expect("deserialize full block failed");
@@ -169,7 +170,6 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         full_block: Bytes,
         _last_exec_resp: ExecState,
         _last_commit_exec_resp: ExecState,
-        _is_sync: bool,
     ) -> Result<ExecResult<ExecState>, Box<dyn Error + Send>> {
         let full_block: FullBlock =
             bincode::deserialize(&full_block).expect("deserialize full block failed");

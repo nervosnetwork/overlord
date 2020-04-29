@@ -84,7 +84,6 @@ impl<A: Adapter<B, S>, B: Blk, S: St> Exec<A, B, S> {
                 request.full_block,
                 request.last_exec_resp,
                 request.last_commit_exec_resp,
-                false,
             )
             .await
             .expect("Execution is down! It's meaningless to continue running");
