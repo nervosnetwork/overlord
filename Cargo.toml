@@ -1,6 +1,6 @@
 [package]
 name = "overlord"
-version = "0.2.0-alpha.10"
+version = "0.2.0-alpha.11"
 authors = ["Eason Gao <kaoimin@qq.com>"]
 edition = "2018"
 license = "MIT"
