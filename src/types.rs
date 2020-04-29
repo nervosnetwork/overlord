@@ -474,8 +474,7 @@ impl FetchedFullBlock {
 
 #[derive(Clone, Debug, Display, Default)]
 #[display(
-    fmt = "{{ consensus_config: {}, block_states: {} }}",
-    consensus_config,
+    fmt = "{{ block_states: {} }}",
     block_states
 )]
 pub struct ExecResult<S: St> {

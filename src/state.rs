@@ -332,8 +332,9 @@ impl From<u8> for Step {
 
 #[derive(Clone, Debug, Display)]
 #[display(
-    fmt = "exec_height: {}, last_commit_exec_height: {}, pre_proof: {}, pre_hash: {}, max_exec_behind: {}, exec_cache: {:?}",
+    fmt = "exec_height: {}, last_exec_result: {}, last_commit_exec_height: {}, pre_proof: {}, pre_hash: {}, max_exec_behind: {}, exec_cache: {:?}",
     exec_height,
+    last_exec_result,
     last_commit_exec_height,
     pre_proof,
     "pre_hash.tiny_hex()",
