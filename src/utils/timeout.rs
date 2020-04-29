@@ -1,7 +1,8 @@
-use std::task::{Context, Poll};
+use std::task::{Context as TaskContext, Poll};
 use std::time::Duration;
 use std::{future::Future, pin::Pin};
 
+use creep::Context;
 use derive_more::Display;
 use futures::channel::mpsc::UnboundedSender;
 use futures::{FutureExt, SinkExt};
@@ -9,6 +10,7 @@ use futures_timer::Delay;
 
 use crate::state::{Stage, Step};
 use crate::types::TinyHex;
+use crate::utils::agent::WrappedTimeoutEvent;
 use crate::Address;
 
 #[derive(Clone, Debug, Display)]
@@ -47,22 +49,24 @@ impl From<Stage> for TimeoutEvent {
 #[display(fmt = "{}", event)]
 pub struct TimeoutInfo {
     pub delay: Delay,
+    ctx:       Context,
     event:     TimeoutEvent,
-    to_smr:    UnboundedSender<TimeoutEvent>,
+    to_smr:    UnboundedSender<WrappedTimeoutEvent>,
 }
 
 impl Future for TimeoutInfo {
     type Output = ();
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    fn poll(mut self: Pin<&mut Self>, cx: &mut TaskContext) -> Poll<Self::Output> {
         let event = self.event.clone();
+        let ctx = self.ctx.clone();
         let mut to_smr = self.to_smr.clone();
 
         match self.delay.poll_unpin(cx) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(_) => {
                 tokio::spawn(async move {
-                    let _ = to_smr.send(event).await;
+                    let _ = to_smr.send((ctx, event)).await;
                 });
                 Poll::Ready(())
             }
@@ -72,11 +76,13 @@ impl Future for TimeoutInfo {
 
 impl TimeoutInfo {
     pub fn new(
+        ctx: Context,
         delay: Duration,
         event: TimeoutEvent,
-        to_smr: UnboundedSender<TimeoutEvent>,
+        to_smr: UnboundedSender<WrappedTimeoutEvent>,
     ) -> Self {
         TimeoutInfo {
+            ctx,
             delay: Delay::new(delay),
             event,
             to_smr,

@@ -7,7 +7,8 @@ use derive_more::Display;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use futures::stream::StreamExt;
 
-use crate::{Adapter, Blk, ExecResult, Height, St};
+use crate::utils::agent::{WrappedExecRequest, WrappedExecResult};
+use crate::{Adapter, Blk, Height, St};
 
 #[derive(Display)]
 #[display(
@@ -41,8 +42,8 @@ impl<S: St> ExecRequest<S> {
 
 pub struct Exec<A: Adapter<B, S>, B: Blk, S: St> {
     adapter:  Arc<A>,
-    from_smr: UnboundedReceiver<ExecRequest<S>>,
-    to_smr:   UnboundedSender<ExecResult<S>>,
+    from_smr: UnboundedReceiver<WrappedExecRequest<S>>,
+    to_smr:   UnboundedSender<WrappedExecResult<S>>,
 
     phantom: PhantomData<B>,
 }
@@ -50,8 +51,8 @@ pub struct Exec<A: Adapter<B, S>, B: Blk, S: St> {
 impl<A: Adapter<B, S>, B: Blk, S: St> Exec<A, B, S> {
     pub fn new(
         adapter: &Arc<A>,
-        from_smr: UnboundedReceiver<ExecRequest<S>>,
-        to_smr: UnboundedSender<ExecResult<S>>,
+        from_smr: UnboundedReceiver<WrappedExecRequest<S>>,
+        to_smr: UnboundedSender<WrappedExecResult<S>>,
     ) -> Self {
         Exec {
             adapter: Arc::<A>::clone(adapter),
@@ -64,21 +65,21 @@ impl<A: Adapter<B, S>, B: Blk, S: St> Exec<A, B, S> {
     pub fn run(mut self) {
         tokio::spawn(async move {
             loop {
-                let request = self
+                let (ctx, request) = self
                     .from_smr
                     .next()
                     .await
                     .expect("SMR is down! It's meaningless to continue running");
-                self.save_and_exec_block(request).await;
+                self.save_and_exec_block(ctx, request).await;
             }
         });
     }
 
-    async fn save_and_exec_block(&self, request: ExecRequest<S>) {
+    async fn save_and_exec_block(&self, ctx: Context, request: ExecRequest<S>) {
         let exec_result = self
             .adapter
             .exec_full_block(
-                Context::default(),
+                ctx.clone(),
                 request.height,
                 request.full_block,
                 request.last_exec_resp,
@@ -88,7 +89,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> Exec<A, B, S> {
             .await
             .expect("Execution is down! It's meaningless to continue running");
         self.to_smr
-            .unbounded_send(exec_result)
+            .unbounded_send((ctx, exec_result))
             .expect("Exec Channel is down! It's meaningless to continue running");
     }
 }

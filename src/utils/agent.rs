@@ -7,7 +7,6 @@ use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use log::info;
 
 use crate::error::ErrorInfo;
-use crate::smr::WrappedOverlordMsg;
 use crate::state::{Stage, Step};
 use crate::types::FetchedFullBlock;
 use crate::utils::exec::ExecRequest;
@@ -21,6 +20,12 @@ use crate::{
 const POWER_CAP: u32 = 5;
 const TIME_DIVISOR: u64 = 10;
 
+pub type WrappedOverlordMsg<B> = (Context, OverlordMsg<B>);
+pub type WrappedExecRequest<S> = (Context, ExecRequest<S>);
+pub type WrappedExecResult<S> = (Context, ExecResult<S>);
+pub type WrappedFetchedFullBlock = (Context, OverlordResult<FetchedFullBlock>);
+pub type WrappedTimeoutEvent = (Context, TimeoutEvent);
+
 pub struct EventAgent<A: Adapter<B, S>, B: Blk, S: St> {
     address:     Address,
     adapter:     Arc<A>,
@@ -31,14 +36,14 @@ pub struct EventAgent<A: Adapter<B, S>, B: Blk, S: St> {
     pub from_net: UnboundedReceiver<WrappedOverlordMsg<B>>,
     to_net:       UnboundedSender<WrappedOverlordMsg<B>>,
 
-    pub from_exec: UnboundedReceiver<ExecResult<S>>,
-    to_exec:       UnboundedSender<ExecRequest<S>>,
+    pub from_exec: UnboundedReceiver<WrappedExecResult<S>>,
+    to_exec:       UnboundedSender<WrappedExecRequest<S>>,
 
-    pub from_fetch: UnboundedReceiver<OverlordResult<FetchedFullBlock>>,
-    to_fetch:       UnboundedSender<OverlordResult<FetchedFullBlock>>,
+    pub from_fetch: UnboundedReceiver<WrappedFetchedFullBlock>,
+    to_fetch:       UnboundedSender<WrappedFetchedFullBlock>,
 
-    pub from_timeout: UnboundedReceiver<TimeoutEvent>,
-    to_timeout:       UnboundedSender<TimeoutEvent>,
+    pub from_timeout: UnboundedReceiver<WrappedTimeoutEvent>,
+    to_timeout:       UnboundedSender<WrappedTimeoutEvent>,
 }
 
 impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
@@ -46,10 +51,10 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         address: Address,
         adapter: &Arc<A>,
         time_config: TimeConfig,
-        from_net: UnboundedReceiver<(Context, OverlordMsg<B>)>,
-        to_net: UnboundedSender<(Context, OverlordMsg<B>)>,
-        from_exec: UnboundedReceiver<ExecResult<S>>,
-        to_exec: UnboundedSender<ExecRequest<S>>,
+        from_net: UnboundedReceiver<WrappedOverlordMsg<B>>,
+        to_net: UnboundedSender<WrappedOverlordMsg<B>>,
+        from_exec: UnboundedReceiver<WrappedExecResult<S>>,
+        to_exec: UnboundedSender<WrappedExecRequest<S>>,
     ) -> Self {
         let (to_fetch, from_fetch) = unbounded();
         let (to_timeout, from_timeout) = unbounded();
@@ -79,7 +84,12 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         self.start_time = Instant::now();
     }
 
-    pub async fn transmit(&self, to: Address, msg: OverlordMsg<B>) -> OverlordResult<()> {
+    pub async fn transmit(
+        &self,
+        ctx: Context,
+        to: Address,
+        msg: OverlordMsg<B>,
+    ) -> OverlordResult<()> {
         info!(
             "[TRANSMIT]\n\t<{}> -> {}\n\t<message> {} \n\n\n\n\n",
             self.address.tiny_hex(),
@@ -88,33 +98,33 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         );
 
         if self.address == to {
-            self.send_to_myself(msg);
+            self.send_to_myself(ctx, msg);
             Ok(())
         } else {
             self.adapter
-                .transmit(Context::default(), to, msg)
+                .transmit(ctx, to, msg)
                 .await
                 .map_err(OverlordError::net_transmit)
         }
     }
 
-    pub async fn broadcast(&self, msg: OverlordMsg<B>) -> OverlordResult<()> {
+    pub async fn broadcast(&self, ctx: Context, msg: OverlordMsg<B>) -> OverlordResult<()> {
         info!(
             "[BROADCAST]\n\t<{}> =>|\n\t<message> {} \n\n\n\n\n",
             self.address.tiny_hex(),
             msg
         );
 
-        self.send_to_myself(msg.clone());
+        self.send_to_myself(ctx.clone(), msg.clone());
         self.adapter
-            .broadcast(Context::default(), msg)
+            .broadcast(ctx, msg)
             .await
             .map_err(OverlordError::local_broadcast)
     }
 
-    pub fn send_to_myself(&self, msg: OverlordMsg<B>) {
+    pub fn send_to_myself(&self, ctx: Context, msg: OverlordMsg<B>) {
         self.to_net
-            .unbounded_send((Context::default(), msg))
+            .unbounded_send((ctx, msg))
             .expect("Net Channel is down! It's meaningless to continue running");
     }
 
@@ -133,7 +143,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         }
     }
 
-    pub fn request_full_block(&self, block: B) {
+    pub fn request_full_block(&self, ctx: Context, block: B) {
         let block_hash = block
             .get_block_hash()
             .expect("Unreachable! Block hash has been checked before");
@@ -153,17 +163,17 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
 
         tokio::spawn(async move {
             let rst = adapter
-                .fetch_full_block(Context::default(), block)
+                .fetch_full_block(ctx.clone(), block)
                 .await
                 .map(|full_block| FetchedFullBlock::new(height, block_hash.clone(), full_block))
                 .map_err(|e| OverlordError::net_fetch(block_hash, e));
             to_fetch
-                .unbounded_send(rst)
+                .unbounded_send((ctx, rst))
                 .expect("Fetch Channel is down! It's meaningless to continue running");
         });
     }
 
-    pub fn exec_block(&self, request: ExecRequest<S>) {
+    pub fn exec_block(&self, ctx: Context, request: ExecRequest<S>) {
         info!(
             "[EXEC]\n\t<{}> -> exec\n\t<request> exec_request: {}\n\n\n\n\n",
             self.address.tiny_hex(),
@@ -171,31 +181,36 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         );
 
         self.to_exec
-            .unbounded_send(request)
+            .unbounded_send((ctx, request))
             .expect("Exec Channel is down! It's meaningless to continue running");
     }
 
-    pub fn set_step_timeout(&self, stage: Stage) -> bool {
+    pub fn set_step_timeout(&self, ctx: Context, stage: Stage) -> bool {
         let opt = self.compute_timeout(&stage);
         if let Some(delay) = opt {
-            let timeout_info = TimeoutInfo::new(delay, stage.into(), self.to_timeout.clone());
+            let timeout_info = TimeoutInfo::new(ctx, delay, stage.into(), self.to_timeout.clone());
             self.set_timeout(timeout_info, delay);
             return true;
         }
         false
     }
 
-    pub fn set_height_timeout(&self) {
+    pub fn set_height_timeout(&self, ctx: Context) {
         let delay = Duration::from_millis(self.time_config.interval * HEIGHT_RATIO / TIME_DIVISOR);
-        let timeout_info =
-            TimeoutInfo::new(delay, TimeoutEvent::HeightTimeout, self.to_timeout.clone());
+        let timeout_info = TimeoutInfo::new(
+            ctx,
+            delay,
+            TimeoutEvent::HeightTimeout,
+            self.to_timeout.clone(),
+        );
         self.set_timeout(timeout_info, delay);
     }
 
-    pub fn set_sync_timeout(&self, request_id: u64) {
+    pub fn set_sync_timeout(&self, ctx: Context, request_id: u64) {
         let delay =
             Duration::from_millis(self.time_config.interval * SYNC_TIMEOUT_RATIO / TIME_DIVISOR);
         let timeout_info = TimeoutInfo::new(
+            ctx,
             delay,
             TimeoutEvent::SyncTimeout(request_id),
             self.to_timeout.clone(),
@@ -203,10 +218,11 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         self.set_timeout(timeout_info, delay);
     }
 
-    pub fn set_clear_timeout(&self, address: Address) {
+    pub fn set_clear_timeout(&self, ctx: Context, address: Address) {
         let delay =
             Duration::from_millis(self.time_config.interval * CLEAR_TIMEOUT_RATIO / TIME_DIVISOR);
         let timeout_info = TimeoutInfo::new(
+            ctx,
             delay,
             TimeoutEvent::ClearTimeout(address),
             self.to_timeout.clone(),

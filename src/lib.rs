@@ -48,7 +48,9 @@ where
     B: Blk,
     S: St,
 {
+    #[allow(clippy::too_many_arguments)]
     pub async fn run(
+        ctx: Context,
         common_ref: CommonHex,
         pri_key: PriKeyHex,
         pub_key: PubKeyHex,
@@ -62,13 +64,14 @@ where
         let (exec_sender, exec_receiver) = unbounded();
 
         adapter
-            .register_network(Context::default(), net_sender.clone())
+            .register_network(ctx.clone(), net_sender.clone())
             .await;
         let auth_fixed_config =
             AuthFixedConfig::new(common_ref, pri_key, pub_key, party_pub_key, address);
 
         let exec = Exec::new(adapter, smr_receiver, exec_sender);
         let smr = SMR::new(
+            ctx.clone(),
             auth_fixed_config,
             adapter,
             net_receiver,
@@ -80,6 +83,6 @@ where
         .await;
 
         exec.run();
-        smr.run().await;
+        smr.run(ctx).await;
     }
 }

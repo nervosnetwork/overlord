@@ -12,6 +12,7 @@ use crate::common::adapter::OverlordAdapter;
 use crate::common::mem_pool::MemPool;
 use crate::common::network::Network;
 use crate::common::storage::Storage;
+use creep::Context;
 
 pub struct Platform {
     network:  Arc<Network>,
@@ -138,6 +139,7 @@ fn run(
         let tiny_address = address.tiny_hex();
         tokio::spawn(async move {
             OverlordServer::run(
+                Context::default(),
                 common_ref_clone,
                 pri_key,
                 pub_key,
