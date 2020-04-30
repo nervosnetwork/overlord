@@ -77,10 +77,10 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
 
     pub fn handle_commit(&mut self, time_config: TimeConfig) {
         self.time_config = time_config;
-        self.fetch_set.clear();
     }
 
     pub fn next_height(&mut self) {
+        self.fetch_set.clear();
         self.start_time = Instant::now();
     }
 

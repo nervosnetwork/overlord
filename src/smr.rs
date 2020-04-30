@@ -977,25 +977,27 @@ where
     }
 
     fn replay_msg_received(&mut self, ctx: Context) {
-        if let Some(grids) = self.cabinet.pop(self.state.stage.height) {
-            for mut grid in grids {
-                for sc in grid.get_signed_chokes() {
-                    self.agent.send_to_myself(ctx.clone(), sc.into());
-                }
-                if let Some(qc) = grid.get_pre_commit_qc() {
-                    self.agent.send_to_myself(ctx.clone(), qc.into());
-                }
-                if let Some(qc) = grid.get_pre_vote_qc() {
-                    self.agent.send_to_myself(ctx.clone(), qc.into());
-                }
-                for sv in grid.get_signed_pre_commits() {
-                    self.agent.send_to_myself(ctx.clone(), sv.into());
-                }
-                for sv in grid.get_signed_pre_votes() {
-                    self.agent.send_to_myself(ctx.clone(), sv.into());
-                }
-                if let Some(sp) = grid.take_signed_proposal() {
-                    self.agent.send_to_myself(ctx.clone(), sp.into());
+        if self.sync.state == SyncStat::Off {
+            if let Some(grids) = self.cabinet.pop(self.state.stage.height) {
+                for mut grid in grids {
+                    for sc in grid.get_signed_chokes() {
+                        self.agent.send_to_myself(ctx.clone(), sc.into());
+                    }
+                    if let Some(qc) = grid.get_pre_commit_qc() {
+                        self.agent.send_to_myself(ctx.clone(), qc.into());
+                    }
+                    if let Some(qc) = grid.get_pre_vote_qc() {
+                        self.agent.send_to_myself(ctx.clone(), qc.into());
+                    }
+                    for sv in grid.get_signed_pre_commits() {
+                        self.agent.send_to_myself(ctx.clone(), sv.into());
+                    }
+                    for sv in grid.get_signed_pre_votes() {
+                        self.agent.send_to_myself(ctx.clone(), sv.into());
+                    }
+                    if let Some(sp) = grid.take_signed_proposal() {
+                        self.agent.send_to_myself(ctx.clone(), sp.into());
+                    }
                 }
             }
         }

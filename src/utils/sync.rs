@@ -6,13 +6,13 @@ use derive_more::Display;
 use crate::types::{DisplayVec, SignedHeight, SyncRequest, TinyHex};
 use crate::{Address, Blk, OverlordError, OverlordResult};
 
-pub const HEIGHT_RATIO: u64 = 10;
+pub const HEIGHT_RATIO: u64 = 11;
 /// timeout waiting for a sync request.
 /// sync_timeout = `SYNC_TIMEOUT_RATIO`/`TIME_DIVISOR` * `interval`
-pub const SYNC_TIMEOUT_RATIO: u64 = 20;
+pub const SYNC_TIMEOUT_RATIO: u64 = 13;
 /// timeout for removing one address in black list
 /// clear_timeout = `CLEAR_TIMEOUT_RATIO`/`TIME_DIVISOR` * `interval`
-pub const CLEAR_TIMEOUT_RATIO: u64 = 30;
+pub const CLEAR_TIMEOUT_RATIO: u64 = 17;
 /// max number of blocks can be request in one request
 pub const BLOCK_BATCH: u64 = 50;
 
