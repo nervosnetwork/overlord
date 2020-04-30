@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+use bytes::Bytes;
 use creep::Context;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use futures::{select, StreamExt};
@@ -21,8 +22,8 @@ use crate::utils::exec::ExecRequest;
 use crate::utils::sync::{Sync, SyncStat, BLOCK_BATCH};
 use crate::utils::timeout::TimeoutEvent;
 use crate::{
-    Adapter, Address, Blk, ExecResult, Hash, Height, HeightRange, OverlordError, OverlordMsg,
-    OverlordResult, Proof, Round, St, TinyHex, Wal, INIT_ROUND,
+    Adapter, Address, Blk, Crypto, ExecResult, Hash, Height, HeightRange, OverlordError,
+    OverlordMsg, OverlordResult, Proof, Round, St, TinyHex, Wal, INIT_ROUND,
 };
 
 const HEIGHT_WINDOW: Height = 5;
@@ -669,17 +670,40 @@ where
         self.log_sync_update_of_msg(old_sync, &request.requester, request.clone().into());
         self.agent
             .set_clear_timeout(ctx.clone(), request.requester.clone());
-        let block_with_proofs = self
-            .adapter
-            .get_full_block_with_proofs(ctx.clone(), request.request_range.clone())
-            .await
-            .map_err(OverlordError::local_get_block)?;
-        let response = self
-            .auth
-            .sign_sync_response(request.request_range.clone(), block_with_proofs)?;
-        self.agent
-            .transmit(ctx, request.requester, response.into())
-            .await
+
+        let adapter = Arc::clone(&self.adapter);
+        let self_address = self.address.clone();
+        let pri_key = self.auth.fixed_config.pri_key.clone();
+        let pub_key = self.auth.fixed_config.pub_key.clone();
+
+        tokio::spawn(async move {
+            let block_with_proofs = adapter
+                .get_full_block_with_proofs(ctx.clone(), request.request_range.clone())
+                .await
+                .map_err(OverlordError::local_get_block)?;
+
+            let hash = A::CryptoImpl::hash(&Bytes::from(rlp::encode(&request.request_range)));
+            let signature =
+                A::CryptoImpl::sign_msg(pri_key, &hash).map_err(OverlordError::local_crypto)?;
+            let response = SyncResponse::new(
+                request.request_range.clone(),
+                block_with_proofs,
+                self_address.clone(),
+                pub_key,
+                signature,
+            );
+            info!(
+                "[TRANSMIT]\n\t<{}> -> {}\n\t<message> sync_response: {} \n\n\n\n\n",
+                self_address.tiny_hex(),
+                request.requester.tiny_hex(),
+                response
+            );
+            adapter
+                .transmit(ctx, request.requester, response.into())
+                .await
+                .map_err(OverlordError::net_transmit)
+        });
+        Ok(())
     }
 
     async fn handle_sync_response(

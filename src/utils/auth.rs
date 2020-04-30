@@ -8,9 +8,9 @@ use prime_tools::get_primes_less_than_x;
 use rlp::{encode, Encodable};
 
 use crate::types::{
-    Aggregates, Choke, ChokeQC, FullBlockWithProof, PreCommitQC, PreVoteQC, PriKeyHex, Proof,
-    Proposal, PubKeyHex, SelectMode, SignedChoke, SignedHeight, SignedPreCommit, SignedPreVote,
-    SignedProposal, SyncRequest, SyncResponse, UpdateFrom, Vote, VoteType, Weight,
+    Aggregates, Choke, ChokeQC, PreCommitQC, PreVoteQC, PriKeyHex, Proof, Proposal, PubKeyHex,
+    SelectMode, SignedChoke, SignedHeight, SignedPreCommit, SignedPreVote, SignedProposal,
+    SyncRequest, SyncResponse, UpdateFrom, Vote, VoteType, Weight,
 };
 use crate::{
     Adapter, Address, AuthConfig, Blk, CommonHex, Crypto, Hash, Height, HeightRange,
@@ -252,22 +252,6 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
             &hash,
             &request.signature,
         )
-    }
-
-    pub fn sign_sync_response(
-        &self,
-        range: HeightRange,
-        block_with_proofs: Vec<FullBlockWithProof<B>>,
-    ) -> OverlordResult<SyncResponse<B>> {
-        let hash = A::CryptoImpl::hash(&Bytes::from(rlp::encode(&range)));
-        let signature = self.sign(&hash)?;
-        Ok(SyncResponse::new(
-            range,
-            block_with_proofs,
-            self.fixed_config.address.clone(),
-            self.fixed_config.pub_key.clone(),
-            signature,
-        ))
     }
 
     pub fn verify_sync_response(&self, response: &SyncResponse<B>) -> OverlordResult<()> {
@@ -533,7 +517,7 @@ pub struct AuthFixedConfig {
     pub address:       Address,
     pub pub_key:       PubKeyHex,
     pub party_pub_key: PartyPubKeyHex,
-    pri_key:           PriKeyHex,
+    pub pri_key:       PriKeyHex,
 }
 
 impl AuthFixedConfig {
