@@ -805,8 +805,8 @@ where
         );
         self.wal.save_state(&self.state)?;
         self.agent.next_height();
-        self.cabinet.next_height(self.state.stage.height);
         self.replay_msg_received(ctx.clone());
+        self.cabinet.next_height(self.state.stage.height);
         self.new_round(ctx).await
     }
 

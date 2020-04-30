@@ -90,17 +90,16 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         to: Address,
         msg: OverlordMsg<B>,
     ) -> OverlordResult<()> {
-        info!(
-            "[TRANSMIT]\n\t<{}> -> {}\n\t<message> {} \n\n\n\n\n",
-            self.address.tiny_hex(),
-            to.tiny_hex(),
-            msg
-        );
-
         if self.address == to {
             self.send_to_myself(ctx, msg);
             Ok(())
         } else {
+            info!(
+                "[TRANSMIT]\n\t<{}> -> {}\n\t<message> {} \n\n\n\n\n",
+                self.address.tiny_hex(),
+                to.tiny_hex(),
+                msg
+            );
             self.adapter
                 .transmit(ctx, to, msg)
                 .await
@@ -123,6 +122,11 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
     }
 
     pub fn send_to_myself(&self, ctx: Context, msg: OverlordMsg<B>) {
+        info!(
+            "[TRANSMIT]\n\t<{}> -> myself\n\t<message> {} \n\n\n\n\n",
+            self.address.tiny_hex(),
+            msg
+        );
         self.to_net
             .unbounded_send((ctx, msg))
             .expect("Net Channel is down! It's meaningless to continue running");
