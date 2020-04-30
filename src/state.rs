@@ -220,6 +220,11 @@ impl Stage {
         *self = stage;
         is_jump
     }
+
+    pub fn set_commit(&mut self) {
+        self.round = Round::max_value();
+        self.step = Step::Commit;
+    }
 }
 
 impl PartialOrd for Stage {

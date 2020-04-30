@@ -796,6 +796,7 @@ where
                 .await
                 .map_err(OverlordError::byz_exec_block)?;
             self.prepare.handle_exec_result(exec_result);
+            self.state.stage.set_commit();
             self.handle_commit(
                 ctx.clone(),
                 block_hash,
