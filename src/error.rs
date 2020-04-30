@@ -47,8 +47,6 @@ pub enum ErrorInfo {
     Decode(DecoderError),
     #[display(fmt = "receive old msg")]
     OldMsg,
-    #[display(fmt = "receive much higher msg")]
-    MuchHighMsg,
     #[display(fmt = "receive higher msg")]
     HighMsg,
     #[display(fmt = "receive msg with wrong leader, {}", _0)]
@@ -206,13 +204,6 @@ impl OverlordError {
         OverlordError {
             kind: ErrorKind::Debug,
             info: ErrorInfo::HighMsg,
-        }
-    }
-
-    pub fn net_much_high() -> Self {
-        OverlordError {
-            kind: ErrorKind::Network,
-            info: ErrorInfo::MuchHighMsg,
         }
     }
 

@@ -1106,7 +1106,7 @@ where
                 _ => Err(OverlordError::debug_old()),
             };
         } else if height > my_height + HEIGHT_WINDOW || round > my_round + ROUND_WINDOW {
-            return Err(OverlordError::net_much_high());
+            return Err(OverlordError::debug_high());
         } else if height > my_height {
             self.cabinet.insert(height, round, capsule.clone())?;
             return Err(OverlordError::debug_high());
