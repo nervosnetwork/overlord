@@ -628,12 +628,12 @@ where
         if signed_height.height <= my_height {
             return Err(OverlordError::debug_old());
         }
-        if self.state.stage.step != Step::Brake {
-            return Err(OverlordError::debug_not_ready(format!(
-                "my.step != Step::Brake, {} != Step::Brake",
-                self.state.stage.step
-            )));
-        }
+        // if self.state.stage.step != Step::Brake {
+        //     return Err(OverlordError::debug_not_ready(format!(
+        //         "my.step != Step::Brake, {} != Step::Brake",
+        //         self.state.stage.step
+        //     )));
+        // }
 
         self.auth.verify_signed_height(&signed_height)?;
         let old_sync = self.sync.handle_signed_height(&signed_height)?;
