@@ -77,6 +77,7 @@ impl<B: Blk> StateInfo<B> {
             self.lock = None;
         } else {
             self.lock = Some(qc.clone());
+            self.block_hash = Some(qc.vote.block_hash.clone());
             self.block = block.cloned();
         }
         Ok(old_stage)
@@ -96,6 +97,7 @@ impl<B: Blk> StateInfo<B> {
         }
         if !qc.vote.is_empty_vote() {
             self.pre_commit_qc = Some(qc.clone());
+            self.block_hash = Some(qc.vote.block_hash.clone());
             self.block = block.cloned();
         }
         Ok(old_stage)
@@ -155,9 +157,7 @@ impl<B: Blk> StateInfo<B> {
         if let Some(qc) = &proposal.lock {
             // proposal.lock.is_some() && self.lock.is_some()
             if let Some(lock) = &self.lock {
-                // must be >=, because set_lock may set by pre_vote_qc, while set_block only can be
-                // set by signed_proposal
-                if qc.vote.round >= lock.vote.round {
+                if qc.vote.round > lock.vote.round {
                     self.set_lock(proposal);
                 }
             // proposal.lock.is_some() && self.lock.is_none()
