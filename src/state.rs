@@ -155,7 +155,9 @@ impl<B: Blk> StateInfo<B> {
         if let Some(qc) = &proposal.lock {
             // proposal.lock.is_some() && self.lock.is_some()
             if let Some(lock) = &self.lock {
-                if qc.vote.round > lock.vote.round {
+                // must be >=, because set_lock may set by pre_vote_qc, while set_block only can be
+                // set by signed_proposal
+                if qc.vote.round >= lock.vote.round {
                     self.set_lock(proposal);
                 }
             // proposal.lock.is_some() && self.lock.is_none()
