@@ -404,8 +404,9 @@ impl SyncRequest {
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
-    fmt = "{{ request_range: {}, responder: {} }}",
+    fmt = "{{ request_range: {}, response_heights: {:?}, responder: {} }}",
     request_range,
+    "block_with_proofs.iter().map(|fbp| fbp.block.get_height()).collect::<Vec<Height>>()",
     "responder.tiny_hex()"
 )]
 pub struct SyncResponse<B: Blk> {
