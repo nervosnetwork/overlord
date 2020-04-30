@@ -9,7 +9,7 @@ use futures::{select, StreamExt};
 use log::{debug, error, info, warn};
 
 use crate::error::ErrorKind;
-use crate::state::{ProposePrepare, Stage, StateInfo, Step};
+use crate::state::{ProposePrepare, Stage, StateInfo};
 use crate::types::{
     Choke, ChokeQC, CumWeight, FetchedFullBlock, FullBlockWithProof, PreCommitQC, PreVoteQC,
     Proposal, SignedChoke, SignedHeight, SignedPreCommit, SignedPreVote, SignedProposal,
@@ -476,9 +476,10 @@ where
             self.wal.save_state(&self.state)?;
 
             let signed_pre_commit = self.create_signed_pre_commit()?;
-            self.transmit_vote(ctx, signed_pre_commit.into()).await?;
+            self.transmit_vote(ctx, signed_pre_commit.into()).await
+        } else {
+            Err(OverlordError::warn_wait())
         }
-        Err(OverlordError::warn_wait())
     }
 
     async fn handle_pre_commit_qc(
@@ -509,15 +510,16 @@ where
             self.wal.save_state(&self.state)?;
 
             if qc.vote.is_empty_vote() {
-                self.new_round(ctx.clone()).await?;
+                self.new_round(ctx.clone()).await
             } else {
                 let (commit_hash, proof, commit_exec_h) =
                     self.save_and_exec_block(ctx.clone()).await;
                 self.handle_commit(ctx, commit_hash, proof, commit_exec_h)
-                    .await?;
+                    .await
             }
+        } else {
+            Err(OverlordError::warn_wait())
         }
-        Err(OverlordError::warn_wait())
     }
 
     async fn handle_choke_qc(&mut self, ctx: Context, qc: ChokeQC) -> OverlordResult<()> {
