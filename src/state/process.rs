@@ -136,7 +136,9 @@ where
         loop {
             select! {
                 raw = raw_rx.next() => {
-                    if let Err(e) = self.handle_msg(raw).await {
+                    let (ctx, msg) = raw.expect("Overlord message handler dropped");
+                    if let Err(e) = self.handle_msg(ctx.clone(), msg).await {
+                        self.report_error(ctx, e.clone());
                         error!("Overlord: state {:?} error", e);
                     }
                 }
@@ -169,11 +171,9 @@ where
     /// A function to handle message from the network. Public this in the crate to do unit tests.
     pub(crate) async fn handle_msg(
         &mut self,
-        msg: Option<(Context, OverlordMsg<T>)>,
+        ctx: Context,
+        raw: OverlordMsg<T>,
     ) -> ConsensusResult<()> {
-        let msg = msg.ok_or_else(|| ConsensusError::Other("Message sender dropped".to_string()))?;
-        let (ctx, raw) = (msg.0, msg.1);
-
         if !self.consensus_power && !raw.is_rich_status() {
             return Ok(());
         }
@@ -1654,6 +1654,10 @@ where
 
                 error!("Overlord: state broadcast message failed {:?}", err);
             });
+    }
+
+    fn report_error(&self, ctx: Context, err: ConsensusError) {
+        self.function.report_error(ctx, err);
     }
 
     fn check_choke_above_threshold(&mut self) -> ConsensusResult<()> {

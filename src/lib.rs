@@ -4,6 +4,7 @@
 //! able to meets most of the real business needs.
 
 #![deny(missing_docs)]
+#![recursion_limit = "256"]
 #![feature(test)]
 
 /// A module that impl rlp encodable and decodable trait for types that need to save wal.
@@ -100,6 +101,9 @@ pub trait Consensus<T: Codec>: Send + Sync {
         addr: Address,
         msg: OverlordMsg<T>,
     ) -> Result<(), Box<dyn Error + Send>>;
+
+    /// Report the overlord error with the corresponding context.
+    fn report_error(&self, ctx: Context, error: ConsensusError);
 }
 
 /// Trait for doing serialize and deserialize.

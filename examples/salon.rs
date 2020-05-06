@@ -13,6 +13,7 @@ use lazy_static::lazy_static;
 use rand::random;
 use serde::{Deserialize, Serialize};
 
+use overlord::error::ConsensusError;
 use overlord::types::{Commit, Hash, Node, OverlordMsg, Status};
 use overlord::{Codec, Consensus, Crypto, DurationConfig, Overlord, OverlordHandler, Wal};
 
@@ -229,6 +230,8 @@ impl Consensus<Speech> for Brain {
         self.talk_to.get(&name).unwrap().send(words).unwrap();
         Ok(())
     }
+
+    fn report_error(&self, _ctx: Context, _err: ConsensusError) {}
 }
 
 struct Speaker {
