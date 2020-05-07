@@ -95,39 +95,33 @@ Overlord 共识由以下几个组件组成的：
 
 状态机模块是整个共识的逻辑核心，它主要的功能是状态变更和 **lock** 的控制。当收到消息触发时，根据收到的消息做状态变更，并将变更后的状态作为事件抛出。在我们的实现中，Overlord 使用一个应用 BLS 聚合签名优化的 Tendermint 状态机进行共识，整体的工作过程如下。
 
-#### 提议阶段
+#### propose 阶段
 
-节点使用确定性随机算法确定本轮的 *Leader*。
+节点使用确定性随机算法确定本轮的 *Leader* 和 *Relayer*，默认情况下我们将这两者设置为同一个节点。
 
-**Leader**: 广播一个 *proposal*
+**Leader**: 广播 *proposal*
 
-**Others**: 设置一个定时器 T1，当收到 *proposal* 之后向 *Relayer* 发送 *prevote* 投票
+**All**: 设置 propose timeout 定时器，在超时时间内如果收到 *proposal* 向 *Relayer* 发送 *prevote* 投票，进入 *prevote* 阶段。否则在超时后向 *Relayer* 发送 *prevote* 投票，进入 *prevote* 阶段。
 
-#### 预投票阶段
+#### prevote 阶段
 
-**Relayer**: 设置一个定时器 T2，对收到的 *prevote* 投票进行聚合并生成位图，将聚合后的投票和位图广播给其他节点
+**Relayer**: 如果收到 2/3+ 的 prevote 投票后聚合成 *prevoteQC* 广播给其他节点
 
-**Others**: 设置一个定时器 T2，检查聚合的 *prevote* 投票的合法性，生成 **PoLC** 发送 *precommit* 投票
+**All**: 设置 prevote timeout 定时器，在超时时间内如果收到 *prevoteQC* 向 *Relayer* 发送 *precommit* 投票，进入 *precommit* 阶段。否则在超时后向 *Relayer* 发送 *precommit* 投票，进入 *precommit* 阶段。
 
-#### 校验等待阶段
+#### precommit 阶段
 
-所有节点设置一个定时器 T3，当收到对 *proposal* 的校验结果之后，进入预提交阶段
+**Relayer**: 如果收到 2/3+ 的 precommit 投票后聚合成 *precommitQC* 广播给其他节点
 
-#### 预提交阶段
+**All**: 设置 precommit timeout 定时器，在超时时间内如果收到 *precommitQC*，若 *precommitQC* 不为空，则对相应的 block 达成共识，进入 *commit* 阶段；若 *precommitQC* 为空，则进入下一个 round。否则在超时后进入 *brake* 阶段。
 
-**Relayer**: 设置一个定时器 T4，对收到的 *precommit* 投票进行聚合并生成位图，将聚合后的投票和位图广播给其他节点
+#### brake 阶段
 
-**Others**: 设置一个定时器 T4，检查聚合的 *precommit* 投票的合法性
-
-#### 提交阶段
-
-所有节点将 *proposal* 提交
+**All**: 设置 brake timeout 定时器，并广播 *choke* 投票给其他节点。如果在超时时间内收到 2/3+ 的 *choke* 投票，则节点进入下一个 round，否则超时后，重新设置 brake timeout 定时器，并广播 *choke* 投票。
 
 共识状态机的状态转换图如下图所示：
 
 <div align=center><img src="./assets/state_transition.png"></div>
-
-在工程中，我们将预投票阶段和校验等待阶段合并为一个阶段，共用一个超时时间。当状态机收到聚合后的投票和校验结果之后，进入到预提交阶段。
 
 #### 状态机状态
 
