@@ -13,8 +13,8 @@ use futures::{select, StreamExt};
 use futures_timer::Delay;
 use log::{debug, error, info, warn};
 use moodyblues_sdk::trace;
-use rlp::encode;
 use serde_json::json;
+use muta_apm::derive::tracing_span;
 
 use crate::error::ConsensusError;
 use crate::smr::smr_types::{FromWhere, SMREvent, SMRTrigger, Step, TriggerSource, TriggerType};
@@ -169,6 +169,7 @@ where
     }
 
     /// A function to handle message from the network. Public this in the crate to do unit tests.
+    #[tracing_span(kind = "overlord")]
     pub(crate) async fn handle_msg(
         &mut self,
         ctx: Context,
@@ -630,6 +631,7 @@ where
 
     /// This function only handle signed proposals which height and round are equal to current.
     /// Others will be ignored or stored in the proposal collector.
+    #[tracing_span(kind = "overlord")]
     async fn handle_signed_proposal(
         &mut self,
         ctx: Context,
@@ -922,6 +924,7 @@ where
     /// will be done by the leader. For the higher votes, check the signature and save them in
     /// the vote collector. Whenevet the current vote is received, a statistic is made to check
     /// if the sum of the voting weights corresponding to the hash exceeds the threshold.
+    #[tracing_span(kind = "overlord")]
     async fn handle_signed_vote(
         &mut self,
         ctx: Context,
@@ -1055,9 +1058,10 @@ where
     /// is precommit, ignore it. Otherwise, retransmit precommit QC.
     ///
     /// 4. Other cases, return `Ok(())` directly.
+    #[tracing_span(kind = "overlord")]
     async fn handle_aggregated_vote(
         &mut self,
-        _ctx: Context,
+        ctx: Context,
         aggregated_vote: AggregatedVote,
     ) -> ConsensusResult<()> {
         let vote_height = aggregated_vote.get_height();
@@ -1262,6 +1266,7 @@ where
         Ok(None)
     }
 
+    #[tracing_span(kind = "overlord")]
     async fn handle_signed_choke(
         &mut self,
         ctx: Context,
@@ -1717,6 +1722,7 @@ where
         Ok(())
     }
 
+    #[tracing_span(kind = "overlord")]
     async fn check_block(&mut self, ctx: Context, hash: Hash, block: T) {
         let height = self.height;
         let round = self.round;
@@ -1977,6 +1983,7 @@ where
     }
 }
 
+#[tracing_span(kind = "overlord")]
 async fn check_current_block<U: Consensus<T>, T: Codec>(
     ctx: Context,
     function: Arc<U>,
