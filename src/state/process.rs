@@ -13,8 +13,8 @@ use futures::{select, StreamExt};
 use futures_timer::Delay;
 use log::{debug, error, info, warn};
 use moodyblues_sdk::trace;
-use serde_json::json;
 use muta_apm::derive::tracing_span;
+use serde_json::json;
 
 use crate::error::ConsensusError;
 use crate::smr::smr_types::{FromWhere, SMREvent, SMRTrigger, Step, TriggerSource, TriggerType};
@@ -671,7 +671,7 @@ where
         let signature = signed_proposal.signature.clone();
         self.verify_proposer(proposal_height, proposal_round, &proposal.proposer)?;
         self.verify_signature(
-            self.util.hash(Bytes::from(encode(&proposal))),
+            self.util.hash(Bytes::from(rlp::encode(&proposal))),
             signature,
             &proposal.proposer,
             MsgType::SignedProposal,
@@ -809,7 +809,7 @@ where
 
         let signature = self
             .util
-            .sign(self.util.hash(Bytes::from(encode(&choke.to_hash()))))
+            .sign(self.util.hash(Bytes::from(rlp::encode(&choke.to_hash()))))
             .map_err(|err| ConsensusError::CryptoErr(format!("sign choke error {:?}", err)))?;
         let signed_choke = SignedChoke {
             signature,
@@ -967,7 +967,7 @@ where
         let voter = signed_vote.voter.clone();
         let vote = signed_vote.vote.clone();
         self.verify_signature(
-            self.util.hash(Bytes::from(encode(&vote))),
+            self.util.hash(Bytes::from(rlp::encode(&vote))),
             signature,
             &voter,
             MsgType::SignedVote,
@@ -1276,7 +1276,7 @@ where
         let signature = signed_choke.signature.clone();
         let hash = self
             .util
-            .hash(Bytes::from(encode(&signed_choke.choke.to_hash())));
+            .hash(Bytes::from(rlp::encode(&signed_choke.choke.to_hash())));
         self.util
             .verify_signature(signature, hash, signed_choke.address.clone())
             .map_err(|err| ConsensusError::CryptoErr(format!("{:?}", err)))?;
@@ -1331,7 +1331,7 @@ where
 
         // verify aggregated signature.
         let choke = aggregated_choke.to_hash();
-        let choke_hash = self.util.hash(Bytes::from(encode(&choke)));
+        let choke_hash = self.util.hash(Bytes::from(rlp::encode(&choke)));
         let voters = aggregated_choke.voters.clone();
         self.util
             .verify_aggregated_signature(aggregated_choke.signature.clone(), choke_hash, voters)
@@ -1411,7 +1411,7 @@ where
                 .is_ok()
                 && self
                     .verify_signature(
-                        self.util.hash(Bytes::from(encode(&proposal))),
+                        self.util.hash(Bytes::from(rlp::encode(&proposal))),
                         signature,
                         &proposal.proposer,
                         MsgType::SignedProposal,
@@ -1434,7 +1434,7 @@ where
 
             if self
                 .verify_signature(
-                    self.util.hash(Bytes::from(encode(&vote))),
+                    self.util.hash(Bytes::from(rlp::encode(&vote))),
                     signature,
                     &voter,
                     MsgType::SignedVote,
@@ -1500,7 +1500,7 @@ where
         debug!("Overlord: state sign a proposal");
         let signature = self
             .util
-            .sign(self.util.hash(Bytes::from(encode(&proposal))))
+            .sign(self.util.hash(Bytes::from(rlp::encode(&proposal))))
             .map_err(|err| ConsensusError::CryptoErr(format!("{:?}", err)))?;
 
         Ok(SignedProposal {
@@ -1513,7 +1513,7 @@ where
         debug!("Overlord: state sign a vote");
         let signature = self
             .util
-            .sign(self.util.hash(Bytes::from(encode(&vote))))
+            .sign(self.util.hash(Bytes::from(rlp::encode(&vote))))
             .map_err(|err| ConsensusError::CryptoErr(format!("{:?}", err)))?;
 
         Ok(SignedVote {
@@ -1594,7 +1594,7 @@ where
         self.util
             .verify_aggregated_signature(
                 signature.signature,
-                self.util.hash(Bytes::from(encode(&vote))),
+                self.util.hash(Bytes::from(rlp::encode(&vote))),
                 voters,
             )
             .map_err(|err| {
@@ -1766,7 +1766,7 @@ where
         };
 
         self.wal
-            .save(Bytes::from(encode(&wal_info)))
+            .save(Bytes::from(rlp::encode(&wal_info)))
             .await
             .map_err(|e| {
                 trace::error(
