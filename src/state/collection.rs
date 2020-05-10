@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use creep::Context;
+
 use crate::types::{
     Address, AggregatedChoke, AggregatedVote, Hash, SignedChoke, SignedProposal, SignedVote,
     VoteType,
@@ -8,7 +10,7 @@ use crate::{error::ConsensusError, Codec, ConsensusResult};
 
 /// A struct to collect signed proposals in each height. It stores each height and the corresponding
 /// signed proposals in a `BTreeMap`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct ProposalCollector<T: Codec>(BTreeMap<u64, ProposalRoundCollector<T>>);
 
 impl<T> ProposalCollector<T>
@@ -24,6 +26,7 @@ where
     /// the given height and round exists.
     pub fn insert(
         &mut self,
+        ctx: Context,
         height: u64,
         round: u64,
         proposal: SignedProposal<T>,
@@ -31,13 +34,13 @@ where
         self.0
             .entry(height)
             .or_insert_with(ProposalRoundCollector::new)
-            .insert(round, proposal)
+            .insert(ctx, round, proposal)
             .map_err(|_| ConsensusError::MultiProposal(height, round))
     }
 
     /// Get the signed proposal of the given height and round. Return `Err` when there is no
     /// signed proposal. Return `Err` when can not get it.
-    pub fn get(&self, height: u64, round: u64) -> ConsensusResult<SignedProposal<T>> {
+    pub fn get(&self, height: u64, round: u64) -> ConsensusResult<(SignedProposal<T>, Context)> {
         if let Some(round_collector) = self.0.get(&height) {
             return Ok(round_collector
                 .get(round)
@@ -57,7 +60,10 @@ where
     }
 
     /// Get all proposals of the given height.
-    pub fn get_height_proposals(&mut self, height: u64) -> Option<Vec<SignedProposal<T>>> {
+    pub fn get_height_proposals(
+        &mut self,
+        height: u64,
+    ) -> Option<Vec<(SignedProposal<T>, Context)>> {
         self.0.remove(&height).map_or_else(
             || None,
             |map| Some(map.0.values().cloned().collect::<Vec<_>>()),
@@ -72,8 +78,8 @@ where
 
 /// A struct to collect signed proposals in each round. It stores each round and the corresponding
 /// signed proposals in a `HashMap`.
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct ProposalRoundCollector<T: Codec>(HashMap<u64, SignedProposal<T>>);
+#[derive(Clone, Debug)]
+struct ProposalRoundCollector<T: Codec>(HashMap<u64, (SignedProposal<T>, Context)>);
 
 impl<T> ProposalRoundCollector<T>
 where
@@ -83,18 +89,23 @@ where
         ProposalRoundCollector(HashMap::new())
     }
 
-    fn insert(&mut self, round: u64, proposal: SignedProposal<T>) -> ConsensusResult<()> {
-        if let Some(sp) = self.0.get(&round) {
+    fn insert(
+        &mut self,
+        ctx: Context,
+        round: u64,
+        proposal: SignedProposal<T>,
+    ) -> ConsensusResult<()> {
+        if let Some((sp, _)) = self.0.get(&round) {
             if sp == &proposal {
                 return Ok(());
             }
             return Err(ConsensusError::Other("_".to_string()));
         }
-        self.0.insert(round, proposal);
+        self.0.insert(round, (proposal, ctx));
         Ok(())
     }
 
-    fn get(&self, round: u64) -> ConsensusResult<&SignedProposal<T>> {
+    fn get(&self, round: u64) -> ConsensusResult<&(SignedProposal<T>, Context)> {
         self.0
             .get(&round)
             .ok_or_else(|| ConsensusError::StorageErr("_".to_string()))
@@ -543,6 +554,7 @@ mod test {
 
     use bincode::{deserialize, serialize};
     use bytes::Bytes;
+    use creep::Context;
     use rand::random;
     use serde::{Deserialize, Serialize};
     use test::Bencher;
@@ -656,25 +668,37 @@ mod test {
         let proposal_01 = gen_signed_proposal(1, 0);
         let proposal_02 = gen_signed_proposal(1, 0);
 
-        assert!(proposals.insert(1, 0, proposal_01.clone()).is_ok());
-        assert!(proposals.insert(1, 0, proposal_02).is_err());
-        assert_eq!(proposals.get(1, 0).unwrap(), proposal_01);
+        assert!(proposals
+            .insert(Context::new(), 1, 0, proposal_01.clone())
+            .is_ok());
+        assert!(proposals.insert(Context::new(), 1, 0, proposal_02).is_err());
+        assert_eq!(proposals.get(1, 0).unwrap().0, proposal_01);
 
         let proposal_03 = gen_signed_proposal(2, 0);
         let proposal_04 = gen_signed_proposal(3, 0);
 
-        assert!(proposals.insert(2, 0, proposal_03.clone()).is_ok());
-        assert!(proposals.insert(3, 0, proposal_04.clone()).is_ok());
+        assert!(proposals
+            .insert(Context::new(), 2, 0, proposal_03.clone())
+            .is_ok());
+        assert!(proposals
+            .insert(Context::new(), 3, 0, proposal_04.clone())
+            .is_ok());
 
         proposals.flush(2);
         assert!(proposals.get(1, 0).is_err());
-        assert_eq!(proposals.get(2, 0).unwrap(), proposal_03.clone());
-        assert_eq!(proposals.get(3, 0).unwrap(), proposal_04);
+        assert_eq!(proposals.get(2, 0).unwrap().0, proposal_03.clone());
+        assert_eq!(proposals.get(3, 0).unwrap().0, proposal_04);
 
         assert!(proposals.get_height_proposals(1).is_none());
-        assert_eq!(proposals.get_height_proposals(2).unwrap(), vec![
-            proposal_03
-        ]);
+        assert_eq!(
+            proposals
+                .get_height_proposals(2)
+                .unwrap()
+                .into_iter()
+                .map(|item| item.0)
+                .collect::<Vec<_>>(),
+            vec![proposal_03]
+        );
         assert!(proposals.get(2, 0).is_err());
     }
 
@@ -732,7 +756,7 @@ mod test {
     fn bench_insert_proposal(b: &mut Bencher) {
         let mut proposals = ProposalCollector::<Pill>::new();
         let proposal = gen_signed_proposal(1, 0);
-        b.iter(|| proposals.insert(1, 0, proposal.clone()));
+        b.iter(|| proposals.insert(Context::new(), 1, 0, proposal.clone()));
     }
 
     #[bench]
