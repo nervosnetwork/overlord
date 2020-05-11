@@ -2,12 +2,11 @@ use std::error::Error;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use bytes::Bytes;
 use creep::Context;
 use derive_more::Display;
 use futures::channel::mpsc::UnboundedSender;
 use overlord::{
-    Adapter, Address, BlockState, DefaultCrypto, ExecResult, Hash, Height, HeightRange,
+    Adapter, Address, BlockState, DefaultCrypto, ExecResult, FullBlk, Hash, Height, HeightRange,
     OverlordError, OverlordMsg, Proof, TinyHex,
 };
 
@@ -48,7 +47,7 @@ impl OverlordAdapter {
 }
 
 #[async_trait]
-impl Adapter<Block, ExecState> for OverlordAdapter {
+impl Adapter<Block, FullBlock, ExecState> for OverlordAdapter {
     type CryptoImpl = DefaultCrypto;
 
     async fn get_block_exec_result(
@@ -63,8 +62,6 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
             .get_block_with_proof(&self.address, HeightRange::new(height, 1));
         let block = blocks[0].0.clone();
         let full_block = self.fetch_full_block(ctx, block).await?;
-        let full_block: FullBlock =
-            bincode::deserialize(&full_block).expect("deserialize full block failed");
         Ok(Executor::exec(&full_block))
     }
 
@@ -100,11 +97,11 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
     async fn check_block(
         &self,
         _ctx: Context,
-        block: &Block,
-        block_states: &[BlockState<ExecState>],
-        last_commit_exec_resp: &ExecState,
+        block: Block,
+        block_states: Vec<BlockState<ExecState>>,
+        last_commit_exec_resp: ExecState,
     ) -> Result<(), Box<dyn Error + Send>> {
-        let mut expect_state_root = last_commit_exec_resp.state_root.clone();
+        let mut expect_state_root = last_commit_exec_resp.state_root;
         let expect_receipt_roots: Vec<Hash> = block_states
             .iter()
             .map(|block_state| {
@@ -140,39 +137,33 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         &self,
         _ctx: Context,
         block: Block,
-    ) -> Result<Bytes, Box<dyn Error + Send>> {
+    ) -> Result<FullBlock, Box<dyn Error + Send>> {
         let full_block = FullBlock { block };
-        let vec = bincode::serialize(&full_block).expect("serialize full block failed");
-        Ok(Bytes::from(vec))
+        Ok(full_block)
     }
 
     async fn save_full_block_with_proof(
         &self,
         _ctx: Context,
         height: Height,
-        full_block: Bytes,
+        full_block: FullBlock,
         proof: Proof,
         _is_sync: bool,
     ) -> Result<(), Box<dyn Error + Send>> {
-        let full_block: FullBlock =
-            bincode::deserialize(&full_block).expect("deserialize full block failed");
-        let block = full_block.block;
+        let block = full_block.get_block();
         self.storage
             .save_block_with_proof(self.address.clone(), height, block, proof);
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn exec_full_block(
         &self,
         _ctx: Context,
         _height: Height,
-        full_block: Bytes,
+        full_block: FullBlock,
         _last_exec_resp: ExecState,
         _last_commit_exec_resp: ExecState,
     ) -> Result<ExecResult<ExecState>, Box<dyn Error + Send>> {
-        let full_block: FullBlock =
-            bincode::deserialize(&full_block).expect("deserialize full block failed");
         Ok(Executor::exec(&full_block))
     }
 
@@ -181,7 +172,7 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
     async fn register_network(
         &self,
         _ctx: Context,
-        sender: UnboundedSender<(Context, OverlordMsg<Block>)>,
+        sender: UnboundedSender<(Context, OverlordMsg<Block, FullBlock>)>,
     ) {
         self.network.register(self.address.clone(), sender);
     }
@@ -189,7 +180,7 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
     async fn broadcast(
         &self,
         _ctx: Context,
-        msg: OverlordMsg<Block>,
+        msg: OverlordMsg<Block, FullBlock>,
     ) -> Result<(), Box<dyn Error + Send>> {
         test_serialization(&msg);
         self.network.broadcast(&self.address, msg)
@@ -199,7 +190,7 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         &self,
         _ctx: Context,
         to: Address,
-        msg: OverlordMsg<Block>,
+        msg: OverlordMsg<Block, FullBlock>,
     ) -> Result<(), Box<dyn Error + Send>> {
         test_serialization(&msg);
         self.network.transmit(&to, msg)
@@ -209,17 +200,14 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
         &self,
         _ctx: Context,
         range: HeightRange,
-    ) -> Result<Vec<FullBlockWithProof<Block>>, Box<dyn Error + Send>> {
+    ) -> Result<Vec<FullBlockWithProof<Block, FullBlock>>, Box<dyn Error + Send>> {
         let block_with_proofs = self
             .storage
             .get_block_with_proof(&self.address, range)
             .into_iter()
             .map(|(block, proof)| {
-                let full_block = FullBlock {
-                    block: block.clone(),
-                };
-                let vec = bincode::serialize(&full_block).expect("serialize full block failed");
-                FullBlockWithProof::new(block, proof, Bytes::from(vec))
+                let full_block = FullBlock { block };
+                FullBlockWithProof::new(proof, full_block)
             })
             .collect();
         Ok(block_with_proofs)
@@ -232,7 +220,7 @@ impl Adapter<Block, ExecState> for OverlordAdapter {
     async fn handle_error(&self, _ctx: Context, _err: OverlordError) {}
 }
 
-fn test_serialization(msg: &OverlordMsg<Block>) {
+fn test_serialization(msg: &OverlordMsg<Block, FullBlock>) {
     match msg {
         OverlordMsg::SignedProposal(data) => {
             test_rlp(data);

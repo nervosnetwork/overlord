@@ -1,13 +1,12 @@
 use std::collections::{BTreeMap, HashMap};
 
-use bytes::Bytes;
 use derive_more::Display;
 
 use crate::types::{
     ChokeQC, CumWeight, FetchedFullBlock, PreCommitQC, PreVoteQC, Proposal, SignedChoke,
     SignedPreCommit, SignedPreVote, SignedProposal, VoteType, Weight,
 };
-use crate::{Address, Blk, Hash, Height, OverlordError, OverlordResult, Round};
+use crate::{Address, Blk, FullBlk, Hash, Height, OverlordError, OverlordResult, Round};
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, Display)]
@@ -39,9 +38,9 @@ impl_from!(Capsule<'a, B: Blk>, [
 ]);
 
 #[derive(Default)]
-pub struct Cabinet<B: Blk>(BTreeMap<Height, Drawer<B>>);
+pub struct Cabinet<B: Blk, F: FullBlk<B>>(BTreeMap<Height, Drawer<B, F>>);
 
-impl<B: Blk> Cabinet<B> {
+impl<B: Blk, F: FullBlk<B>> Cabinet<B, F> {
     pub fn pop(&mut self, height: Height) -> Option<Vec<Grid<B>>> {
         self.0.remove(&height).map_or_else(
             || None,
@@ -61,7 +60,7 @@ impl<B: Blk> Cabinet<B> {
             .insert(round, data)
     }
 
-    pub fn insert_full_block(&mut self, fetch: FetchedFullBlock) {
+    pub fn insert_full_block(&mut self, fetch: FetchedFullBlock<B, F>) {
         self.0
             .entry(fetch.height)
             .or_insert_with(Drawer::default)
@@ -74,7 +73,7 @@ impl<B: Blk> Cabinet<B> {
             .and_then(|drawer| drawer.get_block(hash))
     }
 
-    pub fn get_full_block(&self, height: Height, hash: &Hash) -> Option<&Bytes> {
+    pub fn get_full_block(&self, height: Height, hash: &Hash) -> Option<&F> {
         self.0
             .get(&height)
             .and_then(|drawer| drawer.get_full_block(hash))
@@ -176,15 +175,15 @@ impl<B: Blk> Cabinet<B> {
 }
 
 #[derive(Default)]
-struct Drawer<B: Blk> {
+struct Drawer<B: Blk, F: FullBlk<B>> {
     grids:          HashMap<Round, Grid<B>>,
     blocks:         HashMap<Hash, B>,
-    full_blocks:    HashMap<Hash, Bytes>,
+    full_blocks:    HashMap<Hash, F>,
     pre_vote_qcs:   HashMap<Hash, PreVoteQC>,
     pre_commit_qcs: HashMap<Hash, PreCommitQC>,
 }
 
-impl<B: Blk> Drawer<B> {
+impl<B: Blk, F: FullBlk<B>> Drawer<B, F> {
     fn insert(&mut self, round: Round, data: Capsule<B>) -> OverlordResult<()> {
         match data {
             Capsule::SignedProposal(sp) => self.insert_block(&sp.proposal),
@@ -205,7 +204,7 @@ impl<B: Blk> Drawer<B> {
             .or_insert_with(|| proposal.block.clone());
     }
 
-    fn insert_full_block(&mut self, hash: Hash, full_block: Bytes) {
+    fn insert_full_block(&mut self, hash: Hash, full_block: F) {
         self.full_blocks.entry(hash).or_insert_with(|| full_block);
     }
 
@@ -235,7 +234,7 @@ impl<B: Blk> Drawer<B> {
         self.blocks.get(hash)
     }
 
-    fn get_full_block(&self, hash: &Hash) -> Option<&Bytes> {
+    fn get_full_block(&self, hash: &Hash) -> Option<&F> {
         self.full_blocks.get(hash)
     }
 

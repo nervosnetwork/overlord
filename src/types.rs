@@ -1,10 +1,11 @@
 use std::fmt::Debug;
+use std::marker::PhantomData;
 
 use bytes::Bytes;
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
 
-use crate::{Blk, St};
+use crate::{Blk, FullBlk, St};
 
 pub type Hash = Bytes;
 pub type Address = Bytes;
@@ -22,7 +23,7 @@ pub type Weight = u32;
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
-pub enum OverlordMsg<B: Blk> {
+pub enum OverlordMsg<B: Blk, F: FullBlk<B>> {
     #[display(fmt = "signed_proposal: {}", _0)]
     SignedProposal(SignedProposal<B>),
     #[display(fmt = "signed_pre_vote: {}", _0)]
@@ -40,13 +41,13 @@ pub enum OverlordMsg<B: Blk> {
     #[display(fmt = "sync_request: {}", _0)]
     SyncRequest(SyncRequest),
     #[display(fmt = "sync_response: {}", _0)]
-    SyncResponse(SyncResponse<B>),
+    SyncResponse(SyncResponse<B, F>),
     #[display(fmt = "stop overlord")]
     Stop,
 }
 
 impl_from!(
-    OverlordMsg<B: Blk>,
+    OverlordMsg<B: Blk, F: FullBlk<B>>,
     [
         SignedProposal<B>,
         SignedPreVote,
@@ -56,7 +57,7 @@ impl_from!(
         PreCommitQC,
         SignedHeight,
         SyncRequest,
-        SyncResponse<B>,
+        SyncResponse<B, F>,
     ]
 );
 
@@ -406,21 +407,21 @@ impl SyncRequest {
 #[display(
     fmt = "{{ request_range: {}, response_heights: {:?}, responder: {} }}",
     request_range,
-    "block_with_proofs.iter().map(|fbp| fbp.block.get_height()).collect::<Vec<Height>>()",
+    "block_with_proofs.iter().map(|fbp| fbp.full_block.get_block().get_height()).collect::<Vec<Height>>()",
     "responder.tiny_hex()"
 )]
-pub struct SyncResponse<B: Blk> {
+pub struct SyncResponse<B: Blk, F: FullBlk<B>> {
     pub request_range:     HeightRange,
-    pub block_with_proofs: Vec<FullBlockWithProof<B>>,
+    pub block_with_proofs: Vec<FullBlockWithProof<B, F>>,
     pub responder:         Address,
     pub pub_key_hex:       String,
     pub signature:         Signature,
 }
 
-impl<B: Blk> SyncResponse<B> {
+impl<B: Blk, F: FullBlk<B>> SyncResponse<B, F> {
     pub fn new(
         request_range: HeightRange,
-        block_with_proofs: Vec<FullBlockWithProof<B>>,
+        block_with_proofs: Vec<FullBlockWithProof<B, F>>,
         responder: Address,
         pub_key_hex: String,
         signature: Signature,
@@ -453,22 +454,25 @@ impl HeightRange {
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq)]
 #[display(
-    fmt = "{{ height: {}, block_hash: {}}}",
+    fmt = "{{ height: {}, block_hash: {}, full_block: {} }}",
     height,
-    "block_hash.tiny_hex()"
+    "block_hash.tiny_hex()",
+    full_block
 )]
-pub struct FetchedFullBlock {
+pub struct FetchedFullBlock<B: Blk, F: FullBlk<B>> {
     pub height:     Height,
     pub block_hash: Hash,
-    pub full_block: Bytes,
+    pub full_block: F,
+    phantom:        PhantomData<B>,
 }
 
-impl FetchedFullBlock {
-    pub fn new(height: Height, block_hash: Hash, full_block: Bytes) -> Self {
+impl<B: Blk, F: FullBlk<B>> FetchedFullBlock<B, F> {
+    pub fn new(height: Height, block_hash: Hash, full_block: F) -> Self {
         FetchedFullBlock {
             height,
             block_hash,
             full_block,
+            phantom: PhantomData,
         }
     }
 }
@@ -558,6 +562,32 @@ impl Default for TimeConfig {
             pre_vote_ratio:   10,
             pre_commit_ratio: 10,
             brake_ratio:      7,
+        }
+    }
+}
+
+pub struct CryptoConfig {
+    pub common_ref:    CommonHex,
+    pub address:       Address,
+    pub pub_key:       PubKeyHex,
+    pub party_pub_key: PartyPubKeyHex,
+    pub pri_key:       PriKeyHex,
+}
+
+impl CryptoConfig {
+    pub fn new(
+        common_ref: CommonHex,
+        pri_key: PriKeyHex,
+        pub_key: PubKeyHex,
+        party_pub_key: PartyPubKeyHex,
+        address: Address,
+    ) -> Self {
+        CryptoConfig {
+            common_ref,
+            pri_key,
+            pub_key,
+            party_pub_key,
+            address,
         }
     }
 }
@@ -653,24 +683,19 @@ impl CumWeight {
 }
 
 #[derive(Clone, Debug, Default, Display, PartialEq, Eq, Serialize, Deserialize)]
-#[display(
-    fmt = "{{ block: {}, proof: {}, full_block: {} }}",
-    block,
-    proof,
-    "full_block.tiny_hex()"
-)]
-pub struct FullBlockWithProof<B: Blk> {
-    pub block:      B,
+#[display(fmt = "{{ proof: {}, full_block: {} }}", proof, full_block)]
+pub struct FullBlockWithProof<B: Blk, F: FullBlk<B>> {
     pub proof:      Proof,
-    pub full_block: Bytes,
+    pub full_block: F,
+    phantom:        PhantomData<B>,
 }
 
-impl<B: Blk> FullBlockWithProof<B> {
-    pub fn new(block: B, proof: Proof, full_block: Bytes) -> Self {
+impl<B: Blk, F: FullBlk<B>> FullBlockWithProof<B, F> {
+    pub fn new(proof: Proof, full_block: F) -> Self {
         FullBlockWithProof {
-            block,
             proof,
             full_block,
+            phantom: PhantomData,
         }
     }
 }
@@ -760,5 +785,27 @@ impl Blk for TestBlock {
 
     fn get_proof(&self) -> Proof {
         self.pre_proof.clone()
+    }
+}
+
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[display(fmt = "{{ block: {} }}", block)]
+pub struct TestFullBlock {
+    pub block: TestBlock,
+}
+
+impl FullBlk<TestBlock> for TestFullBlock {
+    fn fixed_encode(&self) -> Result<Bytes, Box<dyn std::error::Error + Send>> {
+        Ok(bincode::serialize(self)
+            .map(Bytes::from)
+            .expect("test full block encode failed"))
+    }
+
+    fn fixed_decode(data: &Bytes) -> Result<Self, Box<dyn std::error::Error + Send>> {
+        Ok(bincode::deserialize(data.as_ref()).expect("test full block decode failed"))
+    }
+
+    fn get_block(&self) -> TestBlock {
+        self.block.clone()
     }
 }

@@ -7,7 +7,7 @@ use crate::types::{
     PreVoteQC, Proposal, SignedChoke, SignedHeight, SignedPreCommit, SignedPreVote, SignedProposal,
     SyncRequest, SyncResponse, UpdateFrom, Vote, Weight,
 };
-use crate::{Address, Blk, Hash, Height, Proof, Round, Signature};
+use crate::{Address, Blk, FullBlk, Hash, Height, Proof, Round, Signature};
 
 // impl Encodable and Decodable trait for Aggregates
 impl Encodable for Aggregates {
@@ -441,16 +441,17 @@ impl<B: Blk> Decodable for StateInfo<B> {
 }
 
 // impl Encodable and Decodable trait for FetchedFullBlock
-impl Encodable for FetchedFullBlock {
+impl<B: Blk, F: FullBlk<B>> Encodable for FetchedFullBlock<B, F> {
     fn rlp_append(&self, s: &mut RlpStream) {
+        let full_block = self.full_block.fixed_encode().unwrap().to_vec();
         s.begin_list(3)
             .append(&self.height)
             .append(&self.block_hash.to_vec())
-            .append(&self.full_block.to_vec());
+            .append(&full_block);
     }
 }
 
-impl Decodable for FetchedFullBlock {
+impl<B: Blk, F: FullBlk<B>> Decodable for FetchedFullBlock<B, F> {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         match r.prototype()? {
             Prototype::List(3) => {
@@ -458,12 +459,9 @@ impl Decodable for FetchedFullBlock {
                 let tmp: Vec<u8> = r.val_at(1)?;
                 let block_hash = Hash::from(tmp);
                 let tmp: Vec<u8> = r.val_at(2)?;
-                let full_block = Bytes::from(tmp);
-                Ok(FetchedFullBlock {
-                    height,
-                    block_hash,
-                    full_block,
-                })
+                let full_block: F = F::fixed_decode(&Bytes::from(tmp))
+                    .map_err(|_| DecoderError::Custom("Codec decode error."))?;
+                Ok(FetchedFullBlock::new(height, block_hash, full_block))
             }
             _ => Err(DecoderError::RlpInconsistentLengthAndData),
         }
@@ -557,7 +555,7 @@ impl Decodable for SyncRequest {
 }
 
 // impl Encodable and Decodable trait for SyncRequest
-impl<B: Blk> Encodable for SyncResponse<B> {
+impl<B: Blk, F: FullBlk<B>> Encodable for SyncResponse<B, F> {
     fn rlp_append(&self, s: &mut RlpStream) {
         s.begin_list(5)
             .append(&self.request_range)
@@ -568,7 +566,7 @@ impl<B: Blk> Encodable for SyncResponse<B> {
     }
 }
 
-impl<B: Blk> Decodable for SyncResponse<B> {
+impl<B: Blk, F: FullBlk<B>> Decodable for SyncResponse<B, F> {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         match r.prototype()? {
             Prototype::List(5) => {
@@ -578,7 +576,7 @@ impl<B: Blk> Decodable for SyncResponse<B> {
                 let pub_key_hex: String = r.val_at(2)?;
                 let tmp: Vec<u8> = r.val_at(3)?;
                 let signature = Signature::from(tmp);
-                let block_with_proofs: Vec<FullBlockWithProof<B>> = r.list_at(4)?;
+                let block_with_proofs: Vec<FullBlockWithProof<B, F>> = r.list_at(4)?;
                 Ok(SyncResponse {
                     request_range,
                     responder,
@@ -592,31 +590,22 @@ impl<B: Blk> Decodable for SyncResponse<B> {
     }
 }
 
-impl<B: Blk> Encodable for FullBlockWithProof<B> {
+impl<B: Blk, F: FullBlk<B>> Encodable for FullBlockWithProof<B, F> {
     fn rlp_append(&self, s: &mut RlpStream) {
-        let block = self.block.fixed_encode().unwrap().to_vec();
-        s.begin_list(3)
-            .append(&self.proof)
-            .append(&self.full_block.to_vec())
-            .append(&block);
+        let full_block = self.full_block.fixed_encode().unwrap().to_vec();
+        s.begin_list(2).append(&self.proof).append(&full_block);
     }
 }
 
-impl<B: Blk> Decodable for FullBlockWithProof<B> {
+impl<B: Blk, F: FullBlk<B>> Decodable for FullBlockWithProof<B, F> {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         match r.prototype()? {
-            Prototype::List(3) => {
+            Prototype::List(2) => {
                 let proof: Proof = r.val_at(0)?;
                 let tmp: Vec<u8> = r.val_at(1)?;
-                let full_block = Bytes::from(tmp);
-                let tmp: Vec<u8> = r.val_at(2)?;
-                let block: B = B::fixed_decode(&Bytes::from(tmp))
+                let full_block: F = F::fixed_decode(&Bytes::from(tmp))
                     .map_err(|_| DecoderError::Custom("Codec decode error."))?;
-                Ok(FullBlockWithProof {
-                    proof,
-                    block,
-                    full_block,
-                })
+                Ok(FullBlockWithProof::new(proof, full_block))
             }
             _ => Err(DecoderError::RlpInconsistentLengthAndData),
         }
@@ -626,7 +615,7 @@ impl<B: Blk> Decodable for FullBlockWithProof<B> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::types::TestBlock;
+    use crate::types::{TestBlock, TestFullBlock};
     use std::fmt::Debug;
 
     #[test]
@@ -636,7 +625,7 @@ mod test {
         test_rlp::<Aggregates>();
         test_rlp::<Choke>();
         test_rlp::<ChokeQC>();
-        test_rlp::<FetchedFullBlock>();
+        test_rlp::<FetchedFullBlock<TestBlock, TestFullBlock>>();
         test_rlp::<PreCommitQC>();
         test_rlp::<PreVoteQC>();
         test_rlp::<Proposal<TestBlock>>();
@@ -650,7 +639,7 @@ mod test {
         test_rlp::<HeightRange>();
         test_rlp::<SignedHeight>();
         test_rlp::<SyncRequest>();
-        test_rlp::<SyncResponse<TestBlock>>();
+        test_rlp::<SyncResponse<TestBlock, TestFullBlock>>();
     }
 
     fn test_rlp<T: Debug + Default + PartialEq + Eq + Decodable + Encodable>() {

@@ -8,73 +8,75 @@ use prime_tools::get_primes_less_than_x;
 use rlp::{encode, Encodable};
 
 use crate::types::{
-    Aggregates, Choke, ChokeQC, PreCommitQC, PreVoteQC, PriKeyHex, Proof, Proposal, PubKeyHex,
-    SelectMode, SignedChoke, SignedHeight, SignedPreCommit, SignedPreVote, SignedProposal,
-    SyncRequest, SyncResponse, UpdateFrom, Vote, VoteType, Weight,
+    Aggregates, Choke, ChokeQC, PreCommitQC, PreVoteQC, Proof, Proposal, PubKeyHex, SelectMode,
+    SignedChoke, SignedHeight, SignedPreCommit, SignedPreVote, SignedProposal, SyncRequest,
+    SyncResponse, UpdateFrom, Vote, VoteType, Weight,
 };
 use crate::{
-    Adapter, Address, AuthConfig, Blk, CommonHex, Crypto, Hash, Height, HeightRange,
+    Adapter, Address, AuthConfig, Blk, Crypto, CryptoConfig, FullBlk, Hash, Height, HeightRange,
     PartyPubKeyHex, Round, Signature, St, TinyHex,
 };
 use crate::{OverlordError, OverlordResult};
 
-pub struct AuthManage<A: Adapter<B, S>, B: Blk, S: St> {
-    pub fixed_config: AuthFixedConfig,
+pub struct AuthManage<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> {
+    pub crypto_config: CryptoConfig,
 
     pub current_auth: AuthCell<B>,
     pub last_auth:    Option<AuthCell<B>>,
 
     phantom_a: PhantomData<A>,
     phantom_b: PhantomData<B>,
+    phantom_f: PhantomData<F>,
     phantom_s: PhantomData<S>,
 }
 
-impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
+impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> AuthManage<A, B, F, S> {
     pub fn new(
-        fixed_config: AuthFixedConfig,
+        crypto_config: CryptoConfig,
         current_auth: AuthCell<B>,
         last_auth: Option<AuthCell<B>>,
     ) -> Self {
         AuthManage {
-            fixed_config,
+            crypto_config,
             current_auth,
             last_auth,
 
             phantom_a: PhantomData,
             phantom_b: PhantomData,
+            phantom_f: PhantomData,
             phantom_s: PhantomData,
         }
     }
 
     pub fn handle_commit(&mut self, config: AuthConfig) {
         assert_eq!(
-            self.fixed_config.common_ref, config.common_ref,
+            self.crypto_config.common_ref, config.common_ref,
             "CommonRef mismatch, run in wrong chain!"
         );
         self.last_auth = Some(self.current_auth.clone());
-        self.current_auth = AuthCell::new(config, &self.fixed_config.address);
+        self.current_auth = AuthCell::new(config, &self.crypto_config.address);
     }
 
     pub fn sign_proposal(&self, proposal: Proposal<B>) -> OverlordResult<SignedProposal<B>> {
-        let hash = hash::<A, B, Proposal<B>, S>(&proposal);
+        let hash = hash::<A, B, Proposal<B>, F, S>(&proposal);
         let signature = self.party_sign(&hash, true)?;
         Ok(SignedProposal::new(proposal, signature))
     }
 
     pub fn verify_signed_proposal(&self, sp: &SignedProposal<B>) -> OverlordResult<()> {
         self.check_leader(sp.proposal.height, sp.proposal.round, &sp.proposal.proposer)?;
-        let hash = hash::<A, B, Proposal<B>, S>(&sp.proposal);
+        let hash = hash::<A, B, Proposal<B>, F, S>(&sp.proposal);
         self.party_verify_signature(&sp.proposal.proposer, &hash, &sp.signature)?;
         Ok(())
     }
 
     pub fn sign_pre_vote(&self, vote: Vote) -> OverlordResult<SignedPreVote> {
-        let hash = hash_vote::<A, B, Vote, S>(&vote, VoteType::PreVote);
+        let hash = hash_vote::<A, B, Vote, F, S>(&vote, VoteType::PreVote);
         let signature = self.party_sign(&hash, true)?;
         Ok(SignedPreVote::new(
             vote,
             self.current_auth.vote_weight,
-            self.fixed_config.address.clone(),
+            self.crypto_config.address.clone(),
             signature,
         ))
     }
@@ -82,17 +84,17 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
     pub fn verify_signed_pre_vote(&self, signed_vote: &SignedPreVote) -> OverlordResult<()> {
         self.current_auth
             .check_vote_weight(&signed_vote.voter, signed_vote.vote_weight)?;
-        let hash = hash_vote::<A, B, Vote, S>(&signed_vote.vote, VoteType::PreVote);
+        let hash = hash_vote::<A, B, Vote, F, S>(&signed_vote.vote, VoteType::PreVote);
         self.party_verify_signature(&signed_vote.voter, &hash, &signed_vote.signature)
     }
 
     pub fn sign_pre_commit(&self, vote: Vote) -> OverlordResult<SignedPreCommit> {
-        let hash = hash_vote::<A, B, Vote, S>(&vote, VoteType::PreCommit);
+        let hash = hash_vote::<A, B, Vote, F, S>(&vote, VoteType::PreCommit);
         let signature = self.party_sign(&hash, true)?;
         Ok(SignedPreCommit::new(
             vote,
             self.current_auth.vote_weight,
-            self.fixed_config.address.clone(),
+            self.crypto_config.address.clone(),
             signature,
         ))
     }
@@ -100,7 +102,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
     pub fn verify_signed_pre_commit(&self, signed_vote: &SignedPreCommit) -> OverlordResult<()> {
         self.current_auth
             .check_vote_weight(&signed_vote.voter, signed_vote.vote_weight)?;
-        let hash = hash_vote::<A, B, Vote, S>(&signed_vote.vote, VoteType::PreCommit);
+        let hash = hash_vote::<A, B, Vote, F, S>(&signed_vote.vote, VoteType::PreCommit);
         self.party_verify_signature(&signed_vote.voter, &hash, &signed_vote.signature)
     }
 
@@ -118,7 +120,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
     }
 
     pub fn verify_pre_vote_qc(&self, pre_vote_qc: &PreVoteQC) -> OverlordResult<()> {
-        let hash = hash_vote::<A, B, Vote, S>(&pre_vote_qc.vote, VoteType::PreVote);
+        let hash = hash_vote::<A, B, Vote, F, S>(&pre_vote_qc.vote, VoteType::PreVote);
         self.verify_aggregate(&hash, &pre_vote_qc.aggregates)
     }
 
@@ -139,7 +141,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
     }
 
     pub fn verify_pre_commit_qc(&self, pre_commit_qc: &PreCommitQC) -> OverlordResult<()> {
-        let hash = hash_vote::<A, B, Vote, S>(&pre_commit_qc.vote, VoteType::PreCommit);
+        let hash = hash_vote::<A, B, Vote, F, S>(&pre_commit_qc.vote, VoteType::PreCommit);
         self.verify_aggregate(&hash, &pre_commit_qc.aggregates)
     }
 
@@ -148,13 +150,13 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         choke: Choke,
         from: Option<UpdateFrom>,
     ) -> OverlordResult<SignedChoke> {
-        let hash = hash_vote::<A, B, Choke, S>(&choke, VoteType::Choke);
+        let hash = hash_vote::<A, B, Choke, F, S>(&choke, VoteType::Choke);
         let signature = self.party_sign(&hash, true)?;
         Ok(SignedChoke::new(
             choke,
             self.current_auth.vote_weight,
             from,
-            self.fixed_config.address.clone(),
+            self.crypto_config.address.clone(),
             signature,
         ))
     }
@@ -162,7 +164,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
     pub fn verify_signed_choke(&self, signed_choke: &SignedChoke) -> OverlordResult<()> {
         self.current_auth
             .check_vote_weight(&signed_choke.voter, signed_choke.vote_weight)?;
-        let hash = hash_vote::<A, B, Choke, S>(&signed_choke.choke, VoteType::Choke);
+        let hash = hash_vote::<A, B, Choke, F, S>(&signed_choke.choke, VoteType::Choke);
         self.party_verify_signature(&signed_choke.voter, &hash, &signed_choke.signature)
     }
 
@@ -185,15 +187,15 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
     }
 
     pub fn verify_choke_qc(&self, choke_qc: &ChokeQC) -> OverlordResult<()> {
-        let hash = hash_vote::<A, B, Choke, S>(&choke_qc.choke, VoteType::Choke);
+        let hash = hash_vote::<A, B, Choke, F, S>(&choke_qc.choke, VoteType::Choke);
         self.verify_aggregate(&hash, &choke_qc.aggregates)
     }
 
     pub fn verify_proof(&self, proof: Proof) -> OverlordResult<()> {
-        let hash = hash_vote::<A, B, Vote, S>(&proof.vote, VoteType::PreCommit);
+        let hash = hash_vote::<A, B, Vote, F, S>(&proof.vote, VoteType::PreCommit);
 
         if let Some(last_auth) = &self.last_auth {
-            let common_ref = self.fixed_config.common_ref.clone();
+            let common_ref = self.crypto_config.common_ref.clone();
             let voters = last_auth.get_voters(&proof.aggregates.address_bitmap);
             let party_pub_keys = last_auth.get_party_pub_keys(voters.as_ref());
             last_auth.ensure_majority(voters)?;
@@ -216,8 +218,8 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         let signature = self.sign(&hash)?;
         Ok(SignedHeight::new(
             height,
-            self.fixed_config.address.clone(),
-            self.fixed_config.pub_key.clone(),
+            self.crypto_config.address.clone(),
+            self.crypto_config.pub_key.clone(),
             signature,
         ))
     }
@@ -238,8 +240,8 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         let signature = self.sign(&hash)?;
         Ok(SyncRequest::new(
             range,
-            self.fixed_config.address.clone(),
-            self.fixed_config.pub_key.clone(),
+            self.crypto_config.address.clone(),
+            self.crypto_config.pub_key.clone(),
             signature,
         ))
     }
@@ -254,7 +256,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         )
     }
 
-    pub fn verify_sync_response(&self, response: &SyncResponse<B>) -> OverlordResult<()> {
+    pub fn verify_sync_response(&self, response: &SyncResponse<B, F>) -> OverlordResult<()> {
         let hash = A::CryptoImpl::hash(&Bytes::from(rlp::encode(&response.request_range)));
         self.verify_signature(
             response.pub_key_hex.clone(),
@@ -279,12 +281,12 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         if need_auth {
             self.is_auth()?;
         }
-        A::CryptoImpl::party_sign_msg(self.fixed_config.pri_key.clone(), hash)
+        A::CryptoImpl::party_sign_msg(self.crypto_config.pri_key.clone(), hash)
             .map_err(OverlordError::local_crypto)
     }
 
     fn sign(&self, hash: &Hash) -> OverlordResult<Signature> {
-        A::CryptoImpl::sign_msg(self.fixed_config.pri_key.clone(), hash)
+        A::CryptoImpl::sign_msg(self.crypto_config.pri_key.clone(), hash)
             .map_err(OverlordError::local_crypto)
     }
 
@@ -294,7 +296,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
         hash: &Hash,
         signature: &Signature,
     ) -> OverlordResult<()> {
-        let common_ref = self.fixed_config.common_ref.clone();
+        let common_ref = self.crypto_config.common_ref.clone();
         let party_pub_key = self
             .current_auth
             .map
@@ -331,7 +333,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
     }
 
     fn verify_aggregate(&self, hash: &Hash, aggregates: &Aggregates) -> OverlordResult<()> {
-        let common_ref = self.fixed_config.common_ref.clone();
+        let common_ref = self.crypto_config.common_ref.clone();
         let voters = self.current_auth.get_voters(&aggregates.address_bitmap);
         let party_pub_keys = self.current_auth.get_party_pub_keys(voters.as_ref());
         self.current_auth.ensure_majority(voters)?;
@@ -352,12 +354,15 @@ impl<A: Adapter<B, S>, B: Blk, S: St> AuthManage<A, B, S> {
     }
 }
 
-fn hash<A: Adapter<B, S>, B: Blk, E: Encodable, S: St>(data: &E) -> Hash {
+fn hash<A: Adapter<B, F, S>, B: Blk, E: Encodable, F: FullBlk<B>, S: St>(data: &E) -> Hash {
     let encode = encode(data);
     A::CryptoImpl::hash(&Bytes::from(encode))
 }
 
-fn hash_vote<A: Adapter<B, S>, B: Blk, E: Encodable, S: St>(data: &E, vote_type: VoteType) -> Hash {
+fn hash_vote<A: Adapter<B, F, S>, B: Blk, E: Encodable, F: FullBlk<B>, S: St>(
+    data: &E,
+    vote_type: VoteType,
+) -> Hash {
     let mut encode = encode(data);
     encode.insert(0, vote_type.into());
     A::CryptoImpl::hash(&Bytes::from(encode))
@@ -509,32 +514,6 @@ impl<B: Blk> AuthCell<B> {
             .filter(|node| node.0)
             .map(|node| (node.1).0.clone())
             .collect()
-    }
-}
-
-pub struct AuthFixedConfig {
-    pub common_ref:    CommonHex,
-    pub address:       Address,
-    pub pub_key:       PubKeyHex,
-    pub party_pub_key: PartyPubKeyHex,
-    pub pri_key:       PriKeyHex,
-}
-
-impl AuthFixedConfig {
-    pub fn new(
-        common_ref: CommonHex,
-        pri_key: PriKeyHex,
-        pub_key: PubKeyHex,
-        party_pub_key: PartyPubKeyHex,
-        address: Address,
-    ) -> Self {
-        AuthFixedConfig {
-            common_ref,
-            pri_key,
-            pub_key,
-            party_pub_key,
-            address,
-        }
     }
 }
 

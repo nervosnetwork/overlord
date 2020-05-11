@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 use bytes::Bytes;
@@ -16,53 +15,52 @@ use crate::types::{
     SyncRequest, SyncResponse, UpdateFrom,
 };
 use crate::utils::agent::{EventAgent, WrappedExecRequest, WrappedExecResult, WrappedOverlordMsg};
-use crate::utils::auth::{AuthCell, AuthFixedConfig, AuthManage};
+use crate::utils::auth::{AuthCell, AuthManage};
 use crate::utils::cabinet::{Cabinet, Capsule};
 use crate::utils::exec::ExecRequest;
 use crate::utils::sync::{Sync, SyncStat, BLOCK_BATCH};
 use crate::utils::timeout::TimeoutEvent;
 use crate::{
-    Adapter, Address, Blk, Crypto, ExecResult, Hash, Height, HeightRange, OverlordError,
-    OverlordMsg, OverlordResult, Proof, Round, St, TinyHex, Wal, INIT_ROUND,
+    Adapter, Address, Blk, Crypto, CryptoConfig, ExecResult, FullBlk, Hash, Height, HeightRange,
+    OverlordError, OverlordMsg, OverlordResult, Proof, Round, St, TinyHex, Wal, INIT_ROUND,
 };
 
 const HEIGHT_WINDOW: Height = 5;
 const ROUND_WINDOW: Round = 5;
 
 /// State Machine Replica
-pub struct SMR<A: Adapter<B, S>, B: Blk, S: St> {
+pub struct SMR<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> {
     address: Address,
     state:   StateInfo<B>,
     prepare: ProposePrepare<S>,
     sync:    Sync<B>,
 
     adapter: Arc<A>,
-    wal:     Wal,
-    cabinet: Cabinet<B>,
-    auth:    AuthManage<A, B, S>,
-    agent:   EventAgent<A, B, S>,
-
-    phantom_s: PhantomData<S>,
+    wal:     Wal<B, F>,
+    cabinet: Cabinet<B, F>,
+    auth:    AuthManage<A, B, F, S>,
+    agent:   EventAgent<A, B, F, S>,
 }
 
-impl<A, B, S> SMR<A, B, S>
+impl<A, B, F, S> SMR<A, B, F, S>
 where
-    A: Adapter<B, S>,
+    A: Adapter<B, F, S>,
     B: Blk,
+    F: FullBlk<B>,
     S: St,
 {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         ctx: Context,
-        auth_fixed_config: AuthFixedConfig,
+        auth_crypto_config: CryptoConfig,
         adapter: &Arc<A>,
-        from_net: UnboundedReceiver<WrappedOverlordMsg<B>>,
-        to_net: UnboundedSender<WrappedOverlordMsg<B>>,
+        from_net: UnboundedReceiver<WrappedOverlordMsg<B, F>>,
+        to_net: UnboundedSender<WrappedOverlordMsg<B, F>>,
         from_exec: UnboundedReceiver<WrappedExecResult<S>>,
-        to_exec: UnboundedSender<WrappedExecRequest<S>>,
+        to_exec: UnboundedSender<WrappedExecRequest<B, F, S>>,
         wal_path: &str,
     ) -> Self {
-        let address = &auth_fixed_config.address.clone();
+        let address = &auth_crypto_config.address.clone();
 
         let wal = Wal::new(wal_path);
         let rst = wal.load_state();
@@ -119,11 +117,10 @@ where
             state,
             cabinet,
             prepare,
-            phantom_s: PhantomData,
             address: address.clone(),
             sync: Sync::new(),
             adapter: Arc::<A>::clone(adapter),
-            auth: AuthManage::new(auth_fixed_config, current_auth, last_auth),
+            auth: AuthManage::new(auth_crypto_config, current_auth, last_auth),
             agent: EventAgent::new(
                 address.clone(),
                 adapter,
@@ -176,7 +173,7 @@ where
         }
     }
 
-    async fn handle_msg(&mut self, ctx: Context, msg: OverlordMsg<B>) -> OverlordResult<()> {
+    async fn handle_msg(&mut self, ctx: Context, msg: OverlordMsg<B, F>) -> OverlordResult<()> {
         match msg {
             OverlordMsg::SignedProposal(signed_proposal) => {
                 self.handle_signed_proposal(ctx, signed_proposal).await?;
@@ -236,7 +233,7 @@ where
     async fn handle_fetch(
         &mut self,
         ctx: Context,
-        fetch_result: OverlordResult<FetchedFullBlock>,
+        fetch_result: OverlordResult<FetchedFullBlock<B, F>>,
     ) -> OverlordResult<()> {
         let fetch = self.agent.handle_fetch(fetch_result)?;
         if fetch.height < self.state.stage.height {
@@ -355,7 +352,7 @@ where
         self.auth.verify_signed_proposal(&sp)?;
         self.cabinet.insert(msg_h, msg_r, (&sp).into())?;
 
-        self.check_block(&sp.proposal.block).await?;
+        self.check_block(ctx.clone(), &sp.proposal.block).await?;
         self.agent
             .request_full_block(ctx.clone(), sp.proposal.block.clone());
 
@@ -675,8 +672,8 @@ where
 
         let adapter = Arc::clone(&self.adapter);
         let self_address = self.address.clone();
-        let pri_key = self.auth.fixed_config.pri_key.clone();
-        let pub_key = self.auth.fixed_config.pub_key.clone();
+        let pri_key = self.auth.crypto_config.pri_key.clone();
+        let pub_key = self.auth.crypto_config.pub_key.clone();
 
         tokio::spawn(async move {
             let block_with_proofs = adapter
@@ -711,18 +708,18 @@ where
     async fn handle_sync_response(
         &mut self,
         ctx: Context,
-        response: SyncResponse<B>,
+        response: SyncResponse<B, F>,
     ) -> OverlordResult<()> {
         if response.request_range.to < self.state.stage.height {
             return Err(OverlordError::debug_old());
         }
         self.auth.verify_sync_response(&response)?;
 
-        let map: HashMap<Height, FullBlockWithProof<B>> = response
+        let map: HashMap<Height, FullBlockWithProof<B, F>> = response
             .block_with_proofs
             .clone()
             .into_iter()
-            .map(|fbp| (fbp.block.get_height(), fbp))
+            .map(|fbp| (fbp.full_block.get_block().get_height(), fbp))
             .collect();
 
         info!(
@@ -756,7 +753,7 @@ where
                 )));
             }
 
-            let block = &full_block_with_proof.block;
+            let block = &full_block_with_proof.full_block.get_block();
             let proof = &full_block_with_proof.proof;
             let block_hash = block.get_block_hash().map_err(OverlordError::byz_hash)?;
             if proof.vote.block_hash != block_hash {
@@ -766,7 +763,7 @@ where
                     block_hash.clone().tiny_hex()
                 )));
             }
-            self.check_block(block).await?;
+            self.check_block(ctx.clone(), block).await?;
             self.auth.verify_pre_commit_qc(proof)?;
 
             let full_block = full_block_with_proof.full_block.clone();
@@ -899,7 +896,7 @@ where
         Ok(())
     }
 
-    async fn check_block(&self, block: &B) -> OverlordResult<()> {
+    async fn check_block(&self, ctx: Context, block: &B) -> OverlordResult<()> {
         let exec_h = block.get_exec_height();
         if block.get_height() > exec_h + self.prepare.max_exec_behind {
             return Err(OverlordError::byz_block(format!(
@@ -918,10 +915,14 @@ where
 
         self.adapter
             .check_block(
-                Context::new(),
-                block,
-                &self.prepare.get_block_states_list(exec_h),
-                &self.prepare.last_commit_exec_result.block_states.state,
+                ctx,
+                block.clone(),
+                self.prepare.get_block_states_list(exec_h),
+                self.prepare
+                    .last_commit_exec_result
+                    .block_states
+                    .state
+                    .clone(),
             )
             .await
             .map_err(OverlordError::byz_adapter_check_block)?;
@@ -1101,7 +1102,7 @@ where
         Ok(())
     }
 
-    async fn transmit_vote(&self, ctx: Context, vote: OverlordMsg<B>) -> OverlordResult<()> {
+    async fn transmit_vote(&self, ctx: Context, vote: OverlordMsg<B, F>) -> OverlordResult<()> {
         let leader = self.current_leader();
         self.agent
             .transmit(ctx.clone(), leader, vote.clone())
@@ -1193,7 +1194,7 @@ where
         self.address == self.current_leader()
     }
 
-    fn extract_sender(&self, msg: &OverlordMsg<B>) -> Address {
+    fn extract_sender(&self, msg: &OverlordMsg<B, F>) -> Address {
         match msg {
             OverlordMsg::SignedProposal(sp) => sp.proposal.proposer.clone(),
             OverlordMsg::SignedPreVote(sv) => sv.voter.clone(),
@@ -1232,7 +1233,7 @@ where
         );
     }
 
-    fn log_sync_update_of_msg(&self, old_sync: Sync<B>, from: &Address, msg: OverlordMsg<B>) {
+    fn log_sync_update_of_msg(&self, old_sync: Sync<B>, from: &Address, msg: OverlordMsg<B, F>) {
         info!(
             "[RECEIVE]\n\t<{}> <- {}\n\t<message> {}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {} => {}\n",
             self.address.tiny_hex(),
@@ -1284,7 +1285,7 @@ where
     }
 }
 
-async fn recover_state_by_adapter<A: Adapter<B, S>, B: Blk, S: St>(
+async fn recover_state_by_adapter<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(
     adapter: &Arc<A>,
     ctx: Context,
 ) -> StateInfo<B> {
@@ -1294,7 +1295,7 @@ async fn recover_state_by_adapter<A: Adapter<B, S>, B: Blk, S: St>(
     StateInfo::from_commit_height(height)
 }
 
-async fn recover_propose_prepare_and_config<A: Adapter<B, S>, B: Blk, S: St>(
+async fn recover_propose_prepare_and_config<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(
     adapter: &Arc<A>,
     ctx: Context,
 ) -> ProposePrepare<S> {
@@ -1306,7 +1307,7 @@ async fn recover_propose_prepare_and_config<A: Adapter<B, S>, B: Blk, S: St>(
             .await
             .unwrap()
             .unwrap();
-    let block = full_block_with_proof.block;
+    let block = full_block_with_proof.full_block.get_block();
     let proof = full_block_with_proof.proof;
 
     let hash = block.get_block_hash().expect("hash block failed");
@@ -1334,11 +1335,11 @@ async fn recover_propose_prepare_and_config<A: Adapter<B, S>, B: Blk, S: St>(
     )
 }
 
-async fn get_full_block_with_proofs<A: Adapter<B, S>, B: Blk, S: St>(
+async fn get_full_block_with_proofs<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(
     adapter: &Arc<A>,
     ctx: Context,
     height: Height,
-) -> OverlordResult<Option<FullBlockWithProof<B>>> {
+) -> OverlordResult<Option<FullBlockWithProof<B, F>>> {
     let vec = adapter
         .get_full_block_with_proofs(ctx, HeightRange::new(height, 1))
         .await
@@ -1346,7 +1347,7 @@ async fn get_full_block_with_proofs<A: Adapter<B, S>, B: Blk, S: St>(
     Ok(Some(vec[0].clone()))
 }
 
-async fn get_exec_result<A: Adapter<B, S>, B: Blk, S: St>(
+async fn get_exec_result<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(
     adapter: &Arc<A>,
     ctx: Context,
     height: Height,

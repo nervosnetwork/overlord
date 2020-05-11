@@ -1,14 +1,13 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use bytes::Bytes;
 use creep::Context;
 use derive_more::Display;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use futures::stream::StreamExt;
 
 use crate::utils::agent::{WrappedExecRequest, WrappedExecResult};
-use crate::{Adapter, Blk, Height, St, INIT_HEIGHT};
+use crate::{Adapter, Blk, FullBlk, Height, St, INIT_HEIGHT};
 
 #[derive(Display)]
 #[display(
@@ -17,32 +16,29 @@ use crate::{Adapter, Blk, Height, St, INIT_HEIGHT};
     last_exec_resp,
     last_commit_exec_resp
 )]
-pub struct ExecRequest<S: St> {
+pub struct ExecRequest<B: Blk, F: FullBlk<B>, S: St> {
     height:                Height,
-    full_block:            Bytes,
+    full_block:            F,
     last_exec_resp:        S,
     last_commit_exec_resp: S,
+    phantom:               PhantomData<B>,
 }
 
-impl<S: St> ExecRequest<S> {
-    pub fn new(
-        height: Height,
-        full_block: Bytes,
-        last_exec_resp: S,
-        last_commit_exec_resp: S,
-    ) -> Self {
+impl<B: Blk, F: FullBlk<B>, S: St> ExecRequest<B, F, S> {
+    pub fn new(height: Height, full_block: F, last_exec_resp: S, last_commit_exec_resp: S) -> Self {
         ExecRequest {
             height,
             full_block,
             last_exec_resp,
             last_commit_exec_resp,
+            phantom: PhantomData,
         }
     }
 }
 
-pub struct Exec<A: Adapter<B, S>, B: Blk, S: St> {
+pub struct Exec<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> {
     adapter:  Arc<A>,
-    from_smr: UnboundedReceiver<WrappedExecRequest<S>>,
+    from_smr: UnboundedReceiver<WrappedExecRequest<B, F, S>>,
     to_smr:   UnboundedSender<WrappedExecResult<S>>,
 
     last_exec_resp:   Option<S>,
@@ -51,10 +47,10 @@ pub struct Exec<A: Adapter<B, S>, B: Blk, S: St> {
     phantom: PhantomData<B>,
 }
 
-impl<A: Adapter<B, S>, B: Blk, S: St> Exec<A, B, S> {
+impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> Exec<A, B, F, S> {
     pub fn new(
         adapter: &Arc<A>,
-        from_smr: UnboundedReceiver<WrappedExecRequest<S>>,
+        from_smr: UnboundedReceiver<WrappedExecRequest<B, F, S>>,
         to_smr: UnboundedSender<WrappedExecResult<S>>,
     ) -> Self {
         Exec {
@@ -80,7 +76,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> Exec<A, B, S> {
         });
     }
 
-    async fn save_and_exec_block(&mut self, ctx: Context, request: ExecRequest<S>) {
+    async fn save_and_exec_block(&mut self, ctx: Context, request: ExecRequest<B, F, S>) {
         let height = request.height;
         // sync block will make exec's last_exec_height < height - 1
         if self.last_exec_resp.is_none() || self.last_exec_height < height - 1 {

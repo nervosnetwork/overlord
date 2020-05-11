@@ -4,8 +4,8 @@ use bytes::Bytes;
 use overlord::crypto::{KeyPair, KeyPairs};
 use overlord::types::SelectMode;
 use overlord::{
-    gen_key_pairs, Address, AuthConfig, Height, Node, OverlordConfig, OverlordMsg, OverlordServer,
-    TimeConfig, TinyHex,
+    gen_key_pairs, Address, AuthConfig, CryptoConfig, Height, Node, OverlordConfig, OverlordMsg,
+    OverlordServer, TimeConfig, TinyHex,
 };
 
 use crate::common::adapter::OverlordAdapter;
@@ -132,19 +132,18 @@ fn run(
             storage,
         ));
 
-        let common_ref_clone = common_ref.clone();
-        let pri_key = key_pair.private_key.clone();
-        let pub_key = key_pair.public_key.clone();
-        let party_pub_key = key_pair.bls_public_key.clone();
         let tiny_address = address.tiny_hex();
+        let crypto_config = CryptoConfig::new(
+            common_ref.clone(),
+            key_pair.private_key.clone(),
+            key_pair.public_key.clone(),
+            key_pair.bls_public_key.clone(),
+            address,
+        );
         tokio::spawn(async move {
             OverlordServer::run(
                 Context::default(),
-                common_ref_clone,
-                pri_key,
-                pub_key,
-                party_pub_key,
-                address,
+                crypto_config,
                 &adapter,
                 &("wal/tests/".to_owned() + &tiny_address),
             )

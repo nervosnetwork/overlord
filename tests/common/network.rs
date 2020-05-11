@@ -7,10 +7,10 @@ use futures::channel::mpsc::{unbounded, UnboundedSender};
 use overlord::{Address, OverlordMsg};
 use parking_lot::RwLock;
 
-use crate::common::block::Block;
+use crate::common::block::{Block, FullBlock};
 use overlord::types::{PreVoteQC, SignedProposal};
 
-type OverlordSender = UnboundedSender<(Context, OverlordMsg<Block>)>;
+type OverlordSender = UnboundedSender<(Context, OverlordMsg<Block, FullBlock>)>;
 
 #[derive(Default)]
 pub struct Network {
@@ -21,7 +21,7 @@ impl Network {
     pub fn register(
         &self,
         address: Address,
-        sender: UnboundedSender<(Context, OverlordMsg<Block>)>,
+        sender: UnboundedSender<(Context, OverlordMsg<Block, FullBlock>)>,
     ) {
         let mut handlers = self.handlers.write();
         handlers.insert(address, sender);
@@ -30,7 +30,7 @@ impl Network {
     pub fn broadcast(
         &self,
         from: &Address,
-        msg: OverlordMsg<Block>,
+        msg: OverlordMsg<Block, FullBlock>,
     ) -> Result<(), Box<dyn Error + Send>> {
         self.handlers
             .read()
@@ -46,7 +46,7 @@ impl Network {
     pub fn transmit(
         &self,
         to: &Address,
-        msg: OverlordMsg<Block>,
+        msg: OverlordMsg<Block, FullBlock>,
     ) -> Result<(), Box<dyn Error + Send>> {
         let handler = self.handlers.read();
         let sender = handler.get(to).expect("cannot get handler");

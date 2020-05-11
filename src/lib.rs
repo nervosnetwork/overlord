@@ -15,10 +15,11 @@ mod utils;
 
 pub use crypto::{gen_key_pairs, AddressHex, BlsPubKeyHex, DefaultCrypto, PriKeyHex};
 pub use error::{OverlordError, OverlordResult};
-pub use traits::{Adapter, Blk, Crypto, St};
+pub use traits::{Adapter, Blk, Crypto, FullBlk, St};
 pub use types::{
-    Address, AuthConfig, BlockState, CommonHex, ExecResult, Hash, Height, HeightRange, Node,
-    OverlordConfig, OverlordMsg, Proof, Round, Signature, TimeConfig, TinyHex,
+    Address, AuthConfig, BlockState, CommonHex, CryptoConfig, ExecResult, Hash, Height,
+    HeightRange, Node, OverlordConfig, OverlordMsg, PartyPubKeyHex, Proof, Round, Signature,
+    TimeConfig, TinyHex,
 };
 
 use std::marker::PhantomData;
@@ -28,37 +29,27 @@ use creep::Context;
 use futures::channel::mpsc::unbounded;
 
 use crate::smr::SMR;
-use crate::types::{PartyPubKeyHex, PubKeyHex};
-use crate::utils::auth::AuthFixedConfig;
 use crate::utils::exec::Exec;
 use crate::utils::wal::Wal;
 
 pub const INIT_HEIGHT: Height = 0;
 pub const INIT_ROUND: Round = 0;
 
-pub struct OverlordServer<A: Adapter<B, S>, B: Blk, S: St> {
+pub struct OverlordServer<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> {
     phantom_a: PhantomData<A>,
     phantom_b: PhantomData<B>,
+    phantom_f: PhantomData<F>,
     phantom_s: PhantomData<S>,
 }
 
-impl<A, B, S> OverlordServer<A, B, S>
+impl<A, B, F, S> OverlordServer<A, B, F, S>
 where
-    A: Adapter<B, S>,
+    A: Adapter<B, F, S>,
     B: Blk,
+    F: FullBlk<B>,
     S: St,
 {
-    #[allow(clippy::too_many_arguments)]
-    pub async fn run(
-        ctx: Context,
-        common_ref: CommonHex,
-        pri_key: PriKeyHex,
-        pub_key: PubKeyHex,
-        party_pub_key: PartyPubKeyHex,
-        address: Address,
-        adapter: &Arc<A>,
-        wal_path: &str,
-    ) {
+    pub async fn run(ctx: Context, crypto_config: CryptoConfig, adapter: &Arc<A>, wal_path: &str) {
         let (net_sender, net_receiver) = unbounded();
         let (smr_sender, smr_receiver) = unbounded();
         let (exec_sender, exec_receiver) = unbounded();
@@ -66,13 +57,11 @@ where
         adapter
             .register_network(ctx.clone(), net_sender.clone())
             .await;
-        let auth_fixed_config =
-            AuthFixedConfig::new(common_ref, pri_key, pub_key, party_pub_key, address);
 
         let exec = Exec::new(adapter, smr_receiver, exec_sender);
         let smr = SMR::new(
             ctx.clone(),
-            auth_fixed_config,
+            crypto_config,
             adapter,
             net_receiver,
             net_sender,

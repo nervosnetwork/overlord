@@ -1,12 +1,13 @@
 use std::fs;
 use std::io::{Read, Write};
+use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 
 use bytes::Bytes;
 
 use crate::state::StateInfo;
 use crate::types::FetchedFullBlock;
-use crate::{Blk, Height, OverlordError, OverlordResult, TinyHex};
+use crate::{Blk, FullBlk, Height, OverlordError, OverlordResult, TinyHex};
 
 const STATE_SUB_DIR: &str = "state";
 const STATE_FILE_NAME: &str = "state.wal";
@@ -14,12 +15,14 @@ const FULL_BLOCK_SUB_DIR: &str = "full_block";
 
 /// Simple Write Ahead Logging
 #[derive(Debug)]
-pub struct Wal {
+pub struct Wal<B: Blk, F: FullBlk<B>> {
     pub wal_dir_path:   PathBuf,
     pub state_dir_path: PathBuf,
+    phantom_b:          PhantomData<B>,
+    phantom_f:          PhantomData<F>,
 }
 
-impl Wal {
+impl<B: Blk, F: FullBlk<B>> Wal<B, F> {
     pub fn new<P: AsRef<Path>>(path: P) -> Self {
         let wal_dir_path = path.as_ref().to_path_buf();
         let mut state_dir_path = wal_dir_path.clone();
@@ -27,10 +30,12 @@ impl Wal {
         Wal {
             wal_dir_path,
             state_dir_path,
+            phantom_b: PhantomData,
+            phantom_f: PhantomData,
         }
     }
 
-    pub fn save_state<B: Blk>(&self, state: &StateInfo<B>) -> OverlordResult<()> {
+    pub fn save_state(&self, state: &StateInfo<B>) -> OverlordResult<()> {
         let encode = rlp::encode(state);
         self.safe_save_file(
             self.state_dir_path.clone(),
@@ -39,19 +44,19 @@ impl Wal {
         )
     }
 
-    pub fn load_state<B: Blk>(&self) -> OverlordResult<StateInfo<B>> {
+    pub fn load_state(&self) -> OverlordResult<StateInfo<B>> {
         let encode =
             self.safe_load_file(self.state_dir_path.clone(), STATE_FILE_NAME.to_owned())?;
         rlp::decode(&encode).map_err(OverlordError::local_decode)
     }
 
-    pub fn save_full_block(&self, fetch: &FetchedFullBlock) -> OverlordResult<()> {
+    pub fn save_full_block(&self, fetch: &FetchedFullBlock<B, F>) -> OverlordResult<()> {
         let dir = self.assemble_full_block_dir(fetch.height);
         let file_name = fetch.block_hash.tiny_hex() + ".wal";
         self.safe_save_file(dir, file_name, &rlp::encode(fetch))
     }
 
-    pub fn load_full_blocks(&self) -> OverlordResult<Vec<FetchedFullBlock>> {
+    pub fn load_full_blocks(&self) -> OverlordResult<Vec<FetchedFullBlock<B, F>>> {
         let mut vec = vec![];
 
         let mut full_block_path = self.wal_dir_path.clone();
@@ -67,7 +72,7 @@ impl Wal {
                 let _ = file
                     .read_to_end(&mut read_buf)
                     .map_err(OverlordError::local_wal)?;
-                let fetch: FetchedFullBlock =
+                let fetch: FetchedFullBlock<B, F> =
                     rlp::decode(&read_buf).map_err(OverlordError::local_decode)?;
                 vec.push(fetch);
             }
@@ -165,10 +170,10 @@ mod test {
     use super::*;
     use crate::state::Stage;
     use crate::types::{
-        Aggregates, Choke, ChokeQC, PreCommitQC, PreVoteQC, TestBlock, UpdateFrom, Vote,
+        Aggregates, Choke, ChokeQC, PreCommitQC, PreVoteQC, TestBlock, TestFullBlock, UpdateFrom,
+        Vote,
     };
     use crate::{Crypto, DefaultCrypto};
-    use rand::random;
 
     #[test]
     fn test_wal() {
@@ -197,8 +202,10 @@ mod test {
         let load_state = wal.load_state().expect("load state failed");
         assert_eq!(state, load_state);
 
-        let full_block = Bytes::from(gen_random_bytes(1000));
-        let hash = DefaultCrypto::hash(&full_block);
+        let full_block = TestFullBlock {
+            block: TestBlock::default(),
+        };
+        let hash = DefaultCrypto::hash(&full_block.fixed_encode().unwrap());
         let fetch = FetchedFullBlock::new(10, hash.clone(), full_block.clone());
         wal.save_full_block(&fetch).unwrap();
         let fetches = wal.load_full_blocks().expect("load full blocks failed");
@@ -208,9 +215,5 @@ mod test {
             .unwrap();
         wal.remove_full_blocks(12)
             .expect("remove full blocks failed");
-    }
-
-    fn gen_random_bytes(len: usize) -> Vec<u8> {
-        (0..len).map(|_| random::<u8>()).collect::<Vec<_>>()
     }
 }

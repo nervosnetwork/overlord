@@ -13,48 +13,48 @@ use crate::utils::exec::ExecRequest;
 use crate::utils::sync::{CLEAR_TIMEOUT_RATIO, HEIGHT_RATIO, SYNC_TIMEOUT_RATIO};
 use crate::utils::timeout::{TimeoutEvent, TimeoutInfo};
 use crate::{
-    Adapter, Address, Blk, ExecResult, Hash, OverlordError, OverlordMsg, OverlordResult, St,
-    TimeConfig, TinyHex,
+    Adapter, Address, Blk, ExecResult, FullBlk, Hash, OverlordError, OverlordMsg, OverlordResult,
+    St, TimeConfig, TinyHex,
 };
 
 const POWER_CAP: u32 = 5;
 const TIME_DIVISOR: u64 = 10;
 
-pub type WrappedOverlordMsg<B> = (Context, OverlordMsg<B>);
-pub type WrappedExecRequest<S> = (Context, ExecRequest<S>);
+pub type WrappedOverlordMsg<B, F> = (Context, OverlordMsg<B, F>);
+pub type WrappedExecRequest<B, F, S> = (Context, ExecRequest<B, F, S>);
 pub type WrappedExecResult<S> = (Context, ExecResult<S>);
-pub type WrappedFetchedFullBlock = (Context, OverlordResult<FetchedFullBlock>);
+pub type WrappedFetchedFullBlock<B, F> = (Context, OverlordResult<FetchedFullBlock<B, F>>);
 pub type WrappedTimeoutEvent = (Context, TimeoutEvent);
 
-pub struct EventAgent<A: Adapter<B, S>, B: Blk, S: St> {
+pub struct EventAgent<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> {
     address:     Address,
     adapter:     Arc<A>,
     time_config: TimeConfig,
     start_time:  Instant, // start time of current height
     fetch_set:   HashSet<Hash>,
 
-    pub from_net: UnboundedReceiver<WrappedOverlordMsg<B>>,
-    to_net:       UnboundedSender<WrappedOverlordMsg<B>>,
+    pub from_net: UnboundedReceiver<WrappedOverlordMsg<B, F>>,
+    to_net:       UnboundedSender<WrappedOverlordMsg<B, F>>,
 
     pub from_exec: UnboundedReceiver<WrappedExecResult<S>>,
-    to_exec:       UnboundedSender<WrappedExecRequest<S>>,
+    to_exec:       UnboundedSender<WrappedExecRequest<B, F, S>>,
 
-    pub from_fetch: UnboundedReceiver<WrappedFetchedFullBlock>,
-    to_fetch:       UnboundedSender<WrappedFetchedFullBlock>,
+    pub from_fetch: UnboundedReceiver<WrappedFetchedFullBlock<B, F>>,
+    to_fetch:       UnboundedSender<WrappedFetchedFullBlock<B, F>>,
 
     pub from_timeout: UnboundedReceiver<WrappedTimeoutEvent>,
     to_timeout:       UnboundedSender<WrappedTimeoutEvent>,
 }
 
-impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
+impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> EventAgent<A, B, F, S> {
     pub fn new(
         address: Address,
         adapter: &Arc<A>,
         time_config: TimeConfig,
-        from_net: UnboundedReceiver<WrappedOverlordMsg<B>>,
-        to_net: UnboundedSender<WrappedOverlordMsg<B>>,
+        from_net: UnboundedReceiver<WrappedOverlordMsg<B, F>>,
+        to_net: UnboundedSender<WrappedOverlordMsg<B, F>>,
         from_exec: UnboundedReceiver<WrappedExecResult<S>>,
-        to_exec: UnboundedSender<WrappedExecRequest<S>>,
+        to_exec: UnboundedSender<WrappedExecRequest<B, F, S>>,
     ) -> Self {
         let (to_fetch, from_fetch) = unbounded();
         let (to_timeout, from_timeout) = unbounded();
@@ -88,7 +88,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         &self,
         ctx: Context,
         to: Address,
-        msg: OverlordMsg<B>,
+        msg: OverlordMsg<B, F>,
     ) -> OverlordResult<()> {
         if self.address == to {
             self.send_to_myself(ctx, msg);
@@ -107,7 +107,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         }
     }
 
-    pub async fn broadcast(&self, ctx: Context, msg: OverlordMsg<B>) -> OverlordResult<()> {
+    pub async fn broadcast(&self, ctx: Context, msg: OverlordMsg<B, F>) -> OverlordResult<()> {
         info!(
             "[BROADCAST]\n\t<{}> =>|\n\t<message> {} \n\n\n\n\n",
             self.address.tiny_hex(),
@@ -121,7 +121,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
             .map_err(OverlordError::local_broadcast)
     }
 
-    pub fn send_to_myself(&self, ctx: Context, msg: OverlordMsg<B>) {
+    pub fn send_to_myself(&self, ctx: Context, msg: OverlordMsg<B, F>) {
         info!(
             "[TRANSMIT]\n\t<{}> -> myself\n\t<message> {} \n\n\n\n\n",
             self.address.tiny_hex(),
@@ -134,8 +134,8 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
 
     pub fn handle_fetch(
         &mut self,
-        fetch_result: OverlordResult<FetchedFullBlock>,
-    ) -> OverlordResult<FetchedFullBlock> {
+        fetch_result: OverlordResult<FetchedFullBlock<B, F>>,
+    ) -> OverlordResult<FetchedFullBlock<B, F>> {
         if let Err(error) = fetch_result {
             if let ErrorInfo::FetchFullBlock(hash, e) = error.info {
                 self.fetch_set.remove(&hash);
@@ -177,7 +177,7 @@ impl<A: Adapter<B, S>, B: Blk, S: St> EventAgent<A, B, S> {
         });
     }
 
-    pub fn exec_block(&self, ctx: Context, request: ExecRequest<S>) {
+    pub fn exec_block(&self, ctx: Context, request: ExecRequest<B, F, S>) {
         info!(
             "[EXEC]\n\t<{}> -> exec\n\t<request> exec_request: {}\n\n\n\n\n",
             self.address.tiny_hex(),

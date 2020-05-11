@@ -5,7 +5,7 @@ use derive_more::Display;
 use overlord::crypto::{hex_to_address, KeyPairs};
 use overlord::types::SelectMode;
 use overlord::{
-    AuthConfig, Blk, Crypto, DefaultCrypto, Hash, Height, Node, OverlordConfig, Proof, St,
+    AuthConfig, Blk, Crypto, DefaultCrypto, FullBlk, Hash, Height, Node, OverlordConfig, Proof, St,
     TimeConfig, TinyHex,
 };
 use serde::{Deserialize, Serialize};
@@ -118,9 +118,26 @@ pub struct ExecState {
 
 impl St for ExecState {}
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Display, PartialEq, Eq, Serialize, Deserialize)]
+#[display(fmt = "{{ block: {} }}", block)]
 pub struct FullBlock {
     pub block: Block,
+}
+
+impl FullBlk<Block> for FullBlock {
+    fn fixed_encode(&self) -> Result<Bytes, Box<dyn Error + Send>> {
+        Ok(bincode::serialize(self)
+            .map(Bytes::from)
+            .expect("serialize a full block failed"))
+    }
+
+    fn fixed_decode(data: &Bytes) -> Result<Self, Box<dyn Error + Send>> {
+        Ok(bincode::deserialize(data.as_ref()).expect("deserialize a full block failed"))
+    }
+
+    fn get_block(&self) -> Block {
+        self.block.clone()
+    }
 }
 
 #[test]
