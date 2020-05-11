@@ -541,10 +541,8 @@ where
         // If self is not proposer, check whether it has received current signed proposal before. If
         // has, then handle it.
         if !self.is_proposer()? {
-            if let Ok(signed_proposal) = self.proposals.get(self.height, self.round) {
-                return self
-                    .handle_signed_proposal(Context::new(), signed_proposal)
-                    .await;
+            if let Ok((signed_proposal, ctx)) = self.proposals.get(self.height, self.round) {
+                return self.handle_signed_proposal(ctx, signed_proposal).await;
             }
             return Ok(());
         }
@@ -648,7 +646,12 @@ where
             hex::encode(signed_proposal.proposal.block_hash.clone())
         );
 
-        if self.filter_signed_proposal(proposal_height, proposal_round, &signed_proposal)? {
+        if self.filter_signed_proposal(
+            ctx.clone(),
+            proposal_height,
+            proposal_round,
+            &signed_proposal,
+        )? {
             return Ok(());
         }
 
@@ -706,8 +709,12 @@ where
         let hash = proposal.block_hash.clone();
         let block = proposal.content.clone();
         self.hash_with_block.insert(hash.clone(), proposal.content);
-        self.proposals
-            .insert(self.height, self.round, signed_proposal.clone())?;
+        self.proposals.insert(
+            ctx.clone(),
+            self.height,
+            self.round,
+            signed_proposal.clone(),
+        )?;
 
         info!(
             "Overlord: state trigger SMR proposal height {}, round {}, hash {:?}",
@@ -1383,11 +1390,16 @@ where
         Ok(qc)
     }
 
-    fn re_check_proposals(&mut self, proposals: Vec<SignedProposal<T>>) -> ConsensusResult<()> {
+    fn re_check_proposals(
+        &mut self,
+        proposals_and_ctxs: Vec<(SignedProposal<T>, Context)>,
+    ) -> ConsensusResult<()> {
         debug!("Overlord: state re-check future signed proposals");
-        for sp in proposals.into_iter() {
-            let signature = sp.signature.clone();
-            let proposal = sp.proposal.clone();
+        for item in proposals_and_ctxs.into_iter() {
+            let signed_proposal = item.0;
+            let ctx = item.1;
+            let signature = signed_proposal.signature.clone();
+            let proposal = signed_proposal.proposal.clone();
 
             if self
                 .verify_proposer(proposal.height, proposal.round, &proposal.proposer)
@@ -1401,7 +1413,8 @@ where
                     )
                     .is_ok()
             {
-                self.proposals.insert(proposal.height, proposal.round, sp)?;
+                self.proposals
+                    .insert(ctx, proposal.height, proposal.round, signed_proposal)?;
             }
         }
         Ok(())
@@ -1916,6 +1929,7 @@ where
     /// 3. A much higher round which is larger than the FUTURE_ROUND_GAP
     fn filter_signed_proposal(
         &mut self,
+        ctx: Context,
         height: u64,
         round: u64,
         signed_proposal: &SignedProposal<T>,
@@ -1925,15 +1939,15 @@ where
         }
 
         // If the proposal height is higher than the current height or proposal height is
-        // equal to the current height and the proposal round is higher than the current round,
-        // cache it until that height.
+        // equal to the current height and the proposal round is ne the current round, cache it
+        // until that height.
         if (height == self.height && round != self.round) || height > self.height {
             debug!(
                 "Overlord: state receive a future signed proposal, height {}, round {}",
                 height, round,
             );
             self.proposals
-                .insert(height, round, signed_proposal.clone())?;
+                .insert(ctx, height, round, signed_proposal.clone())?;
             return Ok(true);
         }
         Ok(false)
