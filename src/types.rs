@@ -81,7 +81,7 @@ impl<B: Blk> SignedProposal<B> {
     }
 }
 
-#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq)]
 #[display(
     fmt = "{{ height: {}, round: {}, block_hash: {}, block_exec_height: {}, lock: {}, proposer: {}, block: {} }}",
     height,
@@ -208,7 +208,7 @@ impl SignedPreCommit {
     }
 }
 
-#[derive(Clone, Debug, Display, Default, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, Default, Eq)]
 #[display(fmt = "{{ vote: {}, aggregates: {} }}", vote, aggregates)]
 pub struct PreVoteQC {
     pub vote:       Vote,
@@ -307,7 +307,7 @@ impl SignedChoke {
     }
 }
 
-#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash)]
 #[display(fmt = "{{ height: {}, round: {}}}", height, round)]
 pub struct Choke {
     pub height: Height,
@@ -320,7 +320,7 @@ impl Choke {
     }
 }
 
-#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash)]
 #[display(fmt = "{{ choke: {}, aggregates: {} }}", choke, aggregates)]
 pub struct ChokeQC {
     pub choke:      Choke,
@@ -333,7 +333,7 @@ impl ChokeQC {
     }
 }
 
-#[derive(Clone, Debug, Display, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, PartialEq, Eq)]
 pub enum UpdateFrom {
     #[display(fmt = "pre_vote_qc: {}", _0)]
     PreVoteQC(PreVoteQC),
@@ -349,7 +349,7 @@ impl Default for UpdateFrom {
     }
 }
 
-#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq)]
 #[display(fmt = "{{ height: {}, address: {} }}", height, "address.tiny_hex()")]
 pub struct SignedHeight {
     pub height:      Height,
@@ -374,7 +374,7 @@ impl SignedHeight {
     }
 }
 
-#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq)]
 #[display(
     fmt = "{{ request_range: {}, requester: {} }}",
     request_range,
@@ -403,7 +403,7 @@ impl SyncRequest {
     }
 }
 
-#[derive(Clone, Debug, Display, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, Default, PartialEq, Eq)]
 #[display(
     fmt = "{{ request_range: {}, response_heights: {:?}, responder: {} }}",
     request_range,
@@ -436,7 +436,7 @@ impl<B: Blk, F: FullBlk<B>> SyncResponse<B, F> {
     }
 }
 
-#[derive(Clone, Debug, Default, Display, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Display, PartialEq, Eq)]
 #[display(fmt = "[{}, {})", from, to)]
 pub struct HeightRange {
     pub from: Height,
@@ -622,7 +622,7 @@ impl Node {
     }
 }
 
-#[derive(Clone, Debug, Display, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, PartialEq, Eq)]
 pub enum VoteType {
     #[display(fmt = "PreVote")]
     PreVote,
@@ -682,7 +682,7 @@ impl CumWeight {
     }
 }
 
-#[derive(Clone, Debug, Default, Display, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Display, PartialEq, Eq)]
 #[display(fmt = "{{ proof: {}, full_block: {} }}", proof, full_block)]
 pub struct FullBlockWithProof<B: Blk, F: FullBlk<B>> {
     pub proof:      Proof,
