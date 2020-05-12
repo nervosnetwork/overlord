@@ -671,6 +671,7 @@ where
         let signature = signed_proposal.signature.clone();
         self.verify_proposer(proposal_height, proposal_round, &proposal.proposer)?;
         self.verify_signature(
+            ctx.clone(),
             self.util.hash(Bytes::from(rlp::encode(&proposal))),
             signature,
             &proposal.proposer,
@@ -693,6 +694,7 @@ where
             }
 
             self.verify_aggregated_signature(
+                ctx.clone(),
                 polc.lock_votes.signature.clone(),
                 polc.lock_votes.to_vote(),
                 VoteType::Prevote,
@@ -967,6 +969,7 @@ where
         let voter = signed_vote.voter.clone();
         let vote = signed_vote.vote.clone();
         self.verify_signature(
+            ctx.clone(),
             self.util.hash(Bytes::from(rlp::encode(&vote))),
             signature,
             &voter,
@@ -1131,6 +1134,7 @@ where
         // Verify aggregate signature and check the sum of the voting weights corresponding to the
         // hash exceeds the threshold.
         self.verify_aggregated_signature(
+            ctx.clone(),
             aggregated_vote.signature.clone(),
             aggregated_vote.to_vote(),
             qc_type.clone(),
@@ -1411,6 +1415,7 @@ where
                 .is_ok()
                 && self
                     .verify_signature(
+                        Context::new(),
                         self.util.hash(Bytes::from(rlp::encode(&proposal))),
                         signature,
                         &proposal.proposer,
@@ -1434,6 +1439,7 @@ where
 
             if self
                 .verify_signature(
+                    Context::new(),
                     self.util.hash(Bytes::from(rlp::encode(&vote))),
                     signature,
                     &voter,
@@ -1453,6 +1459,7 @@ where
         for qc in qcs.into_iter() {
             if self
                 .verify_aggregated_signature(
+                    Context::new(),
                     qc.signature.clone(),
                     qc.to_vote(),
                     qc.vote_type.clone(),
@@ -1545,8 +1552,10 @@ where
         Ok(signature)
     }
 
+    #[tracing_span(kind = "overlord")]
     fn verify_signature(
         &self,
+        ctx: Context,
         hash: Hash,
         signature: Signature,
         address: &Address,
@@ -1561,8 +1570,10 @@ where
         Ok(())
     }
 
+    #[tracing_span(kind = "overlord")]
     fn verify_aggregated_signature(
         &self,
+        ctx: Context,
         signature: AggregatedSignature,
         vote: Vote,
         vote_type: VoteType,
