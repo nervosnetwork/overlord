@@ -1415,7 +1415,7 @@ where
                 .is_ok()
                 && self
                     .verify_signature(
-                        Context::new(),
+                        ctx.clone(),
                         self.util.hash(Bytes::from(rlp::encode(&proposal))),
                         signature,
                         &proposal.proposer,
