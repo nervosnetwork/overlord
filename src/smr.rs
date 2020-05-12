@@ -347,10 +347,11 @@ where
         let msg_h = sp.proposal.height;
         let msg_r = sp.proposal.round;
 
-        self.filter_msg(msg_h, msg_r, (&sp).into())?;
+        self.filter_msg(msg_h, msg_r, ctx.clone(), (&sp).into())?;
         self.check_proposal(&sp.proposal)?;
         self.auth.verify_signed_proposal(&sp)?;
-        self.cabinet.insert(msg_h, msg_r, (&sp).into())?;
+        self.cabinet
+            .insert(msg_h, msg_r, ctx.clone(), (&sp).into())?;
 
         self.check_block(ctx.clone(), &sp.proposal.block).await?;
         self.agent
@@ -382,10 +383,11 @@ where
         let msg_h = sv.vote.height;
         let msg_r = sv.vote.round;
 
-        self.filter_msg(msg_h, msg_r, (&sv).into())?;
+        self.filter_msg(msg_h, msg_r, ctx.clone(), (&sv).into())?;
 
         self.auth.verify_signed_pre_vote(&sv)?;
-        self.cabinet.insert(msg_h, msg_r, (&sv).into())?;
+        self.cabinet
+            .insert(msg_h, msg_r, ctx.clone(), (&sv).into())?;
         let max_w = self
             .cabinet
             .get_pre_vote_max_vote_weight(msg_h, msg_r)
@@ -403,10 +405,11 @@ where
         let msg_h = sv.vote.height;
         let msg_r = sv.vote.round;
 
-        self.filter_msg(msg_h, msg_r, (&sv).into())?;
+        self.filter_msg(msg_h, msg_r, ctx.clone(), (&sv).into())?;
 
         self.auth.verify_signed_pre_commit(&sv)?;
-        self.cabinet.insert(msg_h, msg_r, (&sv).into())?;
+        self.cabinet
+            .insert(msg_h, msg_r, ctx.clone(), (&sv).into())?;
         let max_w = self
             .cabinet
             .get_pre_commit_max_vote_weight(msg_h, msg_r)
@@ -421,10 +424,11 @@ where
         let msg_h = sc.choke.height;
         let msg_r = sc.choke.round;
 
-        self.filter_msg(msg_h, msg_r, (&sc).into())?;
+        self.filter_msg(msg_h, msg_r, ctx.clone(), (&sc).into())?;
 
         self.auth.verify_signed_choke(&sc)?;
-        self.cabinet.insert(msg_h, msg_r, (&sc).into())?;
+        self.cabinet
+            .insert(msg_h, msg_r, ctx.clone(), (&sc).into())?;
         let sum_w = self
             .cabinet
             .get_choke_vote_weight(msg_h, msg_r)
@@ -452,10 +456,11 @@ where
         let msg_h = qc.vote.height;
         let msg_r = qc.vote.round;
 
-        self.filter_msg(msg_h, msg_r, (&qc).into())?;
+        self.filter_msg(msg_h, msg_r, ctx.clone(), (&qc).into())?;
         self.auth.verify_pre_vote_qc(&qc)?;
         if exist_uncertain {
-            self.cabinet.insert(msg_h, msg_r, (&qc).into())?;
+            self.cabinet
+                .insert(msg_h, msg_r, ctx.clone(), (&qc).into())?;
         }
 
         if qc.vote.is_empty_vote()
@@ -488,10 +493,11 @@ where
         let msg_h = qc.vote.height;
         let msg_r = qc.vote.round;
 
-        self.filter_msg(msg_h, msg_r, (&qc).into())?;
+        self.filter_msg(msg_h, msg_r, ctx.clone(), (&qc).into())?;
         self.auth.verify_pre_commit_qc(&qc)?;
         if exist_uncertain {
-            self.cabinet.insert(msg_h, msg_r, (&qc).into())?;
+            self.cabinet
+                .insert(msg_h, msg_r, ctx.clone(), (&qc).into())?;
         }
 
         if qc.vote.is_empty_vote()
@@ -523,7 +529,7 @@ where
         let msg_h = qc.choke.height;
         let msg_r = qc.choke.round;
 
-        self.filter_msg(msg_h, msg_r, (&qc).into())?;
+        self.filter_msg(msg_h, msg_r, ctx.clone(), (&qc).into())?;
         self.auth.verify_choke_qc(&qc)?;
         let old_state = self.state.handle_choke_qc(&qc)?;
         self.log_state_update_of_msg(old_state, &self.address, (&qc).into());
@@ -829,7 +835,7 @@ where
         );
         self.wal.save_state(&self.state)?;
         self.agent.next_height();
-        self.replay_msg_received(ctx.clone());
+        self.replay_msg_received();
         self.cabinet.next_height(self.state.stage.height);
         self.new_round(ctx).await
     }
@@ -853,7 +859,7 @@ where
         if self.is_current_leader() {
             let signed_proposal = self.create_signed_proposal(ctx.clone()).await?;
             self.agent.broadcast(ctx, signed_proposal.into()).await?;
-        } else if let Some(signed_proposal) = self.cabinet.take_signed_proposal(h, r) {
+        } else if let Some((ctx, signed_proposal)) = self.cabinet.take_signed_proposal(h, r) {
             self.handle_signed_proposal(ctx, signed_proposal).await?;
         }
         Ok(())
@@ -1004,27 +1010,27 @@ where
         self.auth.sign_choke(choke, from)
     }
 
-    fn replay_msg_received(&mut self, ctx: Context) {
+    fn replay_msg_received(&mut self) {
         if self.sync.state == SyncStat::Off {
             if let Some(grids) = self.cabinet.pop(self.state.stage.height) {
                 for mut grid in grids {
-                    for sc in grid.get_signed_chokes() {
-                        self.agent.send_to_myself(ctx.clone(), sc.into());
+                    for (ctx, sc) in grid.get_signed_chokes() {
+                        self.agent.send_to_myself(ctx, sc.into());
                     }
-                    if let Some(qc) = grid.get_pre_commit_qc() {
-                        self.agent.send_to_myself(ctx.clone(), qc.into());
+                    if let Some((ctx, qc)) = grid.get_pre_commit_qc() {
+                        self.agent.send_to_myself(ctx, qc.into());
                     }
-                    if let Some(qc) = grid.get_pre_vote_qc() {
-                        self.agent.send_to_myself(ctx.clone(), qc.into());
+                    if let Some((ctx, qc)) = grid.get_pre_vote_qc() {
+                        self.agent.send_to_myself(ctx, qc.into());
                     }
-                    for sv in grid.get_signed_pre_commits() {
-                        self.agent.send_to_myself(ctx.clone(), sv.into());
+                    for (ctx, sv) in grid.get_signed_pre_commits() {
+                        self.agent.send_to_myself(ctx, sv.into());
                     }
-                    for sv in grid.get_signed_pre_votes() {
-                        self.agent.send_to_myself(ctx.clone(), sv.into());
+                    for (ctx, sv) in grid.get_signed_pre_votes() {
+                        self.agent.send_to_myself(ctx, sv.into());
                     }
-                    if let Some(sp) = grid.take_signed_proposal() {
-                        self.agent.send_to_myself(ctx.clone(), sp.into());
+                    if let Some((ctx, sp)) = grid.take_signed_proposal() {
+                        self.agent.send_to_myself(ctx, sp.into());
                     }
                 }
             }
@@ -1116,6 +1122,7 @@ where
         &mut self,
         height: Height,
         round: Round,
+        ctx: Context,
         capsule: Capsule<B>,
     ) -> OverlordResult<()> {
         let my_height = self.state.stage.height;
@@ -1138,7 +1145,7 @@ where
         } else if height > my_height + HEIGHT_WINDOW || round > my_round + ROUND_WINDOW {
             return Err(OverlordError::debug_high());
         } else if height > my_height {
-            self.cabinet.insert(height, round, capsule.clone())?;
+            self.cabinet.insert(height, round, ctx, capsule.clone())?;
             return Err(OverlordError::debug_high());
         } else {
             match capsule {
