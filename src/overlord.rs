@@ -117,6 +117,18 @@ impl<T: Codec> OverlordHandler<T> {
 
     /// Send overlord message to the instance. Return `Err()` when the message channel is closed.
     pub fn send_msg(&self, ctx: Context, msg: OverlordMsg<T>) -> ConsensusResult<()> {
+        let ctx = match muta_apm::MUTA_TRACER.span("overlord.send_msg_to_inner", vec![
+            muta_apm::rustracing::tag::Tag::new("kind", "overlord"),
+        ]) {
+            Some(mut span) => {
+                span.log(|log| {
+                    log.time(std::time::SystemTime::now());
+                });
+                ctx.with_value("parent_span_ctx", span.context().cloned())
+            }
+            None => ctx,
+        };
+
         if self.0.is_closed() {
             log::error!("[OverlordHandler]: channel closed");
             Ok(())
