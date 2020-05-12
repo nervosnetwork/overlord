@@ -21,6 +21,7 @@ pub use types::{
     HeightRange, Node, OverlordConfig, OverlordMsg, PartyPubKeyHex, Proof, Round, Signature,
     TimeConfig, TinyHex,
 };
+pub use utils::agent::ChannelMsg;
 
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -50,23 +51,21 @@ where
     S: St,
 {
     pub async fn run(ctx: Context, crypto_config: CryptoConfig, adapter: &Arc<A>, wal_path: &str) {
-        let (net_sender, net_receiver) = unbounded();
         let (smr_sender, smr_receiver) = unbounded();
         let (exec_sender, exec_receiver) = unbounded();
 
         adapter
-            .register_network(ctx.clone(), net_sender.clone())
+            .register_network(ctx.clone(), smr_sender.clone())
             .await;
 
-        let exec = Exec::new(adapter, smr_receiver, exec_sender);
+        let exec = Exec::new(adapter, exec_receiver, smr_sender.clone());
         let smr = SMR::new(
             ctx.clone(),
             crypto_config,
             adapter,
-            net_receiver,
-            net_sender,
-            exec_receiver,
+            smr_receiver,
             smr_sender,
+            exec_sender,
             wal_path,
         )
         .await;

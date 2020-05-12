@@ -14,6 +14,7 @@ use crate::types::{
     Address, BlockState, CommonHex, ExecResult, FullBlockWithProof, Hash, Height, HeightRange,
     OverlordMsg, PartyPubKeyHex, Proof, Signature,
 };
+use crate::utils::agent::ChannelMsg;
 use crate::PriKeyHex;
 
 #[async_trait]
@@ -69,11 +70,7 @@ pub trait Adapter<B: Blk, F: FullBlk<B>, S: St>: 'static + Send + Sync {
 
     async fn commit(&self, ctx: Context, commit_state: ExecResult<S>);
 
-    async fn register_network(
-        &self,
-        ctx: Context,
-        sender: UnboundedSender<(Context, OverlordMsg<B, F>)>,
-    );
+    async fn register_network(&self, ctx: Context, sender: UnboundedSender<ChannelMsg<B, F, S>>);
 
     async fn broadcast(
         &self,

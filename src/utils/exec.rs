@@ -6,10 +6,10 @@ use derive_more::Display;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use futures::stream::StreamExt;
 
-use crate::utils::agent::{WrappedExecRequest, WrappedExecResult};
+use crate::utils::agent::ChannelMsg;
 use crate::{Adapter, Blk, FullBlk, Height, St, INIT_HEIGHT};
 
-#[derive(Display)]
+#[derive(Debug, Display)]
 #[display(
     fmt = "{{ height: {}, last_exec_resp: {}, last_commit_exec_resp: {} }}",
     height,
@@ -37,9 +37,9 @@ impl<B: Blk, F: FullBlk<B>, S: St> ExecRequest<B, F, S> {
 }
 
 pub struct Exec<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> {
-    adapter:  Arc<A>,
-    from_smr: UnboundedReceiver<WrappedExecRequest<B, F, S>>,
-    to_smr:   UnboundedSender<WrappedExecResult<S>>,
+    adapter:       Arc<A>,
+    exec_receiver: UnboundedReceiver<ChannelMsg<B, F, S>>,
+    smr_sender:    UnboundedSender<ChannelMsg<B, F, S>>,
 
     last_exec_resp:   Option<S>,
     last_exec_height: Height,
@@ -50,13 +50,13 @@ pub struct Exec<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> {
 impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> Exec<A, B, F, S> {
     pub fn new(
         adapter: &Arc<A>,
-        from_smr: UnboundedReceiver<WrappedExecRequest<B, F, S>>,
-        to_smr: UnboundedSender<WrappedExecResult<S>>,
+        exec_receiver: UnboundedReceiver<ChannelMsg<B, F, S>>,
+        smr_sender: UnboundedSender<ChannelMsg<B, F, S>>,
     ) -> Self {
         Exec {
             adapter: Arc::<A>::clone(adapter),
-            from_smr,
-            to_smr,
+            exec_receiver,
+            smr_sender,
             last_exec_resp: None,
             last_exec_height: INIT_HEIGHT,
             phantom: PhantomData,
@@ -66,12 +66,14 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> Exec<A, B, F, S> {
     pub fn run(mut self) {
         tokio::spawn(async move {
             loop {
-                let (ctx, request) = self
-                    .from_smr
+                if let ChannelMsg::ExecRequest(ctx, request) = self
+                    .exec_receiver
                     .next()
                     .await
-                    .expect("SMR is down! It's meaningless to continue running");
-                self.save_and_exec_block(ctx, request).await;
+                    .expect("SMR is down! It's meaningless to continue running")
+                {
+                    self.save_and_exec_block(ctx, request).await;
+                }
             }
         });
     }
@@ -98,8 +100,8 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> Exec<A, B, F, S> {
         self.last_exec_resp = Some(exec_result.block_states.state.clone());
         self.last_exec_height = height;
 
-        self.to_smr
-            .unbounded_send((ctx, exec_result))
+        self.smr_sender
+            .unbounded_send(ChannelMsg::ExecResult(ctx, exec_result))
             .expect("Exec Channel is down! It's meaningless to continue running");
     }
 }

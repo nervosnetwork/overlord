@@ -10,8 +10,8 @@ use futures_timer::Delay;
 
 use crate::state::{Stage, Step};
 use crate::types::TinyHex;
-use crate::utils::agent::WrappedTimeoutEvent;
-use crate::Address;
+use crate::utils::agent::ChannelMsg;
+use crate::{Address, Blk, FullBlk, St};
 
 #[derive(Clone, Debug, Display)]
 pub enum TimeoutEvent {
@@ -47,26 +47,26 @@ impl From<Stage> for TimeoutEvent {
 
 #[derive(Debug, Display)]
 #[display(fmt = "{}", event)]
-pub struct TimeoutInfo {
+pub struct TimeoutInfo<B: Blk, F: FullBlk<B>, S: St> {
     pub delay: Delay,
     ctx:       Context,
     event:     TimeoutEvent,
-    to_smr:    UnboundedSender<WrappedTimeoutEvent>,
+    sender:    UnboundedSender<ChannelMsg<B, F, S>>,
 }
 
-impl Future for TimeoutInfo {
+impl<B: Blk, F: FullBlk<B>, S: St> Future for TimeoutInfo<B, F, S> {
     type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut TaskContext) -> Poll<Self::Output> {
         let event = self.event.clone();
         let ctx = self.ctx.clone();
-        let mut to_smr = self.to_smr.clone();
+        let mut sender = self.sender.clone();
 
         match self.delay.poll_unpin(cx) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(_) => {
                 tokio::spawn(async move {
-                    let _ = to_smr.send((ctx, event)).await;
+                    let _ = sender.send(ChannelMsg::TimeoutEvent(ctx, event)).await;
                 });
                 Poll::Ready(())
             }
@@ -74,18 +74,18 @@ impl Future for TimeoutInfo {
     }
 }
 
-impl TimeoutInfo {
+impl<B: Blk, F: FullBlk<B>, S: St> TimeoutInfo<B, F, S> {
     pub fn new(
         ctx: Context,
         delay: Duration,
         event: TimeoutEvent,
-        to_smr: UnboundedSender<WrappedTimeoutEvent>,
+        sender: UnboundedSender<ChannelMsg<B, F, S>>,
     ) -> Self {
         TimeoutInfo {
             ctx,
             delay: Delay::new(delay),
             event,
-            to_smr,
+            sender,
         }
     }
 }

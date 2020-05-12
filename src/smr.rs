@@ -4,7 +4,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use creep::Context;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
-use futures::{select, StreamExt};
+use futures::StreamExt;
 use log::{debug, error, info, warn};
 
 use crate::error::ErrorKind;
@@ -14,7 +14,7 @@ use crate::types::{
     Proposal, SignedChoke, SignedHeight, SignedPreCommit, SignedPreVote, SignedProposal,
     SyncRequest, SyncResponse, UpdateFrom,
 };
-use crate::utils::agent::{EventAgent, WrappedExecRequest, WrappedExecResult, WrappedOverlordMsg};
+use crate::utils::agent::{ChannelMsg, EventAgent};
 use crate::utils::auth::{AuthCell, AuthManage};
 use crate::utils::cabinet::{Cabinet, Capsule};
 use crate::utils::exec::ExecRequest;
@@ -49,15 +49,13 @@ where
     F: FullBlk<B>,
     S: St,
 {
-    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         ctx: Context,
         auth_crypto_config: CryptoConfig,
         adapter: &Arc<A>,
-        from_net: UnboundedReceiver<WrappedOverlordMsg<B, F>>,
-        to_net: UnboundedSender<WrappedOverlordMsg<B, F>>,
-        from_exec: UnboundedReceiver<WrappedExecResult<S>>,
-        to_exec: UnboundedSender<WrappedExecRequest<B, F, S>>,
+        smr_receiver: UnboundedReceiver<ChannelMsg<B, F, S>>,
+        smr_sender: UnboundedSender<ChannelMsg<B, F, S>>,
+        exec_sender: UnboundedSender<ChannelMsg<B, F, S>>,
         wal_path: &str,
     ) -> Self {
         let address = &auth_crypto_config.address.clone();
@@ -125,10 +123,9 @@ where
                 address.clone(),
                 adapter,
                 time_config,
-                from_net,
-                to_net,
-                from_exec,
-                to_exec,
+                smr_receiver,
+                smr_sender,
+                exec_sender,
             ),
         }
     }
@@ -139,36 +136,41 @@ where
         self.agent.set_height_timeout(ctx);
 
         loop {
-            select! {
-                opt = self.agent.from_net.next() => {
-                    let (ctx, msg) = opt.expect("Net Channel is down! It's meaningless to continue running");
+            let channel_msg = self
+                .agent
+                .smr_receiver
+                .next()
+                .await
+                .expect("SMR Channel is down! It's meaningless to continue running");
+            match channel_msg {
+                ChannelMsg::PreHandleMsg(ctx, msg) => {
                     if let Err(e) = self.handle_msg(ctx.clone(), msg.clone()).await {
                         let sender = self.extract_sender(&msg);
                         let content = format!("[RECEIVE]\n\t<{}> <- {}\n\t<message> {}\n\t{}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n",
-                            self.address.tiny_hex(), sender.tiny_hex(), msg, e, self.state, self.prepare, self.sync);
+                                              self.address.tiny_hex(), sender.tiny_hex(), msg, e, self.state, self.prepare, self.sync);
                         self.handle_err(ctx, e, content).await;
                     }
                 }
-                opt = self.agent.from_exec.next() => {
-                    let (ctx, exec_result) = opt.expect("Exec Channel is down! It's meaningless to continue running");
+                ChannelMsg::HandleMsg(_ctx, _rst) => {}
+                ChannelMsg::PostHandleMsg(_ctx, _rst) => {}
+                ChannelMsg::ExecResult(ctx, exec_result) => {
                     self.handle_exec_result(ctx, exec_result);
                 }
-                opt = self.agent.from_fetch.next() => {
-                    let (ctx, fetch) = opt.expect("Fetch Channel is down! It's meaningless to continue running");
+                ChannelMsg::FetchedFullBlock(ctx, fetch) => {
                     if let Err(e) = self.handle_fetch(ctx.clone(), fetch).await {
                         let content = format!("[FETCH]\n\t<{}> <- full block\n\t{}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n\n",
-                            self.address.tiny_hex(), e, self.state, self.prepare, self.sync);
+                                              self.address.tiny_hex(), e, self.state, self.prepare, self.sync);
                         self.handle_err(ctx, e, content).await;
                     }
                 }
-                opt = self.agent.from_timeout.next() => {
-                    let (ctx, timeout) = opt.expect("Timeout Channel is down! It's meaningless to continue running");
+                ChannelMsg::TimeoutEvent(ctx, timeout) => {
                     if let Err(e) = self.handle_timeout(ctx.clone(), timeout.clone()).await {
                         let content = format!("[TIMEOUT]\n\t<{}> <- timeout\n\t<timeout> {}\n\t{}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n",
-                            self.address.tiny_hex(), timeout, e, self.state, self.prepare, self.sync);
+                                              self.address.tiny_hex(), timeout, e, self.state, self.prepare, self.sync);
                         self.handle_err(ctx, e, content).await;
                     }
                 }
+                _ => unreachable!(),
             }
         }
     }
@@ -835,7 +837,7 @@ where
         );
         self.wal.save_state(&self.state)?;
         self.agent.next_height();
-        self.replay_msg_received();
+        self.replay_msg_received_before();
         self.cabinet.next_height(self.state.stage.height);
         self.new_round(ctx).await
     }
@@ -1010,27 +1012,27 @@ where
         self.auth.sign_choke(choke, from)
     }
 
-    fn replay_msg_received(&mut self) {
+    fn replay_msg_received_before(&mut self) {
         if self.sync.state == SyncStat::Off {
             if let Some(grids) = self.cabinet.pop(self.state.stage.height) {
                 for mut grid in grids {
                     for (ctx, sc) in grid.get_signed_chokes() {
-                        self.agent.send_to_myself(ctx, sc.into());
+                        self.agent.replay_msg(ctx, sc.into());
                     }
                     if let Some((ctx, qc)) = grid.get_pre_commit_qc() {
-                        self.agent.send_to_myself(ctx, qc.into());
+                        self.agent.replay_msg(ctx, qc.into());
                     }
                     if let Some((ctx, qc)) = grid.get_pre_vote_qc() {
-                        self.agent.send_to_myself(ctx, qc.into());
+                        self.agent.replay_msg(ctx, qc.into());
                     }
                     for (ctx, sv) in grid.get_signed_pre_commits() {
-                        self.agent.send_to_myself(ctx, sv.into());
+                        self.agent.replay_msg(ctx, sv.into());
                     }
                     for (ctx, sv) in grid.get_signed_pre_votes() {
-                        self.agent.send_to_myself(ctx, sv.into());
+                        self.agent.replay_msg(ctx, sv.into());
                     }
                     if let Some((ctx, sp)) = grid.take_signed_proposal() {
-                        self.agent.send_to_myself(ctx, sp.into());
+                        self.agent.replay_msg(ctx, sp.into());
                     }
                 }
             }

@@ -6,8 +6,8 @@ use creep::Context;
 use derive_more::Display;
 use futures::channel::mpsc::UnboundedSender;
 use overlord::{
-    Adapter, Address, BlockState, DefaultCrypto, ExecResult, FullBlk, Hash, Height, HeightRange,
-    OverlordError, OverlordMsg, Proof, TinyHex,
+    Adapter, Address, BlockState, ChannelMsg, DefaultCrypto, ExecResult, FullBlk, Hash, Height,
+    HeightRange, OverlordError, OverlordMsg, Proof, TinyHex,
 };
 
 use crate::common::block::{Block, ExecState, FullBlock};
@@ -172,7 +172,7 @@ impl Adapter<Block, FullBlock, ExecState> for OverlordAdapter {
     async fn register_network(
         &self,
         _ctx: Context,
-        sender: UnboundedSender<(Context, OverlordMsg<Block, FullBlock>)>,
+        sender: UnboundedSender<ChannelMsg<Block, FullBlock, ExecState>>,
     ) {
         self.network.register(self.address.clone(), sender);
     }

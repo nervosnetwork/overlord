@@ -4,13 +4,13 @@ use std::error::Error;
 use bytes::Bytes;
 use creep::Context;
 use futures::channel::mpsc::{unbounded, UnboundedSender};
-use overlord::{Address, OverlordMsg};
+use overlord::{Address, ChannelMsg, OverlordMsg};
 use parking_lot::RwLock;
 
-use crate::common::block::{Block, FullBlock};
+use crate::common::block::{Block, ExecState, FullBlock};
 use overlord::types::{PreVoteQC, SignedProposal};
 
-type OverlordSender = UnboundedSender<(Context, OverlordMsg<Block, FullBlock>)>;
+type OverlordSender = UnboundedSender<ChannelMsg<Block, FullBlock, ExecState>>;
 
 #[derive(Default)]
 pub struct Network {
@@ -21,7 +21,7 @@ impl Network {
     pub fn register(
         &self,
         address: Address,
-        sender: UnboundedSender<(Context, OverlordMsg<Block, FullBlock>)>,
+        sender: UnboundedSender<ChannelMsg<Block, FullBlock, ExecState>>,
     ) {
         let mut handlers = self.handlers.write();
         handlers.insert(address, sender);
@@ -37,7 +37,8 @@ impl Network {
             .iter()
             .filter(|(address, _)| address != &from)
             .for_each(|(_, sender)| {
-                let _ = sender.unbounded_send((Context::default(), msg.clone()));
+                let _ = sender
+                    .unbounded_send(ChannelMsg::PreHandleMsg(Context::default(), msg.clone()));
             });
 
         Ok(())
@@ -50,7 +51,7 @@ impl Network {
     ) -> Result<(), Box<dyn Error + Send>> {
         let handler = self.handlers.read();
         let sender = handler.get(to).expect("cannot get handler");
-        let _ = sender.unbounded_send((Context::default(), msg));
+        let _ = sender.unbounded_send(ChannelMsg::PreHandleMsg(Context::default(), msg));
         Ok(())
     }
 }
@@ -80,13 +81,17 @@ fn test_network() {
     let msg = OverlordMsg::SignedProposal(SignedProposal::default());
     network.broadcast(&addresses[0], msg.clone()).unwrap();
     assert!(receiver_0.try_next().is_err());
-    assert_eq!(receiver_1.try_next().unwrap().unwrap().1, msg);
+    if let ChannelMsg::PreHandleMsg(_, msg_) = receiver_1.try_next().unwrap().unwrap() {
+        assert_eq!(msg_, msg);
+    }
     assert!(receiver_2.try_next().is_err());
 
     // test transmit
     let msg = OverlordMsg::PreVoteQC(PreVoteQC::default());
     network.transmit(&addresses[0], msg.clone()).unwrap();
-    assert_eq!(receiver_0.try_next().unwrap().unwrap().1, msg);
+    if let ChannelMsg::PreHandleMsg(_, msg_) = receiver_0.try_next().unwrap().unwrap() {
+        assert_eq!(msg_, msg);
+    }
     assert!(receiver_1.try_next().is_err());
     assert!(receiver_2.try_next().is_err());
 
@@ -95,8 +100,12 @@ fn test_network() {
     let msg = OverlordMsg::SignedProposal(SignedProposal::default());
     network.broadcast(&addresses[0], msg.clone()).unwrap();
     assert!(receiver_0.try_next().is_err());
-    assert_eq!(receiver_1.try_next().unwrap().unwrap().1, msg);
-    assert_eq!(receiver_2.try_next().unwrap().unwrap().1, msg);
+    if let ChannelMsg::PreHandleMsg(_, msg_) = receiver_1.try_next().unwrap().unwrap() {
+        assert_eq!(msg_, msg);
+    }
+    if let ChannelMsg::PreHandleMsg(_, msg_) = receiver_2.try_next().unwrap().unwrap() {
+        assert_eq!(msg_, msg);
+    }
 
     // test sender drop
     {
