@@ -1134,7 +1134,7 @@ where
         // Verify aggregate signature and check the sum of the voting weights corresponding to the
         // hash exceeds the threshold.
         self.verify_aggregated_signature(
-            ctx.clone(),
+            ctx,
             aggregated_vote.signature.clone(),
             aggregated_vote.to_vote(),
             qc_type.clone(),
