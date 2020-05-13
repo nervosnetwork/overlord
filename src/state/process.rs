@@ -631,7 +631,17 @@ where
 
     /// This function only handle signed proposals which height and round are equal to current.
     /// Others will be ignored or stored in the proposal collector.
-    #[tracing_span(kind = "overlord")]
+    #[tracing_span(
+        kind = "overlord",
+        tags = "{
+            'height': 'signed_proposal.proposal.height', 
+            'round': 'signed_proposal.proposal.round'
+        }",
+        logs = "{
+            'proposal_hash': 'hex::encode(signed_proposal.proposal.block_hash.clone())',
+            'proposer': 'hex::encode(signed_proposal.proposal.proposer.clone())'
+        }"
+    )]
     async fn handle_signed_proposal(
         &mut self,
         ctx: Context,
@@ -926,7 +936,18 @@ where
     /// will be done by the leader. For the higher votes, check the signature and save them in
     /// the vote collector. Whenevet the current vote is received, a statistic is made to check
     /// if the sum of the voting weights corresponding to the hash exceeds the threshold.
-    #[tracing_span(kind = "overlord")]
+    #[tracing_span(
+        kind = "overlord",
+        tags = "{
+            'height': 'signed_vote.vote.height', 
+            'round': 'signed_vote.vote.round', 
+            'vote_type': 'signed_vote.vote.vote_type'
+        }",
+        logs = "{
+            'vote_hash': 'hex::encode(signed_vote.vote.block_hash.clone())',
+            'voter': 'hex::encode(signed_vote.voter.clone())'
+        }"
+    )]
     async fn handle_signed_vote(
         &mut self,
         ctx: Context,
@@ -1061,7 +1082,18 @@ where
     /// is precommit, ignore it. Otherwise, retransmit precommit QC.
     ///
     /// 4. Other cases, return `Ok(())` directly.
-    #[tracing_span(kind = "overlord")]
+    #[tracing_span(
+        kind = "overlord",
+        tags = "{
+            'height': 'aggregated_vote.height', 
+            'round': 'aggregated_vote.round', 
+            'qc_type': 'aggregated_vote.vote_type'
+        }",
+        logs = "{
+            'qc_hash': 'hex::encode(aggregated_vote.block_hash.clone())',
+            'leader': 'hex::encode(aggregated_vote.leader.clone())'
+        }"
+    )]
     async fn handle_aggregated_vote(
         &mut self,
         ctx: Context,
@@ -1270,7 +1302,14 @@ where
         Ok(None)
     }
 
-    #[tracing_span(kind = "overlord")]
+    #[tracing_span(
+        kind = "overlord",
+        tags = "{
+            'height': 'signed_choke.choke.height',
+            'round': 'signed_choke.choke.round'
+        }",
+        logs = "{'choke_from': 'hex::encode(signed_choke.address.clone())'}"
+    )]
     async fn handle_signed_choke(
         &mut self,
         ctx: Context,
@@ -1733,7 +1772,10 @@ where
         Ok(())
     }
 
-    #[tracing_span(kind = "overlord")]
+    #[tracing_span(
+        kind = "overlord",
+        tags = "{'height': 'self.height', 'round': 'self.round'}"
+    )]
     async fn check_block(&mut self, ctx: Context, hash: Hash, block: T) {
         let height = self.height;
         let round = self.round;
@@ -1994,7 +2036,10 @@ where
     }
 }
 
-#[tracing_span(kind = "overlord")]
+#[tracing_span(
+    kind = "overlord",
+    tags = "{'height': 'height', 'round': 'round'}"
+)]
 async fn check_current_block<U: Consensus<T>, T: Codec>(
     ctx: Context,
     function: Arc<U>,
