@@ -7,8 +7,8 @@ use std::{ops::BitXor, sync::Arc};
 use bit_vec::BitVec;
 use bytes::Bytes;
 use creep::Context;
-use derive_more::Display;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
+use futures::future::try_join_all;
 use futures::{select, StreamExt};
 use futures_timer::Delay;
 use log::{debug, error, info, warn};
@@ -20,6 +20,7 @@ use crate::error::ConsensusError;
 use crate::smr::smr_types::{FromWhere, SMREvent, SMRTrigger, Step, TriggerSource, TriggerType};
 use crate::smr::{Event, SMRHandler};
 use crate::state::collection::{ChokeCollector, ProposalCollector, VoteCollector};
+use crate::state::parallel::{parallel_verify, verify_signature};
 use crate::types::{
     Address, AggregatedChoke, AggregatedSignature, AggregatedVote, Choke, Commit, Hash, Node,
     OverlordMsg, PoLC, Proof, Proposal, Signature, SignedChoke, SignedProposal, SignedVote, Status,
@@ -31,15 +32,6 @@ use crate::{Codec, Consensus, ConsensusResult, Crypto, Wal, INIT_HEIGHT, INIT_RO
 
 const FUTURE_HEIGHT_GAP: u64 = 5;
 const FUTURE_ROUND_GAP: u64 = 10;
-
-#[derive(Clone, Debug, Display, PartialEq, Eq)]
-enum MsgType {
-    #[display(fmt = "Signed Proposal message")]
-    SignedProposal,
-
-    #[display(fmt = "Signed Vote message")]
-    SignedVote,
-}
 
 /// Overlord state struct. It maintains the local state of the node, and monitor the SMR event. The
 /// `proposals` is used to cache the signed proposals that are with higher height or round. The
@@ -76,7 +68,7 @@ impl<T, F, C, W> State<T, F, C, W>
 where
     T: Codec + 'static,
     F: Consensus<T> + 'static,
-    C: Crypto,
+    C: Crypto + Sync + 'static,
     W: Wal,
 {
     /// Create a new state struct.
@@ -128,6 +120,8 @@ where
         mut event: Event,
         mut verify_resp: UnboundedReceiver<VerifyResp>,
     ) {
+        let (verify_tx, mut verify_rx) = unbounded();
+
         debug!("Overlord: state start running");
         if let Err(e) = self.start_with_wal().await {
             error!("Overlord: start with wal error {:?}", e);
@@ -137,11 +131,12 @@ where
             select! {
                 raw = raw_rx.next() => {
                     let (ctx, msg) = raw.expect("Overlord message handler dropped");
-                    if let Err(e) = self.handle_msg(ctx.clone(), msg).await {
-                        self.report_error(ctx, e.clone());
-                        error!("Overlord: state {:?} error", e);
-                    }
+                    let tx_clone = verify_tx.clone();
+                    let crypto = Arc::clone(&self.util);
+                    let authority = self.authority.clone();
+                    parallel_verify(ctx, msg, crypto, authority, tx_clone).await;
                 }
+
                 evt = event.next() => {
                     if self.stopped {
                         break;
@@ -155,12 +150,21 @@ where
                         error!("Overlord: state {:?} error", e);
                     }
                 }
+
                 res = verify_resp.next() => {
                     if !self.consensus_power {
                         continue;
                     }
 
                     if let Err(e) = self.handle_resp(res) {
+                        error!("Overlord: state {:?} error", e);
+                    }
+                }
+
+                verified_msg = verify_rx.next() => {
+                    let (ctx, msg) = verified_msg.expect("Overlord message handler dropped");
+                    if let Err(e) = self.handle_msg(ctx.clone(), msg).await {
+                        self.report_error(ctx, e.clone());
                         error!("Overlord: state {:?} error", e);
                     }
                 }
@@ -499,13 +503,13 @@ where
 
         // Re-check proposals that have been in the proposal collector, of the current height.
         if let Some(proposals) = self.proposals.get_height_proposals(self.height) {
-            self.re_check_proposals(proposals)?;
+            self.re_check_proposals(proposals).await?;
         }
 
         // Re-check votes and quorum certificates in the vote collector, of the current height.
         if let Some((votes, qcs)) = self.votes.get_height_votes(new_height) {
-            self.re_check_votes(votes)?;
-            self.re_check_qcs(qcs)?;
+            self.re_check_votes(votes).await?;
+            self.re_check_qcs(qcs).await?;
         }
 
         self.state_machine.new_height_status(status.into())?;
@@ -680,41 +684,11 @@ where
         let proposal = signed_proposal.proposal.clone();
         let signature = signed_proposal.signature.clone();
         self.verify_proposer(proposal_height, proposal_round, &proposal.proposer)?;
-        self.verify_signature(
-            ctx.clone(),
-            self.util.hash(Bytes::from(rlp::encode(&proposal))),
-            signature,
-            &proposal.proposer,
-            MsgType::SignedProposal,
-        )?;
 
         // If the signed proposal is with a lock, check the lock round and the QC then trigger it to
         // SMR. Otherwise, touch off SMR directly.
         let lock_round = if let Some(polc) = proposal.lock.clone() {
             debug!("Overlord: state receive a signed proposal with a lock");
-
-            if !self
-                .authority
-                .is_above_threshold(&polc.lock_votes.signature.address_bitmap)?
-            {
-                return Err(ConsensusError::AggregatedSignatureErr(format!(
-                    "aggregate signature below two thirds, proposal of height {:?}, round {:?}",
-                    proposal.height, proposal.round
-                )));
-            }
-
-            self.verify_aggregated_signature(
-                ctx.clone(),
-                polc.lock_votes.signature.clone(),
-                polc.lock_votes.to_vote(),
-                VoteType::Prevote,
-            )
-            .map_err(|err| {
-                ConsensusError::AggregatedSignatureErr(format!(
-                    "{:?} proposal of height {:?}, round {:?}",
-                    err, proposal.height, proposal.round
-                ))
-            })?;
             Some(polc.lock_round)
         } else {
             None
@@ -989,13 +963,6 @@ where
         let signature = signed_vote.signature.clone();
         let voter = signed_vote.voter.clone();
         let vote = signed_vote.vote.clone();
-        self.verify_signature(
-            ctx.clone(),
-            self.util.hash(Bytes::from(rlp::encode(&vote))),
-            signature,
-            &voter,
-            MsgType::SignedVote,
-        )?;
         self.verify_address(&voter)?;
 
         // Check if the quorum certificate has generated before check whether there is a hash that
@@ -1163,15 +1130,6 @@ where
             Some(json!({ "qc type": qc_type.to_string() })),
         );
 
-        // Verify aggregate signature and check the sum of the voting weights corresponding to the
-        // hash exceeds the threshold.
-        self.verify_aggregated_signature(
-            ctx,
-            aggregated_vote.signature.clone(),
-            aggregated_vote.to_vote(),
-            qc_type.clone(),
-        )?;
-
         // Check if the block hash has been verified.
         let qc_hash = aggregated_vote.block_hash.clone();
         self.votes.set_qc(aggregated_vote);
@@ -1315,15 +1273,6 @@ where
         ctx: Context,
         signed_choke: SignedChoke,
     ) -> ConsensusResult<()> {
-        // verify signature
-        let signature = signed_choke.signature.clone();
-        let hash = self
-            .util
-            .hash(Bytes::from(rlp::encode(&signed_choke.choke.to_hash())));
-        self.util
-            .verify_signature(signature, hash, signed_choke.address.clone())
-            .map_err(|err| ConsensusError::CryptoErr(format!("{:?}", err)))?;
-
         let choke = signed_choke.choke.clone();
         let choke_height = choke.height;
         let choke_round = choke.round;
@@ -1372,15 +1321,7 @@ where
             ));
         }
 
-        // verify aggregated signature.
         let choke = aggregated_choke.to_hash();
-        let choke_hash = self.util.hash(Bytes::from(rlp::encode(&choke)));
-        let voters = aggregated_choke.voters.clone();
-        self.util
-            .verify_aggregated_signature(aggregated_choke.signature.clone(), choke_hash, voters)
-            .map_err(|err| {
-                ConsensusError::CryptoErr(format!("choke qc signature error {:?}", err))
-            })?;
         self.chokes.set_qc(choke.round, aggregated_choke);
 
         self.state_machine.trigger(SMRTrigger {
@@ -1438,76 +1379,68 @@ where
         Ok(qc)
     }
 
-    fn re_check_proposals(
+    async fn re_check_proposals(
         &mut self,
         proposals_and_ctxs: Vec<(SignedProposal<T>, Context)>,
     ) -> ConsensusResult<()> {
         debug!("Overlord: state re-check future signed proposals");
-        for item in proposals_and_ctxs.into_iter() {
-            let signed_proposal = item.0;
-            let ctx = item.1;
-            let signature = signed_proposal.signature.clone();
-            let proposal = signed_proposal.proposal.clone();
 
-            if self
-                .verify_proposer(proposal.height, proposal.round, &proposal.proposer)
-                .is_ok()
-                && self
-                    .verify_signature(
-                        ctx.clone(),
-                        self.util.hash(Bytes::from(rlp::encode(&proposal))),
-                        signature,
-                        &proposal.proposer,
-                        MsgType::SignedProposal,
-                    )
+        let crypto = Arc::clone(&self.util);
+        let futs = proposals_and_ctxs
+            .into_iter()
+            .map(|(proposal, ctx)| verify_proposal(ctx, proposal, Arc::clone(&crypto)))
+            .collect::<Vec<_>>();
+
+        for item in try_join_all(futs).await? {
+            if let Some((sp, ctx)) = item {
+                let proposal = sp.proposal.clone();
+                if self
+                    .verify_proposer(proposal.height, proposal.round, &proposal.proposer)
                     .is_ok()
-            {
-                self.proposals
-                    .insert(ctx, proposal.height, proposal.round, signed_proposal)?;
+                {
+                    self.proposals
+                        .insert(ctx, proposal.height, proposal.round, sp)?;
+                }
             }
         }
+
         Ok(())
     }
 
-    fn re_check_votes(&mut self, votes: Vec<SignedVote>) -> ConsensusResult<()> {
+    async fn re_check_votes(&mut self, votes: Vec<SignedVote>) -> ConsensusResult<()> {
         debug!("Overlord: state re-check future signed votes");
-        for sv in votes.into_iter() {
-            let signature = sv.signature.clone();
-            let voter = sv.voter.clone();
-            let vote = sv.vote.clone();
+        let crypto = Arc::clone(&self.util);
+        let futs = votes
+            .into_iter()
+            .map(|vote| verify_vote(vote, Arc::clone(&crypto)))
+            .collect::<Vec<_>>();
 
-            if self
-                .verify_signature(
-                    Context::new(),
-                    self.util.hash(Bytes::from(rlp::encode(&vote))),
-                    signature,
-                    &voter,
-                    MsgType::SignedVote,
-                )
-                .is_ok()
-                && self.verify_address(&voter).is_ok()
-            {
-                self.votes.insert_vote(sv.get_hash(), sv, voter);
+        for vote in try_join_all(futs).await? {
+            if let Some(sv) = vote {
+                if self.verify_address(&sv.voter).is_ok() {
+                    self.votes.insert_vote(sv.get_hash(), sv.clone(), sv.voter);
+                }
             }
         }
+
         Ok(())
     }
 
-    fn re_check_qcs(&mut self, qcs: Vec<AggregatedVote>) -> ConsensusResult<()> {
+    async fn re_check_qcs(&mut self, qcs: Vec<AggregatedVote>) -> ConsensusResult<()> {
         debug!("Overlord: state re-check future QCs");
-        for qc in qcs.into_iter() {
-            if self
-                .verify_aggregated_signature(
-                    Context::new(),
-                    qc.signature.clone(),
-                    qc.to_vote(),
-                    qc.vote_type.clone(),
-                )
-                .is_ok()
-            {
+        let crypto = Arc::clone(&self.util);
+        let authority = self.authority.clone();
+        let futs = qcs
+            .into_iter()
+            .map(|qc| verify_qc(qc, authority.clone(), Arc::clone(&crypto)))
+            .collect::<Vec<_>>();
+
+        for item in try_join_all(futs).await? {
+            if let Some(qc) = item {
                 self.votes.set_qc(qc);
             }
         }
+
         Ok(())
     }
 
@@ -1589,71 +1522,6 @@ where
             .aggregate_signatures(signatures, voters)
             .map_err(|err| ConsensusError::CryptoErr(format!("{:?}", err)))?;
         Ok(signature)
-    }
-
-    #[tracing_span(kind = "overlord")]
-    fn verify_signature(
-        &self,
-        ctx: Context,
-        hash: Hash,
-        signature: Signature,
-        address: &Address,
-        msg_type: MsgType,
-    ) -> ConsensusResult<()> {
-        debug!("Overlord: state verify a signature");
-        self.util
-            .verify_signature(signature, hash, address.to_owned())
-            .map_err(|err| {
-                ConsensusError::CryptoErr(format!("{:?} signature error {:?}", msg_type, err))
-            })?;
-        Ok(())
-    }
-
-    #[tracing_span(kind = "overlord")]
-    fn verify_aggregated_signature(
-        &self,
-        ctx: Context,
-        signature: AggregatedSignature,
-        vote: Vote,
-        vote_type: VoteType,
-    ) -> ConsensusResult<()> {
-        debug!("Overlord: state verify an aggregated signature");
-        if !self
-            .authority
-            .is_above_threshold(&signature.address_bitmap)?
-        {
-            return Err(ConsensusError::AggregatedSignatureErr(format!(
-                "{:?} QC of height {}, round {} is not above threshold",
-                vote_type, self.height, self.round
-            )));
-        }
-
-        let mut voters = self.authority.get_voters(&signature.address_bitmap)?;
-        voters.sort();
-
-        let pretty_voter = voters
-            .iter()
-            .map(|addr| hex::encode(addr.clone()))
-            .collect::<Vec<_>>();
-
-        info!(
-            "Overlord: state verify aggregated signature, height {}, round {}, voters {:?}",
-            self.height, self.round, pretty_voter
-        );
-
-        self.util
-            .verify_aggregated_signature(
-                signature.signature,
-                self.util.hash(Bytes::from(rlp::encode(&vote))),
-                voters,
-            )
-            .map_err(|err| {
-                ConsensusError::AggregatedSignatureErr(format!(
-                    "{:?} aggregate signature error {:?}",
-                    vote_type, err
-                ))
-            })?;
-        Ok(())
     }
 
     fn verify_proposer(&self, height: u64, round: u64, address: &Address) -> ConsensusResult<()> {
@@ -2036,10 +1904,7 @@ where
     }
 }
 
-#[tracing_span(
-    kind = "overlord",
-    tags = "{'height': 'height', 'round': 'round'}"
-)]
+#[tracing_span(kind = "overlord", tags = "{'height': 'height', 'round': 'round'}")]
 async fn check_current_block<U: Consensus<T>, T: Codec>(
     ctx: Context,
     function: Arc<U>,
@@ -2062,6 +1927,66 @@ async fn check_current_block<U: Consensus<T>, T: Codec>(
         is_pass: true,
     })
     .map_err(|e| ConsensusError::ChannelErr(e.to_string()))
+}
+
+async fn verify_proposal<T: Codec, C: Crypto>(
+    ctx: Context,
+    proposal: SignedProposal<T>,
+    crypto: Arc<C>,
+) -> ConsensusResult<Option<(SignedProposal<T>, Context)>> {
+    if verify_signature(
+        crypto,
+        proposal.signature.clone(),
+        proposal.proposal.proposer.clone(),
+        rlp::encode(&proposal.proposal),
+    ) {
+        Ok(Some((proposal, ctx)))
+    } else {
+        Ok(None)
+    }
+}
+
+async fn verify_vote<C: Crypto>(
+    vote: SignedVote,
+    crypto: Arc<C>,
+) -> ConsensusResult<Option<SignedVote>> {
+    if verify_signature(
+        crypto,
+        vote.signature.clone(),
+        vote.voter.clone(),
+        rlp::encode(&vote.vote),
+    ) {
+        Ok(Some(vote))
+    } else {
+        Ok(None)
+    }
+}
+
+async fn verify_qc<C: Crypto>(
+    qc: AggregatedVote,
+    authority: AuthorityManage,
+    crypto: Arc<C>,
+) -> ConsensusResult<Option<AggregatedVote>> {
+    if authority
+        .is_above_threshold(&qc.signature.address_bitmap)
+        .is_err()
+    {
+        return Ok(None);
+    }
+
+    if let Ok(voters) = authority.get_voters(&qc.signature.address_bitmap) {
+        let hash = crypto.hash(Bytes::from(rlp::encode(&qc.to_vote())));
+        if crypto
+            .verify_aggregated_signature(qc.signature.signature.clone(), hash, voters)
+            .is_ok()
+        {
+            Ok(Some(qc))
+        } else {
+            Ok(None)
+        }
+    } else {
+        Ok(None)
+    }
 }
 
 fn mock_init_qc() -> AggregatedVote {
