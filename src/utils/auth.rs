@@ -1,11 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
+use std::sync::Arc;
 
 use bit_vec::BitVec;
 use bytes::Bytes;
 use log::warn;
 use prime_tools::get_primes_less_than_x;
 use rlp::{encode, Encodable};
+use tokio::sync::RwLock;
 
 use crate::types::{
     Aggregates, Choke, ChokeQC, PreCommitQC, PreVoteQC, Proof, Proposal, PubKeyHex, SelectMode,
@@ -21,8 +23,8 @@ use crate::{OverlordError, OverlordResult};
 pub struct AuthManage<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> {
     pub crypto_config: CryptoConfig,
 
-    pub current_auth: AuthCell<B>,
-    pub last_auth:    Option<AuthCell<B>>,
+    pub current_auth: Arc<RwLock<AuthCell<B>>>,
+    pub last_auth:    Arc<RwLock<Option<AuthCell<B>>>>,
 
     phantom_a: PhantomData<A>,
     phantom_b: PhantomData<B>,
@@ -38,8 +40,8 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> AuthManage<A, B, F, S> {
     ) -> Self {
         AuthManage {
             crypto_config,
-            current_auth,
-            last_auth,
+            current_auth: Arc::new(RwLock::new(current_auth)),
+            last_auth: Arc::new(RwLock::new(last_auth)),
 
             phantom_a: PhantomData,
             phantom_b: PhantomData,
@@ -48,65 +50,80 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> AuthManage<A, B, F, S> {
         }
     }
 
-    pub fn handle_commit(&mut self, config: AuthConfig) {
+    pub async fn handle_commit(&self, config: AuthConfig) {
         assert_eq!(
             self.crypto_config.common_ref, config.common_ref,
             "CommonRef mismatch, run in wrong chain!"
         );
-        self.last_auth = Some(self.current_auth.clone());
-        self.current_auth = AuthCell::new(config, &self.crypto_config.address);
+        let mut current_auth = self.current_auth.write().await;
+
+        *self.last_auth.write().await = Some(current_auth.clone());
+        *current_auth = AuthCell::new(config, &self.crypto_config.address);
     }
 
-    pub fn sign_proposal(&self, proposal: Proposal<B>) -> OverlordResult<SignedProposal<B>> {
+    pub async fn sign_proposal(&self, proposal: Proposal<B>) -> OverlordResult<SignedProposal<B>> {
         let hash = hash::<A, B, Proposal<B>, F, S>(&proposal);
-        let signature = self.party_sign(&hash, true)?;
+        let signature = self.party_sign(&hash, true).await?;
         Ok(SignedProposal::new(proposal, signature))
     }
 
-    pub fn verify_signed_proposal(&self, sp: &SignedProposal<B>) -> OverlordResult<()> {
-        self.check_leader(sp.proposal.height, sp.proposal.round, &sp.proposal.proposer)?;
+    pub async fn verify_signed_proposal(&self, sp: &SignedProposal<B>) -> OverlordResult<()> {
+        self.check_leader(sp.proposal.height, sp.proposal.round, &sp.proposal.proposer)
+            .await?;
         let hash = hash::<A, B, Proposal<B>, F, S>(&sp.proposal);
-        self.party_verify_signature(&sp.proposal.proposer, &hash, &sp.signature)?;
-        Ok(())
+        self.party_verify_signature(&sp.proposal.proposer, &hash, &sp.signature)
+            .await
     }
 
-    pub fn sign_pre_vote(&self, vote: Vote) -> OverlordResult<SignedPreVote> {
+    pub async fn sign_pre_vote(&self, vote: Vote) -> OverlordResult<SignedPreVote> {
         let hash = hash_vote::<A, B, Vote, F, S>(&vote, VoteType::PreVote);
-        let signature = self.party_sign(&hash, true)?;
+        let signature = self.party_sign(&hash, true).await?;
         Ok(SignedPreVote::new(
             vote,
-            self.current_auth.vote_weight,
+            self.current_auth.read().await.vote_weight,
             self.crypto_config.address.clone(),
             signature,
         ))
     }
 
-    pub fn verify_signed_pre_vote(&self, signed_vote: &SignedPreVote) -> OverlordResult<()> {
+    pub async fn verify_signed_pre_vote(&self, signed_vote: &SignedPreVote) -> OverlordResult<()> {
         self.current_auth
+            .read()
+            .await
             .check_vote_weight(&signed_vote.voter, signed_vote.vote_weight)?;
         let hash = hash_vote::<A, B, Vote, F, S>(&signed_vote.vote, VoteType::PreVote);
         self.party_verify_signature(&signed_vote.voter, &hash, &signed_vote.signature)
+            .await
     }
 
-    pub fn sign_pre_commit(&self, vote: Vote) -> OverlordResult<SignedPreCommit> {
+    pub async fn sign_pre_commit(&self, vote: Vote) -> OverlordResult<SignedPreCommit> {
         let hash = hash_vote::<A, B, Vote, F, S>(&vote, VoteType::PreCommit);
-        let signature = self.party_sign(&hash, true)?;
+        let signature = self.party_sign(&hash, true).await?;
         Ok(SignedPreCommit::new(
             vote,
-            self.current_auth.vote_weight,
+            self.current_auth.read().await.vote_weight,
             self.crypto_config.address.clone(),
             signature,
         ))
     }
 
-    pub fn verify_signed_pre_commit(&self, signed_vote: &SignedPreCommit) -> OverlordResult<()> {
+    pub async fn verify_signed_pre_commit(
+        &self,
+        signed_vote: &SignedPreCommit,
+    ) -> OverlordResult<()> {
         self.current_auth
+            .read()
+            .await
             .check_vote_weight(&signed_vote.voter, signed_vote.vote_weight)?;
         let hash = hash_vote::<A, B, Vote, F, S>(&signed_vote.vote, VoteType::PreCommit);
         self.party_verify_signature(&signed_vote.voter, &hash, &signed_vote.signature)
+            .await
     }
 
-    pub fn aggregate_pre_votes(&self, pre_votes: Vec<SignedPreVote>) -> OverlordResult<PreVoteQC> {
+    pub async fn aggregate_pre_votes(
+        &self,
+        pre_votes: Vec<SignedPreVote>,
+    ) -> OverlordResult<PreVoteQC> {
         let mut pair_list = vec![];
         let mut signatures = HashMap::new();
         pre_votes.iter().for_each(|pre_vote| {
@@ -114,17 +131,20 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> AuthManage<A, B, F, S> {
             signatures.insert(&pre_vote.voter, &pre_vote.signature);
         });
 
-        self.current_auth.ensure_majority_weight(pair_list)?;
-        let aggregates = self.aggregate(signatures)?;
+        self.current_auth
+            .read()
+            .await
+            .ensure_majority_weight(pair_list)?;
+        let aggregates = self.aggregate(signatures).await?;
         Ok(PreVoteQC::new(pre_votes[0].vote.clone(), aggregates))
     }
 
-    pub fn verify_pre_vote_qc(&self, pre_vote_qc: &PreVoteQC) -> OverlordResult<()> {
+    pub async fn verify_pre_vote_qc(&self, pre_vote_qc: &PreVoteQC) -> OverlordResult<()> {
         let hash = hash_vote::<A, B, Vote, F, S>(&pre_vote_qc.vote, VoteType::PreVote);
-        self.verify_aggregate(&hash, &pre_vote_qc.aggregates)
+        self.verify_aggregate(&hash, &pre_vote_qc.aggregates).await
     }
 
-    pub fn aggregate_pre_commits(
+    pub async fn aggregate_pre_commits(
         &self,
         pre_commits: Vec<SignedPreCommit>,
     ) -> OverlordResult<PreCommitQC> {
@@ -135,40 +155,47 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> AuthManage<A, B, F, S> {
             signatures.insert(&pre_commit.voter, &pre_commit.signature);
         });
 
-        self.current_auth.ensure_majority_weight(pair_list)?;
-        let aggregates = self.aggregate(signatures)?;
+        self.current_auth
+            .read()
+            .await
+            .ensure_majority_weight(pair_list)?;
+        let aggregates = self.aggregate(signatures).await?;
         Ok(PreCommitQC::new(pre_commits[0].vote.clone(), aggregates))
     }
 
-    pub fn verify_pre_commit_qc(&self, pre_commit_qc: &PreCommitQC) -> OverlordResult<()> {
+    pub async fn verify_pre_commit_qc(&self, pre_commit_qc: &PreCommitQC) -> OverlordResult<()> {
         let hash = hash_vote::<A, B, Vote, F, S>(&pre_commit_qc.vote, VoteType::PreCommit);
         self.verify_aggregate(&hash, &pre_commit_qc.aggregates)
+            .await
     }
 
-    pub fn sign_choke(
+    pub async fn sign_choke(
         &self,
         choke: Choke,
         from: Option<UpdateFrom>,
     ) -> OverlordResult<SignedChoke> {
         let hash = hash_vote::<A, B, Choke, F, S>(&choke, VoteType::Choke);
-        let signature = self.party_sign(&hash, true)?;
+        let signature = self.party_sign(&hash, true).await?;
         Ok(SignedChoke::new(
             choke,
-            self.current_auth.vote_weight,
+            self.current_auth.read().await.vote_weight,
             from,
             self.crypto_config.address.clone(),
             signature,
         ))
     }
 
-    pub fn verify_signed_choke(&self, signed_choke: &SignedChoke) -> OverlordResult<()> {
+    pub async fn verify_signed_choke(&self, signed_choke: &SignedChoke) -> OverlordResult<()> {
         self.current_auth
+            .read()
+            .await
             .check_vote_weight(&signed_choke.voter, signed_choke.vote_weight)?;
         let hash = hash_vote::<A, B, Choke, F, S>(&signed_choke.choke, VoteType::Choke);
         self.party_verify_signature(&signed_choke.voter, &hash, &signed_choke.signature)
+            .await
     }
 
-    pub fn aggregate_chokes(&self, chokes: Vec<SignedChoke>) -> OverlordResult<ChokeQC> {
+    pub async fn aggregate_chokes(&self, chokes: Vec<SignedChoke>) -> OverlordResult<ChokeQC> {
         assert!(
             !chokes.is_empty(),
             "Unreachable! chokes is empty while aggregate chokes!"
@@ -181,20 +208,23 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> AuthManage<A, B, F, S> {
             signatures.insert(&choke.voter, &choke.signature);
         });
 
-        self.current_auth.ensure_majority_weight(pair_list)?;
-        let aggregates = self.aggregate(signatures)?;
+        self.current_auth
+            .read()
+            .await
+            .ensure_majority_weight(pair_list)?;
+        let aggregates = self.aggregate(signatures).await?;
         Ok(ChokeQC::new(chokes[0].choke.clone(), aggregates))
     }
 
-    pub fn verify_choke_qc(&self, choke_qc: &ChokeQC) -> OverlordResult<()> {
+    pub async fn verify_choke_qc(&self, choke_qc: &ChokeQC) -> OverlordResult<()> {
         let hash = hash_vote::<A, B, Choke, F, S>(&choke_qc.choke, VoteType::Choke);
-        self.verify_aggregate(&hash, &choke_qc.aggregates)
+        self.verify_aggregate(&hash, &choke_qc.aggregates).await
     }
 
-    pub fn verify_proof(&self, proof: Proof) -> OverlordResult<()> {
+    pub async fn verify_proof(&self, proof: Proof) -> OverlordResult<()> {
         let hash = hash_vote::<A, B, Vote, F, S>(&proof.vote, VoteType::PreCommit);
 
-        if let Some(last_auth) = &self.last_auth {
+        if let Some(last_auth) = &*self.last_auth.read().await {
             let common_ref = self.crypto_config.common_ref.clone();
             let voters = last_auth.get_voters(&proof.aggregates.address_bitmap);
             let party_pub_keys = last_auth.get_party_pub_keys(voters.as_ref());
@@ -266,20 +296,23 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> AuthManage<A, B, F, S> {
         )
     }
 
-    pub fn get_leader(&self, height: Height, round: Round) -> Address {
-        self.current_auth.calculate_leader(height, round)
+    pub async fn get_leader(&self, height: Height, round: Round) -> Address {
+        self.current_auth
+            .read()
+            .await
+            .calculate_leader(height, round)
     }
 
-    pub fn is_auth(&self) -> OverlordResult<()> {
-        if self.current_auth.vote_weight == 0 {
+    pub async fn is_auth(&self) -> OverlordResult<()> {
+        if self.current_auth.read().await.vote_weight == 0 {
             return Err(OverlordError::debug_un_auth());
         }
         Ok(())
     }
 
-    fn party_sign(&self, hash: &Hash, need_auth: bool) -> OverlordResult<Signature> {
+    async fn party_sign(&self, hash: &Hash, need_auth: bool) -> OverlordResult<Signature> {
         if need_auth {
-            self.is_auth()?;
+            self.is_auth().await?;
         }
         A::CryptoImpl::party_sign_msg(self.crypto_config.pri_key.clone(), hash)
             .map_err(OverlordError::local_crypto)
@@ -290,15 +323,15 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> AuthManage<A, B, F, S> {
             .map_err(OverlordError::local_crypto)
     }
 
-    fn party_verify_signature(
+    async fn party_verify_signature(
         &self,
         signer: &Address,
         hash: &Hash,
         signature: &Signature,
     ) -> OverlordResult<()> {
         let common_ref = self.crypto_config.common_ref.clone();
-        let party_pub_key = self
-            .current_auth
+        let current_auth = self.current_auth.read().await;
+        let party_pub_key = current_auth
             .map
             .get(signer)
             .ok_or_else(OverlordError::byz_un_auth)?;
@@ -322,27 +355,37 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> AuthManage<A, B, F, S> {
             .map_err(OverlordError::byz_crypto)
     }
 
-    fn aggregate(&self, signatures: HashMap<&Address, &Signature>) -> OverlordResult<Aggregates> {
-        let bitmap = self
-            .current_auth
-            .gen_bit_map(signatures.keys().cloned().collect());
-        let signatures = self.current_auth.replace_party_pub_keys(signatures);
+    async fn aggregate(
+        &self,
+        signatures: HashMap<&Address, &Signature>,
+    ) -> OverlordResult<Aggregates> {
+        let current_auth = self.current_auth.read().await;
+
+        let bitmap = current_auth.gen_bit_map(signatures.keys().cloned().collect());
+        let signatures = current_auth.replace_party_pub_keys(signatures);
         let signature = A::CryptoImpl::aggregate(signatures.iter().collect())
             .map_err(OverlordError::local_crypto)?;
         Ok(Aggregates::new(bitmap, signature))
     }
 
-    fn verify_aggregate(&self, hash: &Hash, aggregates: &Aggregates) -> OverlordResult<()> {
+    async fn verify_aggregate(&self, hash: &Hash, aggregates: &Aggregates) -> OverlordResult<()> {
+        let current_auth = self.current_auth.read().await;
+
         let common_ref = self.crypto_config.common_ref.clone();
-        let voters = self.current_auth.get_voters(&aggregates.address_bitmap);
-        let party_pub_keys = self.current_auth.get_party_pub_keys(voters.as_ref());
-        self.current_auth.ensure_majority(voters)?;
+        let voters = current_auth.get_voters(&aggregates.address_bitmap);
+        let party_pub_keys = current_auth.get_party_pub_keys(voters.as_ref());
+        current_auth.ensure_majority(voters)?;
         A::CryptoImpl::verify_aggregates(common_ref, &hash, &party_pub_keys, &aggregates.signature)
             .map_err(OverlordError::byz_crypto)
     }
 
-    fn check_leader(&self, height: Height, round: Round, leader: &Address) -> OverlordResult<()> {
-        let expect_leader = self.get_leader(height, round);
+    async fn check_leader(
+        &self,
+        height: Height,
+        round: Round,
+        leader: &Address,
+    ) -> OverlordResult<()> {
+        let expect_leader = self.get_leader(height, round).await;
         if leader != &expect_leader {
             return Err(OverlordError::byz_leader(format!(
                 "msg.leader != exact.leader, {} != {}",
