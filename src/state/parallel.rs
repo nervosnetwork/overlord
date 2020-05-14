@@ -3,11 +3,13 @@ use std::sync::Arc;
 use bytes::Bytes;
 use creep::Context;
 use futures::channel::mpsc::UnboundedSender;
+use muta_apm::derive::tracing_span;
 
 use crate::types::{Address, AggregatedVote, OverlordMsg, Signature};
 use crate::utils::auth_manage::AuthorityManage;
 use crate::{Codec, ConsensusResult, Crypto};
 
+#[tracing_span(kind = "overlord.vreify_sig_pool")]
 pub async fn parallel_verify<T: Codec + 'static, C: Crypto + Sync + 'static>(
     ctx: Context,
     msg: OverlordMsg<T>,
