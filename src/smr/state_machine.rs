@@ -5,7 +5,6 @@ use derive_more::Display;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::Stream;
 use log::{debug, info};
-use moodyblues_sdk::trace;
 
 use crate::smr::smr_types::{
     FromWhere, Lock, SMREvent, SMRStatus, SMRTrigger, Step, TriggerSource, TriggerType,
@@ -465,7 +464,6 @@ impl StateMachine {
         info!("Overlord: SMR goto new height: {}", height);
         self.height = height;
         self.round = INIT_ROUND;
-        trace::start_step((Step::Propose).to_string(), self.round, height);
         self.goto_step(Step::Propose);
         self.block_hash = Hash::new();
         self.lock = None;
@@ -521,7 +519,6 @@ impl StateMachine {
     #[inline]
     fn goto_step(&mut self, step: Step) {
         debug!("Overlord: SMR goto step {:?}", step);
-        trace::start_step(step.clone().to_string(), self.round, self.height);
         self.step = step;
     }
 
