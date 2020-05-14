@@ -5,7 +5,9 @@ use std::time::{Duration, Instant};
 use creep::Context;
 use derive_more::Display;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
+use futures::StreamExt;
 use log::info;
+use tokio::sync::RwLock;
 
 use crate::error::ErrorInfo;
 use crate::state::{Stage, Step};
@@ -42,13 +44,13 @@ pub enum ChannelMsg<B: Blk, F: FullBlk<B>, S: St> {
 pub struct EventAgent<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> {
     address:     Address,
     adapter:     Arc<A>,
-    time_config: TimeConfig,
-    start_time:  Instant, // start time of current height
-    fetch_set:   HashSet<Hash>,
+    time_config: Arc<RwLock<TimeConfig>>,
+    start_time:  Arc<RwLock<Instant>>, // start time of current height
+    fetch_set:   Arc<RwLock<HashSet<Hash>>>,
 
-    pub smr_receiver: UnboundedReceiver<ChannelMsg<B, F, S>>,
-    smr_sender:       UnboundedSender<ChannelMsg<B, F, S>>,
-    exec_sender:      UnboundedSender<ChannelMsg<B, F, S>>,
+    smr_receiver: Arc<RwLock<UnboundedReceiver<ChannelMsg<B, F, S>>>>,
+    smr_sender:   UnboundedSender<ChannelMsg<B, F, S>>,
+    exec_sender:  UnboundedSender<ChannelMsg<B, F, S>>,
 }
 
 impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> EventAgent<A, B, F, S> {
@@ -63,22 +65,31 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> EventAgent<A, B, F, S> {
         EventAgent {
             address,
             adapter: Arc::<A>::clone(adapter),
-            fetch_set: HashSet::new(),
-            start_time: Instant::now(),
-            time_config,
-            smr_receiver,
+            fetch_set: Arc::new(RwLock::new(HashSet::new())),
+            start_time: Arc::new(RwLock::new(Instant::now())),
+            time_config: Arc::new(RwLock::new(time_config)),
+            smr_receiver: Arc::new(RwLock::new(smr_receiver)),
             smr_sender,
             exec_sender,
         }
     }
 
-    pub fn handle_commit(&mut self, time_config: TimeConfig) {
-        self.time_config = time_config;
+    pub async fn next_channel_msg(&self) -> ChannelMsg<B, F, S> {
+        self.smr_receiver
+            .write()
+            .await
+            .next()
+            .await
+            .expect("SMR Channel is down! It's meaningless to continue running")
     }
 
-    pub fn next_height(&mut self) {
-        self.fetch_set.clear();
-        self.start_time = Instant::now();
+    pub async fn handle_commit(&self, time_config: TimeConfig) {
+        *self.time_config.write().await = time_config;
+    }
+
+    pub async fn next_height(&self) {
+        self.fetch_set.write().await.clear();
+        *self.start_time.write().await = Instant::now();
     }
 
     pub async fn transmit(
@@ -141,13 +152,13 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> EventAgent<A, B, F, S> {
             .expect("Net Channel is down! It's meaningless to continue running");
     }
 
-    pub fn handle_fetch(
-        &mut self,
+    pub async fn handle_fetch(
+        &self,
         fetch_result: OverlordResult<FetchedFullBlock<B, F>>,
     ) -> OverlordResult<FetchedFullBlock<B, F>> {
         if let Err(error) = fetch_result {
             if let ErrorInfo::FetchFullBlock(hash, e) = error.info {
-                self.fetch_set.remove(&hash);
+                self.fetch_set.write().await.remove(&hash);
                 return Err(OverlordError::net_fetch(hash, e));
             }
             unreachable!()
@@ -156,11 +167,11 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> EventAgent<A, B, F, S> {
         }
     }
 
-    pub fn request_full_block(&self, ctx: Context, block: B) {
+    pub async fn request_full_block(&self, ctx: Context, block: B) {
         let block_hash = block
             .get_block_hash()
             .expect("Unreachable! Block hash has been checked before");
-        if self.fetch_set.contains(&block_hash) {
+        if self.fetch_set.read().await.contains(&block_hash) {
             return;
         }
 
@@ -198,8 +209,8 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> EventAgent<A, B, F, S> {
             .expect("Exec Channel is down! It's meaningless to continue running");
     }
 
-    pub fn set_step_timeout(&self, ctx: Context, stage: Stage) -> bool {
-        let opt = self.compute_timeout(&stage);
+    pub async fn set_step_timeout(&self, ctx: Context, stage: Stage) -> bool {
+        let opt = self.compute_timeout(&stage).await;
         if let Some(delay) = opt {
             let timeout_info = TimeoutInfo::new(ctx, delay, stage.into(), self.smr_sender.clone());
             self.set_timeout(timeout_info, delay);
@@ -208,8 +219,10 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> EventAgent<A, B, F, S> {
         false
     }
 
-    pub fn set_height_timeout(&self, ctx: Context) {
-        let delay = Duration::from_millis(self.time_config.interval * HEIGHT_RATIO / TIME_DIVISOR);
+    pub async fn set_height_timeout(&self, ctx: Context) {
+        let delay = Duration::from_millis(
+            self.time_config.read().await.interval * HEIGHT_RATIO / TIME_DIVISOR,
+        );
         let timeout_info = TimeoutInfo::new(
             ctx,
             delay,
@@ -219,9 +232,10 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> EventAgent<A, B, F, S> {
         self.set_timeout(timeout_info, delay);
     }
 
-    pub fn set_sync_timeout(&self, ctx: Context, request_id: u64) {
-        let delay =
-            Duration::from_millis(self.time_config.interval * SYNC_TIMEOUT_RATIO / TIME_DIVISOR);
+    pub async fn set_sync_timeout(&self, ctx: Context, request_id: u64) {
+        let delay = Duration::from_millis(
+            self.time_config.read().await.interval * SYNC_TIMEOUT_RATIO / TIME_DIVISOR,
+        );
         let timeout_info = TimeoutInfo::new(
             ctx,
             delay,
@@ -231,9 +245,10 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> EventAgent<A, B, F, S> {
         self.set_timeout(timeout_info, delay);
     }
 
-    pub fn set_clear_timeout(&self, ctx: Context, address: Address) {
-        let delay =
-            Duration::from_millis(self.time_config.interval * CLEAR_TIMEOUT_RATIO / TIME_DIVISOR);
+    pub async fn set_clear_timeout(&self, ctx: Context, address: Address) {
+        let delay = Duration::from_millis(
+            self.time_config.read().await.interval * CLEAR_TIMEOUT_RATIO / TIME_DIVISOR,
+        );
         let timeout_info = TimeoutInfo::new(
             ctx,
             delay,
@@ -255,8 +270,8 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> EventAgent<A, B, F, S> {
         });
     }
 
-    fn compute_timeout(&self, stage: &Stage) -> Option<Duration> {
-        let config = &self.time_config;
+    async fn compute_timeout(&self, stage: &Stage) -> Option<Duration> {
+        let config = self.time_config.read().await;
         match stage.step {
             Step::Propose => {
                 let timeout =
@@ -277,7 +292,7 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> EventAgent<A, B, F, S> {
                 config.interval * config.brake_ratio / TIME_DIVISOR,
             )),
             Step::Commit => {
-                let cost = Instant::now() - self.start_time;
+                let cost = Instant::now() - *self.start_time.read().await;
                 Duration::from_millis(config.interval).checked_sub(cost)
             }
         }

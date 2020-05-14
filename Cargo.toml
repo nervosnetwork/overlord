@@ -37,7 +37,7 @@ serde = { version = "1.0", features = ["derive"] }
 hasher = { version = "0.1", features = ['hash-keccak'] }
 futures = { version = "0.3", features = [ "async-await" ] }
 tentacle-secio = { version = "0.1", features = [ "flatc" ] }
-tokio = { version = "0.2", features = ["macros", "rt-core", "rt-threaded"]}
+tokio = { version = "0.2", features = ["macros", "rt-core", "sync", "rt-threaded"]}
 
 [dev-dependencies]
 chrono = "0.4"

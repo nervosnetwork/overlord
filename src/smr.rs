@@ -4,7 +4,6 @@ use std::sync::Arc;
 use bytes::Bytes;
 use creep::Context;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
-use futures::StreamExt;
 use log::{debug, error, info, warn};
 
 use crate::error::ErrorKind;
@@ -39,7 +38,7 @@ pub struct SMR<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> {
     wal:     Wal<B, F>,
     cabinet: Cabinet<B, F>,
     auth:    AuthManage<A, B, F, S>,
-    agent:   EventAgent<A, B, F, S>,
+    agent:   Arc<EventAgent<A, B, F, S>>,
 }
 
 impl<A, B, F, S> SMR<A, B, F, S>
@@ -119,29 +118,25 @@ where
             sync: Sync::new(),
             adapter: Arc::<A>::clone(adapter),
             auth: AuthManage::new(auth_crypto_config, current_auth, last_auth),
-            agent: EventAgent::new(
+            agent: Arc::new(EventAgent::new(
                 address.clone(),
                 adapter,
                 time_config,
                 smr_receiver,
                 smr_sender,
                 exec_sender,
-            ),
+            )),
         }
     }
 
     pub async fn run(mut self, ctx: Context) {
         self.agent
-            .set_step_timeout(ctx.clone(), self.state.stage.clone());
-        self.agent.set_height_timeout(ctx);
+            .set_step_timeout(ctx.clone(), self.state.stage.clone())
+            .await;
+        self.agent.set_height_timeout(ctx).await;
 
         loop {
-            let channel_msg = self
-                .agent
-                .smr_receiver
-                .next()
-                .await
-                .expect("SMR Channel is down! It's meaningless to continue running");
+            let channel_msg = self.agent.next_channel_msg().await;
             match channel_msg {
                 ChannelMsg::PreHandleMsg(ctx, msg) => {
                     if let Err(e) = self.handle_msg(ctx.clone(), msg.clone()).await {
@@ -237,7 +232,7 @@ where
         ctx: Context,
         fetch_result: OverlordResult<FetchedFullBlock<B, F>>,
     ) -> OverlordResult<()> {
-        let fetch = self.agent.handle_fetch(fetch_result)?;
+        let fetch = self.agent.handle_fetch(fetch_result).await?;
         if fetch.height < self.state.stage.height {
             return Err(OverlordError::debug_old());
         }
@@ -294,7 +289,8 @@ where
         let old_state = self.state.handle_timeout(&stage)?;
         self.log_state_update_of_timeout(old_state, stage.into());
         self.agent
-            .set_step_timeout(ctx.clone(), self.state.stage.clone());
+            .set_step_timeout(ctx.clone(), self.state.stage.clone())
+            .await;
         self.wal.save_state(&self.state)?;
 
         let signed_pre_vote = self.create_signed_pre_vote()?;
@@ -305,7 +301,8 @@ where
         let old_state = self.state.handle_timeout(&stage)?;
         self.log_state_update_of_timeout(old_state, stage.into());
         self.agent
-            .set_step_timeout(ctx.clone(), self.state.stage.clone());
+            .set_step_timeout(ctx.clone(), self.state.stage.clone())
+            .await;
         self.wal.save_state(&self.state)?;
 
         let signed_pre_commit = self.create_signed_pre_commit()?;
@@ -320,7 +317,8 @@ where
         let old_state = self.state.handle_timeout(&stage)?;
         self.log_state_update_of_timeout(old_state, stage.into());
         self.agent
-            .set_step_timeout(ctx.clone(), self.state.stage.clone());
+            .set_step_timeout(ctx.clone(), self.state.stage.clone())
+            .await;
         self.wal.save_state(&self.state)?;
 
         let signed_choke = self.create_signed_choke()?;
@@ -331,7 +329,8 @@ where
         let old_state = self.state.handle_timeout(&stage)?;
         self.log_state_update_of_timeout(old_state, stage.into());
         self.agent
-            .set_step_timeout(ctx.clone(), self.state.stage.clone());
+            .set_step_timeout(ctx.clone(), self.state.stage.clone())
+            .await;
 
         let signed_choke = self.create_signed_choke()?;
         self.agent.broadcast(ctx, signed_choke.into()).await
@@ -357,7 +356,8 @@ where
 
         self.check_block(ctx.clone(), &sp.proposal.block).await?;
         self.agent
-            .request_full_block(ctx.clone(), sp.proposal.block.clone());
+            .request_full_block(ctx.clone(), sp.proposal.block.clone())
+            .await;
 
         if msg_r > self.state.stage.round {
             if let Some(qc) = sp.proposal.lock {
@@ -369,7 +369,8 @@ where
         let old_state = self.state.handle_signed_proposal(&sp)?;
         self.log_state_update_of_msg(old_state, &sp.proposal.proposer, (&sp).into());
         self.agent
-            .set_step_timeout(ctx.clone(), self.state.stage.clone());
+            .set_step_timeout(ctx.clone(), self.state.stage.clone())
+            .await;
         self.wal.save_state(&self.state)?;
 
         let vote = self.state.get_vote_for_proposal();
@@ -476,7 +477,8 @@ where
             let old_state = self.state.handle_pre_vote_qc(&qc, block)?;
             self.log_state_update_of_msg(old_state, &leader, (&qc).into());
             self.agent
-                .set_step_timeout(ctx.clone(), self.state.stage.clone());
+                .set_step_timeout(ctx.clone(), self.state.stage.clone())
+                .await;
             self.wal.save_state(&self.state)?;
 
             let signed_pre_commit = self.create_signed_pre_commit()?;
@@ -602,7 +604,8 @@ where
         self.auth
             .handle_commit(commit_exec_result.consensus_config.auth_config.clone());
         self.agent
-            .handle_commit(commit_exec_result.consensus_config.time_config.clone());
+            .handle_commit(commit_exec_result.consensus_config.time_config.clone())
+            .await;
         self.wal.handle_commit(next_height)?;
 
         info!(
@@ -619,6 +622,7 @@ where
             && self
                 .agent
                 .set_step_timeout(ctx.clone(), self.state.stage.clone())
+                .await
         {
             return Ok(());
         }
@@ -650,9 +654,11 @@ where
             signed_height.clone().into(),
         );
         self.agent
-            .set_sync_timeout(ctx.clone(), self.sync.request_id);
+            .set_sync_timeout(ctx.clone(), self.sync.request_id)
+            .await;
         self.agent
-            .set_clear_timeout(ctx.clone(), signed_height.address.clone());
+            .set_clear_timeout(ctx.clone(), signed_height.address.clone())
+            .await;
         let range = HeightRange::new(my_height, BLOCK_BATCH);
         let request = self.auth.sign_sync_request(range)?;
         self.agent
@@ -676,7 +682,8 @@ where
         let old_sync = self.sync.handle_sync_request(&request)?;
         self.log_sync_update_of_msg(old_sync, &request.requester, request.clone().into());
         self.agent
-            .set_clear_timeout(ctx.clone(), request.requester.clone());
+            .set_clear_timeout(ctx.clone(), request.requester.clone())
+            .await;
 
         let adapter = Arc::clone(&self.adapter);
         let self_address = self.address.clone();
@@ -817,7 +824,7 @@ where
     }
 
     async fn handle_height_timeout(&mut self, ctx: Context) -> OverlordResult<()> {
-        self.agent.set_height_timeout(ctx.clone());
+        self.agent.set_height_timeout(ctx.clone()).await;
 
         let height = self.state.stage.height;
         let signed_height = self.auth.sign_height(height)?;
@@ -836,7 +843,7 @@ where
             self.sync,
         );
         self.wal.save_state(&self.state)?;
-        self.agent.next_height();
+        self.agent.next_height().await;
         self.replay_msg_received_before();
         self.cabinet.next_height(self.state.stage.height);
         self.new_round(ctx).await
@@ -856,7 +863,8 @@ where
         let r = self.state.stage.round;
 
         self.agent
-            .set_step_timeout(ctx.clone(), self.state.stage.clone());
+            .set_step_timeout(ctx.clone(), self.state.stage.clone())
+            .await;
 
         if self.is_current_leader() {
             let signed_proposal = self.create_signed_proposal(ctx.clone()).await?;
