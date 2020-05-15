@@ -34,9 +34,10 @@ pub struct SMR<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> {
     prepare: ProposePrepare<S>,
     sync:    Sync<B>,
 
-    adapter: Arc<A>,
     wal:     Wal<B, F>,
     cabinet: Cabinet<B, F>,
+
+    adapter: Arc<A>,
     auth:    Arc<AuthManage<A, B, F, S>>,
     agent:   Arc<EventAgent<A, B, F, S>>,
 }
@@ -139,15 +140,18 @@ where
             let channel_msg = self.agent.next_channel_msg().await;
             match channel_msg {
                 ChannelMsg::PreHandleMsg(ctx, msg) => {
-                    if let Err(e) = self.handle_msg(ctx.clone(), msg.clone()).await {
-                        let sender = self.extract_sender(&msg).await;
-                        let content = format!("[RECEIVE]\n\t<{}> <- {}\n\t<message> {}\n\t{}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n",
-                                              self.address.tiny_hex(), sender.tiny_hex(), msg, e, self.state, self.prepare, self.sync);
-                        self.handle_err(ctx, e, content).await;
+                    if let Err(e) = self.pre_handle_msg(ctx.clone(), msg.clone()).await {
+                        self.handle_msg_err(ctx, msg, e).await;
                     }
                 }
-                ChannelMsg::HandleMsg(_ctx, _rst) => {}
-                ChannelMsg::PostHandleMsg(_ctx, _rst) => {}
+                ChannelMsg::HandleMsg(ctx, msg) => {
+                    if let Err(e) = self.handle_msg(ctx.clone(), msg.clone()).await {
+                        self.handle_msg_err(ctx, msg, e).await;
+                    }
+                }
+                ChannelMsg::HandleError(ctx, msg, e) => {
+                    self.handle_msg_err(ctx, msg, e).await;
+                }
                 ChannelMsg::ExecResult(ctx, exec_result) => {
                     self.handle_exec_result(ctx, exec_result);
                 }
@@ -168,6 +172,51 @@ where
                 _ => unreachable!(),
             }
         }
+    }
+
+    async fn pre_handle_msg(&mut self, ctx: Context, msg: OverlordMsg<B, F>) -> OverlordResult<()> {
+        match msg {
+            OverlordMsg::SignedProposal(signed_proposal) => {
+                self.pre_handle_signed_proposal(ctx, signed_proposal)
+                    .await?;
+            }
+            OverlordMsg::SignedPreVote(signed_pre_vote) => {
+                self.handle_signed_pre_vote(ctx, signed_pre_vote).await?;
+            }
+            OverlordMsg::SignedPreCommit(signed_pre_commit) => {
+                self.handle_signed_pre_commit(ctx, signed_pre_commit)
+                    .await?;
+            }
+            OverlordMsg::SignedChoke(signed_choke) => {
+                self.handle_signed_choke(ctx, signed_choke).await?;
+            }
+            OverlordMsg::PreVoteQC(pre_vote_qc) => {
+                self.handle_pre_vote_qc(ctx, pre_vote_qc, true).await?;
+            }
+            OverlordMsg::PreCommitQC(pre_commit_qc) => {
+                self.handle_pre_commit_qc(ctx, pre_commit_qc, true).await?;
+            }
+            OverlordMsg::SignedHeight(signed_height) => {
+                self.handle_signed_height(ctx, signed_height).await?;
+            }
+            OverlordMsg::SyncRequest(request) => {
+                self.handle_sync_request(ctx, request).await?;
+            }
+            OverlordMsg::SyncResponse(response) => {
+                self.handle_sync_response(ctx, response).await?;
+            }
+            OverlordMsg::Stop => {
+                panic!(
+                    "[STOP]\n\t<{}> -> heaven\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n\n\n",
+                    self.address.tiny_hex(),
+                    self.state,
+                    self.prepare,
+                    self.sync
+                );
+            }
+        }
+
+        Ok(())
     }
 
     async fn handle_msg(&mut self, ctx: Context, msg: OverlordMsg<B, F>) -> OverlordResult<()> {
@@ -340,31 +389,55 @@ where
         self.next_height(ctx).await
     }
 
+    async fn pre_handle_signed_proposal(
+        &mut self,
+        ctx: Context,
+        sp: SignedProposal<B>,
+    ) -> OverlordResult<()> {
+        self.filter_msg(
+            sp.proposal.height,
+            sp.proposal.round,
+            ctx.clone(),
+            (&sp).into(),
+        )?;
+
+        let prepare = self.prepare.clone();
+        let auth = Arc::<_>::clone(&self.auth);
+        let agent = Arc::<_>::clone(&self.agent);
+        let adapter = Arc::<_>::clone(&self.adapter);
+        let state_round = self.state.stage.round;
+        tokio::spawn(async move {
+            let rst = pre_handle_signed_proposal(
+                state_round,
+                prepare,
+                auth,
+                &agent,
+                adapter,
+                ctx.clone(),
+                sp.clone(),
+            )
+            .await;
+            if let Err(e) = rst {
+                agent.send_to_myself(ChannelMsg::HandleError(ctx, sp.into(), e));
+            } else {
+                agent.send_to_myself(ChannelMsg::HandleMsg(ctx, sp.into()));
+            }
+        });
+
+        Ok(())
+    }
+
     async fn handle_signed_proposal(
         &mut self,
         ctx: Context,
         sp: SignedProposal<B>,
     ) -> OverlordResult<()> {
-        let msg_h = sp.proposal.height;
-        let msg_r = sp.proposal.round;
-
-        self.filter_msg(msg_h, msg_r, ctx.clone(), (&sp).into())?;
-        self.check_proposal(&sp.proposal).await?;
-        self.auth.verify_signed_proposal(&sp).await?;
-        self.cabinet
-            .insert(msg_h, msg_r, ctx.clone(), (&sp).into())?;
-
-        self.check_block(ctx.clone(), &sp.proposal.block).await?;
-        self.agent
-            .request_full_block(ctx.clone(), sp.proposal.block.clone())
-            .await;
-
-        if msg_r > self.state.stage.round {
-            if let Some(qc) = sp.proposal.lock {
-                self.handle_pre_vote_qc(ctx.clone(), qc, true).await?;
-            }
-            return Err(OverlordError::debug_high());
-        }
+        self.cabinet.insert(
+            sp.proposal.height,
+            sp.proposal.round,
+            ctx.clone(),
+            (&sp).into(),
+        )?;
 
         let old_state = self.state.handle_signed_proposal(&sp)?;
         self.log_state_update_of_msg(old_state, &sp.proposal.proposer, (&sp).into());
@@ -876,43 +949,6 @@ where
         Ok(())
     }
 
-    async fn check_proposal(&self, p: &Proposal<B>) -> OverlordResult<()> {
-        if p.height != p.block.get_height() {
-            return Err(OverlordError::byz_block(format!(
-                "proposal.height != block.height, {} != {}",
-                p.height,
-                p.block.get_height()
-            )));
-        }
-
-        let block_hash = p.block.get_block_hash().map_err(OverlordError::byz_hash)?;
-        if p.block_hash != block_hash {
-            return Err(OverlordError::byz_block(format!(
-                "proposal.block_hash != block.hash, {} != {}",
-                p.block_hash.tiny_hex(),
-                block_hash.tiny_hex()
-            )));
-        }
-
-        if self.prepare.pre_hash != p.block.get_pre_hash() {
-            return Err(OverlordError::byz_block(format!(
-                "self.pre_hash != block.pre_hash, {} != {}",
-                self.prepare.pre_hash.tiny_hex(),
-                p.block.get_pre_hash().tiny_hex()
-            )));
-        }
-
-        self.auth.verify_proof(p.block.get_proof()).await?;
-
-        if let Some(lock) = &p.lock {
-            if lock.vote.is_empty_vote() {
-                return Err(OverlordError::byz_empty_lock());
-            }
-            self.auth.verify_pre_vote_qc(&lock).await?;
-        }
-        Ok(())
-    }
-
     async fn check_block(&self, ctx: Context, block: &B) -> OverlordResult<()> {
         let exec_h = block.get_exec_height();
         if block.get_height() > exec_h + self.prepare.max_exec_behind {
@@ -1208,7 +1244,8 @@ where
                 _ => {}
             }
         }
-        Ok(())
+
+        self.cabinet.check_exist(height, round, capsule)
     }
 
     async fn current_leader(&self) -> Address {
@@ -1248,6 +1285,13 @@ where
             OverlordMsg::SyncResponse(sp) => sp.responder.clone(),
             OverlordMsg::Stop => unreachable!(),
         }
+    }
+
+    async fn handle_msg_err(&self, ctx: Context, msg: OverlordMsg<B, F>, e: OverlordError) {
+        let sender = self.extract_sender(&msg).await;
+        let content = format!("[RECEIVE]\n\t<{}> <- {}\n\t<message> {}\n\t{}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n",
+                              self.address.tiny_hex(), sender.tiny_hex(), msg, e, self.state, self.prepare, self.sync);
+        self.handle_err(ctx, e, content).await;
     }
 
     async fn handle_err(&self, ctx: Context, e: OverlordError, content: String) {
@@ -1324,6 +1368,106 @@ where
             self.sync,
         );
     }
+}
+
+async fn pre_handle_signed_proposal<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(
+    state_round: Round,
+    prepare: ProposePrepare<S>,
+    auth: Arc<AuthManage<A, B, F, S>>,
+    agent: &Arc<EventAgent<A, B, F, S>>,
+    adapter: Arc<A>,
+    ctx: Context,
+    sp: SignedProposal<B>,
+) -> OverlordResult<OverlordMsg<B, F>> {
+    check_proposal(prepare.pre_hash.clone(), &auth, &sp.proposal).await?;
+    auth.verify_signed_proposal(&sp).await?;
+    check_block(prepare, &adapter, ctx.clone(), &sp.proposal.block).await?;
+
+    agent
+        .request_full_block(ctx.clone(), sp.proposal.block.clone())
+        .await;
+    if sp.proposal.round > state_round {
+        if let Some(qc) = sp.proposal.lock {
+            agent.send_to_myself(ChannelMsg::PreHandleMsg(ctx, qc.into()));
+        }
+        return Err(OverlordError::debug_high());
+    }
+    Ok(sp.into())
+}
+
+async fn check_proposal<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(
+    pre_hash: Hash,
+    auth: &Arc<AuthManage<A, B, F, S>>,
+    p: &Proposal<B>,
+) -> OverlordResult<()> {
+    if p.height != p.block.get_height() {
+        return Err(OverlordError::byz_block(format!(
+            "proposal.height != block.height, {} != {}",
+            p.height,
+            p.block.get_height()
+        )));
+    }
+
+    let block_hash = p.block.get_block_hash().map_err(OverlordError::byz_hash)?;
+    if p.block_hash != block_hash {
+        return Err(OverlordError::byz_block(format!(
+            "proposal.block_hash != block.hash, {} != {}",
+            p.block_hash.tiny_hex(),
+            block_hash.tiny_hex()
+        )));
+    }
+
+    if pre_hash != p.block.get_pre_hash() {
+        return Err(OverlordError::byz_block(format!(
+            "self.pre_hash != block.pre_hash, {} != {}",
+            pre_hash.tiny_hex(),
+            p.block.get_pre_hash().tiny_hex()
+        )));
+    }
+
+    auth.verify_proof(p.block.get_proof()).await?;
+
+    if let Some(lock) = &p.lock {
+        if lock.vote.is_empty_vote() {
+            return Err(OverlordError::byz_empty_lock());
+        }
+        auth.verify_pre_vote_qc(&lock).await?;
+    }
+    Ok(())
+}
+
+async fn check_block<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(
+    prepare: ProposePrepare<S>,
+    adapter: &Arc<A>,
+    ctx: Context,
+    block: &B,
+) -> OverlordResult<()> {
+    let exec_h = block.get_exec_height();
+    if block.get_height() > exec_h + prepare.max_exec_behind {
+        return Err(OverlordError::byz_block(format!(
+            "block.block_height > block.exec_height + max_exec_behind, {} > {} + {}",
+            block.get_height(),
+            exec_h,
+            prepare.max_exec_behind
+        )));
+    }
+    if prepare.exec_height < exec_h {
+        return Err(OverlordError::warn_block(format!(
+            "self.exec_height < block.exec_height, {} < {}",
+            prepare.exec_height, exec_h
+        )));
+    }
+
+    adapter
+        .check_block(
+            ctx,
+            block.clone(),
+            prepare.get_block_states_list(exec_h),
+            prepare.last_commit_exec_result.block_states.state.clone(),
+        )
+        .await
+        .map_err(OverlordError::byz_adapter_check_block)?;
+    Ok(())
 }
 
 async fn recover_state_by_adapter<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(

@@ -27,15 +27,24 @@ const TIME_DIVISOR: u64 = 10;
 pub enum ChannelMsg<B: Blk, F: FullBlk<B>, S: St> {
     #[display(fmt = "PreHandleMsg: context: {:?}, overlord_msg: {}", _0, _1)]
     PreHandleMsg(Context, OverlordMsg<B, F>),
-    #[display(fmt = "HandleMsg: context: {:?}, msg_result: {}", _0, _1)]
-    HandleMsg(Context, OverlordResult<OverlordMsg<B, F>>),
-    #[display(fmt = "PostHandleMsg: context: {:?}, msg_result: {}", _0, _1)]
-    PostHandleMsg(Context, OverlordResult<OverlordMsg<B, F>>),
+    #[display(fmt = "HandleMsg: context: {:?}, overlord_msg: {}", _0, _1)]
+    HandleMsg(Context, OverlordMsg<B, F>),
+    #[display(
+        fmt = "HandleError: context: {:?}, overlord_msg: {}, error: {}",
+        _0,
+        _1,
+        _2
+    )]
+    HandleError(Context, OverlordMsg<B, F>, OverlordError),
     #[display(fmt = "ExecRequest: context: {:?}, exec_request: {}", _0, _1)]
     ExecRequest(Context, ExecRequest<B, F, S>),
     #[display(fmt = "ExecResult: context: {:?}, exec_result: {}", _0, _1)]
     ExecResult(Context, ExecResult<S>),
-    #[display(fmt = "FetchedFullBlock: context: {:?}, full_block_result: {}", _0, _1)]
+    #[display(
+        fmt = "FetchedFullBlock: context: {:?}, full_block_result: {:?}",
+        _0,
+        _1
+    )]
     FetchedFullBlock(Context, OverlordResult<FetchedFullBlock<B, F>>),
     #[display(fmt = "TimeoutEvent: context: {:?}, timeout_event: {}", _0, _1)]
     TimeoutEvent(Context, TimeoutEvent),
@@ -99,7 +108,7 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> EventAgent<A, B, F, S> {
         msg: OverlordMsg<B, F>,
     ) -> OverlordResult<()> {
         if self.address == to {
-            self.send_to_myself(ctx, msg);
+            self.send_to_myself(ChannelMsg::PreHandleMsg(ctx, msg));
             Ok(())
         } else {
             info!(
@@ -122,28 +131,27 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> EventAgent<A, B, F, S> {
             msg
         );
 
-        self.send_to_myself(ctx.clone(), msg.clone());
+        self.send_to_myself(ChannelMsg::PreHandleMsg(ctx.clone(), msg.clone()));
         self.adapter
             .broadcast(ctx, msg)
             .await
             .map_err(OverlordError::local_broadcast)
     }
 
-    pub fn send_to_myself(&self, ctx: Context, msg: OverlordMsg<B, F>) {
+    pub fn send_to_myself(&self, msg: ChannelMsg<B, F, S>) {
         info!(
             "[TRANSMIT]\n\t<{}> -> myself\n\t<message> {} \n\n\n\n\n",
             self.address.tiny_hex(),
             msg
         );
-        // FixMe: ChannelMsg::HandleMsg(ctx, Ok(msg))
         self.smr_sender
-            .unbounded_send(ChannelMsg::PreHandleMsg(ctx, msg))
+            .unbounded_send(msg)
             .expect("Net Channel is down! It's meaningless to continue running");
     }
 
     pub fn replay_msg(&self, ctx: Context, msg: OverlordMsg<B, F>) {
         info!(
-            "[TRANSMIT]\n\t<{}> -> myself\n\t<message> {} \n\n\n\n\n",
+            "[Replay]\n\t<{}>\n\t<message> {} \n\n\n\n\n",
             self.address.tiny_hex(),
             msg
         );

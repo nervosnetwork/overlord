@@ -74,6 +74,20 @@ impl<B: Blk, F: FullBlk<B>> Cabinet<B, F> {
             .insert_full_block(fetch.block_hash, fetch.full_block)
     }
 
+    pub fn check_exist(
+        &mut self,
+        height: Height,
+        round: Round,
+        data: Capsule<B>,
+    ) -> OverlordResult<()> {
+        if let Some(drawer) = self.0.get(&height) {
+            if let Some(grid) = drawer.grids.get(&round) {
+                grid.check_exist(data)?;
+            }
+        }
+        Ok(())
+    }
+
     pub fn get_block(&self, height: Height, hash: &Hash) -> Option<&B> {
         self.0
             .get(&height)
@@ -410,6 +424,8 @@ impl<B: Blk> Grid<B> {
     }
 
     fn insert(&mut self, ctx: Context, data: Capsule<B>) -> OverlordResult<()> {
+        self.check_exist(data.clone())?;
+
         match data {
             Capsule::SignedProposal(signed_proposal) => {
                 self.insert_signed_proposal(ctx, signed_proposal.clone())
@@ -429,27 +445,40 @@ impl<B: Blk> Grid<B> {
             }
             Capsule::ChokeQC(choke_qc) => self.insert_choke_qc(ctx, choke_qc.clone()),
         }
-    }
 
-    fn insert_signed_proposal(
-        &mut self,
-        ctx: Context,
-        signed_proposal: SignedProposal<B>,
-    ) -> OverlordResult<()> {
-        check_exist(self.signed_proposal.as_ref(), &signed_proposal)?;
-
-        self.signed_proposal = Some((ctx, signed_proposal));
         Ok(())
     }
 
-    fn insert_signed_pre_vote(
-        &mut self,
-        ctx: Context,
-        signed_pre_vote: SignedPreVote,
-    ) -> OverlordResult<()> {
-        let voter = signed_pre_vote.voter.clone();
-        check_exist(self.signed_pre_votes.get(&voter), &signed_pre_vote)?;
+    fn check_exist(&self, data: Capsule<B>) -> OverlordResult<()> {
+        match data {
+            Capsule::SignedProposal(signed_proposal) => {
+                check_exist(self.signed_proposal.as_ref(), signed_proposal)
+            }
+            Capsule::SignedPreVote(signed_pre_vote) => check_exist(
+                self.signed_pre_votes.get(&signed_pre_vote.voter),
+                signed_pre_vote,
+            ),
+            Capsule::SignedPreCommit(signed_pre_commit) => check_exist(
+                self.signed_pre_commits.get(&signed_pre_commit.voter),
+                signed_pre_commit,
+            ),
+            Capsule::SignedChoke(signed_choke) => {
+                check_exist(self.signed_chokes.get(&signed_choke.voter), signed_choke)
+            }
+            Capsule::PreVoteQC(pre_vote_qc) => check_exist(self.pre_vote_qc.as_ref(), pre_vote_qc),
+            Capsule::PreCommitQC(pre_commit_qc) => {
+                check_exist(self.pre_commit_qc.as_ref(), pre_commit_qc)
+            }
+            Capsule::ChokeQC(choke_qc) => check_exist(self.choke_qc.as_ref(), choke_qc),
+        }
+    }
 
+    fn insert_signed_proposal(&mut self, ctx: Context, signed_proposal: SignedProposal<B>) {
+        self.signed_proposal = Some((ctx, signed_proposal));
+    }
+
+    fn insert_signed_pre_vote(&mut self, ctx: Context, signed_pre_vote: SignedPreVote) {
+        let voter = signed_pre_vote.voter.clone();
         let hash = signed_pre_vote.vote.block_hash.clone();
         let cum_weight = update_vote_weight_map(
             &mut self.pre_vote_vote_weights,
@@ -465,18 +494,10 @@ impl<B: Blk> Grid<B> {
             .entry(hash)
             .or_insert_with(Vec::new)
             .push(signed_pre_vote);
-
-        Ok(())
     }
 
-    fn insert_signed_pre_commit(
-        &mut self,
-        ctx: Context,
-        signed_pre_commit: SignedPreCommit,
-    ) -> OverlordResult<()> {
+    fn insert_signed_pre_commit(&mut self, ctx: Context, signed_pre_commit: SignedPreCommit) {
         let voter = signed_pre_commit.voter.clone();
-        check_exist(self.signed_pre_commits.get(&voter), &signed_pre_commit)?;
-
         let hash = signed_pre_commit.vote.block_hash.clone();
         let cum_weight = update_vote_weight_map(
             &mut self.pre_commit_vote_weights,
@@ -492,44 +513,28 @@ impl<B: Blk> Grid<B> {
             .entry(hash)
             .or_insert_with(Vec::new)
             .push(signed_pre_commit);
-
-        Ok(())
     }
 
-    fn insert_signed_choke(
-        &mut self,
-        ctx: Context,
-        signed_choke: SignedChoke,
-    ) -> OverlordResult<()> {
+    fn insert_signed_choke(&mut self, ctx: Context, signed_choke: SignedChoke) {
         let voter = signed_choke.voter.clone();
-        check_exist(self.signed_chokes.get(&voter), &signed_choke)?;
-
         let vote_weight = signed_choke.vote_weight;
         let cum_weight = self.choke_vote_weight.cum_weight + vote_weight;
         let cum_weight = CumWeight::new(cum_weight, VoteType::Choke, None);
         update_max_vote_weight(&mut self.choke_vote_weight, cum_weight);
 
         self.signed_chokes.insert(voter, (ctx, signed_choke));
-
-        Ok(())
     }
 
-    fn insert_pre_vote_qc(&mut self, ctx: Context, pre_vote_qc: PreVoteQC) -> OverlordResult<()> {
-        check_exist(self.pre_vote_qc.as_ref(), &pre_vote_qc)?;
+    fn insert_pre_vote_qc(&mut self, ctx: Context, pre_vote_qc: PreVoteQC) {
         self.pre_vote_qc = Some((ctx, pre_vote_qc));
-        Ok(())
     }
 
-    fn insert_pre_commit_qc(&mut self, ctx: Context, qc: PreCommitQC) -> OverlordResult<()> {
-        check_exist(self.pre_commit_qc.as_ref(), &qc)?;
+    fn insert_pre_commit_qc(&mut self, ctx: Context, qc: PreCommitQC) {
         self.pre_commit_qc = Some((ctx, qc));
-        Ok(())
     }
 
-    fn insert_choke_qc(&mut self, ctx: Context, qc: ChokeQC) -> OverlordResult<()> {
-        check_exist(self.choke_qc.as_ref(), &qc)?;
+    fn insert_choke_qc(&mut self, ctx: Context, qc: ChokeQC) {
         self.choke_qc = Some((ctx, qc));
-        Ok(())
     }
 }
 
