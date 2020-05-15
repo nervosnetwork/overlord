@@ -72,7 +72,7 @@ pub async fn parallel_verify<T: Codec + 'static, C: Crypto + Sync + 'static>(
             }
 
             OverlordMsg::SignedChoke(sc) => {
-                let hash = crypto.hash(Bytes::from(rlp::encode(&sc.choke)));
+                let hash = crypto.hash(Bytes::from(rlp::encode(&sc.choke.to_hash())));
                 crypto
                     .verify_signature(sc.signature.clone(), hash, sc.address.clone())
                     .map_or_else(
