@@ -349,12 +349,13 @@ impl From<u8> for Step {
     "exec_results.iter().map(|(h, r)| (*h, format!(\"{}\", r))).collect::<Vec<(Height, String)>>()"
 )]
 pub struct ProposePrepare<S: St> {
-    pub max_exec_behind:         u64,
-    pub exec_height:             Height,
-    pub last_exec_result:        ExecResult<S>,
+    /// max_exec_behind must larger than 0
+    pub max_exec_behind: u64,
+    pub exec_height: Height,
+    pub last_exec_result: ExecResult<S>,
     pub last_commit_exec_height: Height,
     pub last_commit_exec_result: ExecResult<S>,
-    pub exec_results:            BTreeMap<Height, ExecResult<S>>,
+    pub exec_results: BTreeMap<Height, ExecResult<S>>,
 
     pub pre_proof: Proof, /* proof for the previous block which will be involved in the
                            * next block */

@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
+use async_std::task;
 use creep::Context;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use log::{debug, error, info, warn};
@@ -25,6 +27,7 @@ use crate::{
 
 const HEIGHT_WINDOW: Height = 5;
 const ROUND_WINDOW: Round = 5;
+const SLEEP_TIME_TO_WAIT_EXEC: u64 = 300;
 
 /// State Machine Replica
 pub struct SMR<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> {
@@ -1157,6 +1160,21 @@ where
     }
 
     async fn next_height(&mut self, ctx: Context) -> OverlordResult<()> {
+        if self.state.stage.height >= self.prepare.exec_height + self.prepare.max_exec_behind {
+            let agent = Arc::<_>::clone(&self.agent);
+            tokio::spawn(async move {
+                task::sleep(Duration::from_millis(SLEEP_TIME_TO_WAIT_EXEC)).await;
+                agent.send_to_myself(ChannelMsg::TimeoutEvent(
+                    ctx,
+                    TimeoutEvent::NextHeightTimeout,
+                ));
+            });
+            return Err(OverlordError::warn_wait_exec(format!(
+                "self.height >= self.exec_height + max_exec_behind, {} >= {} + {}",
+                self.state.stage.height, self.prepare.exec_height, self.prepare.max_exec_behind
+            )));
+        }
+
         self.state.next_height();
         info!(
             "[HEIGHT]\n\t<{}> -> next height {}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n\n\n",
@@ -1624,11 +1642,10 @@ async fn pre_handle_signed_proposal<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, 
 ) -> OverlordResult<OverlordMsg<B, F>> {
     check_proposal(prepare.pre_hash.clone(), &auth, &sp.proposal).await?;
     auth.verify_signed_proposal(&sp).await?;
-    check_block(prepare, &adapter, ctx.clone(), &sp.proposal.block).await?;
-
     agent
         .request_full_block(ctx.clone(), sp.proposal.block.clone())
         .await;
+    check_block(prepare, agent, &adapter, ctx.clone(), &sp).await?;
     if sp.proposal.round > state_round {
         if let Some(qc) = sp.proposal.lock {
             agent.send_to_myself(ChannelMsg::HandleMsg(ctx, qc.into()));
@@ -1783,10 +1800,12 @@ async fn check_proposal<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(
 
 async fn check_block<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(
     prepare: ProposePrepare<S>,
+    agent: &Arc<EventAgent<A, B, F, S>>,
     adapter: &Arc<A>,
     ctx: Context,
-    block: &B,
+    sp: &SignedProposal<B>,
 ) -> OverlordResult<()> {
+    let block = sp.proposal.block.clone();
     let exec_h = block.get_exec_height();
     if block.get_height() > exec_h + prepare.max_exec_behind {
         return Err(OverlordError::byz_block(format!(
@@ -1797,6 +1816,8 @@ async fn check_block<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(
         )));
     }
     if prepare.exec_height < exec_h {
+        task::sleep(Duration::from_millis(SLEEP_TIME_TO_WAIT_EXEC)).await;
+        agent.send_to_myself(ChannelMsg::PreHandleMsg(ctx, sp.clone().into()));
         return Err(OverlordError::warn_block(format!(
             "self.exec_height < block.exec_height, {} < {}",
             prepare.exec_height, exec_h
@@ -1830,22 +1851,6 @@ async fn next_round_leader<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(
 ) -> Address {
     auth.get_leader(current_height, current_round).await
 }
-
-// async fn next_height_leader<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(
-//     auth: &Arc<AuthManage<A, B, F, S>>,
-//     current_height: Height,
-// ) -> Address {
-//     auth.get_leader(current_height + 1, INIT_ROUND).await
-// }
-
-// async fn is_current_leader<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(
-//     auth: &Arc<AuthManage<A, B, F, S>>,
-//     current_height: Height,
-//     current_round: Round,
-//     address: Address,
-// ) -> bool {
-//     address == current_leader(auth, current_height, current_round).await
-// }
 
 async fn recover_state_by_adapter<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(
     adapter: &Arc<A>,

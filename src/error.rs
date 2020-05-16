@@ -81,6 +81,8 @@ pub enum ErrorInfo {
     HashBlock(Box<dyn Error + Send>),
     #[display(fmt = "wait for full block")]
     WaitFullBlock,
+    #[display(fmt = "wait for exec")]
+    WaitExec(String),
     #[display(fmt = "save block failed, {}", _0)]
     SaveBlock(Box<dyn Error + Send>),
     #[display(fmt = "exec block failed, {}", _0)]
@@ -330,6 +332,13 @@ impl OverlordError {
         OverlordError {
             kind: ErrorKind::Warn,
             info: ErrorInfo::WaitFullBlock,
+        }
+    }
+
+    pub fn warn_wait_exec(str: String) -> Self {
+        OverlordError {
+            kind: ErrorKind::Warn,
+            info: ErrorInfo::WaitExec(str),
         }
     }
 
