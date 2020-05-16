@@ -14,7 +14,7 @@ const STATE_FILE_NAME: &str = "state.wal";
 const FULL_BLOCK_SUB_DIR: &str = "full_block";
 
 /// Simple Write Ahead Logging
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Wal<B: Blk, F: FullBlk<B>> {
     pub wal_dir_path:   PathBuf,
     pub state_dir_path: PathBuf,

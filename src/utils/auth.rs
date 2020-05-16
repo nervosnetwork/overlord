@@ -10,9 +10,9 @@ use rlp::{encode, Encodable};
 use tokio::sync::RwLock;
 
 use crate::types::{
-    Aggregates, Choke, ChokeQC, PreCommitQC, PreVoteQC, Proof, Proposal, PubKeyHex, SelectMode,
-    SignedChoke, SignedHeight, SignedPreCommit, SignedPreVote, SignedProposal, SyncRequest,
-    SyncResponse, UpdateFrom, Vote, VoteType, Weight,
+    Aggregates, Choke, ChokeQC, FullBlockWithProof, PreCommitQC, PreVoteQC, Proof, Proposal,
+    PubKeyHex, SelectMode, SignedChoke, SignedHeight, SignedPreCommit, SignedPreVote,
+    SignedProposal, SyncRequest, SyncResponse, UpdateFrom, Vote, VoteType, Weight,
 };
 use crate::{
     Adapter, Address, AuthConfig, Blk, Crypto, CryptoConfig, FullBlk, Hash, Height, HeightRange,
@@ -284,6 +284,22 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> AuthManage<A, B, F, S> {
             &hash,
             &request.signature,
         )
+    }
+
+    pub fn sign_sync_response(
+        &self,
+        range: HeightRange,
+        block_with_proofs: Vec<FullBlockWithProof<B, F>>,
+    ) -> OverlordResult<SyncResponse<B, F>> {
+        let hash = A::CryptoImpl::hash(&Bytes::from(rlp::encode(&range)));
+        let signature = self.sign(&hash)?;
+        Ok(SyncResponse::new(
+            range,
+            block_with_proofs,
+            self.crypto_config.address.clone(),
+            self.crypto_config.pub_key.clone(),
+            signature,
+        ))
     }
 
     pub fn verify_sync_response(&self, response: &SyncResponse<B, F>) -> OverlordResult<()> {

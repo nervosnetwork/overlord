@@ -9,7 +9,6 @@ use futures::StreamExt;
 use log::info;
 use tokio::sync::RwLock;
 
-use crate::error::ErrorInfo;
 use crate::state::{Stage, Step};
 use crate::types::FetchedFullBlock;
 use crate::utils::exec::ExecRequest;
@@ -25,28 +24,29 @@ const TIME_DIVISOR: u64 = 10;
 
 #[derive(Debug, Display)]
 pub enum ChannelMsg<B: Blk, F: FullBlk<B>, S: St> {
-    #[display(fmt = "PreHandleMsg: context: {:?}, overlord_msg: {}", _0, _1)]
+    #[display(fmt = "PreHandleMsg: {{ context: {:?}, msg: {} }}", _0, _1)]
     PreHandleMsg(Context, OverlordMsg<B, F>),
-    #[display(fmt = "HandleMsg: context: {:?}, overlord_msg: {}", _0, _1)]
+    #[display(fmt = "HandleMsg: {{ context: {:?}, msg: {} }}", _0, _1)]
     HandleMsg(Context, OverlordMsg<B, F>),
     #[display(
-        fmt = "HandleError: context: {:?}, overlord_msg: {}, error: {}",
+        fmt = "HandleMsgError: {{ context: {:?}, msg: {}, error: {} }}",
         _0,
         _1,
         _2
     )]
-    HandleError(Context, OverlordMsg<B, F>, OverlordError),
-    #[display(fmt = "ExecRequest: context: {:?}, exec_request: {}", _0, _1)]
-    ExecRequest(Context, ExecRequest<B, F, S>),
-    #[display(fmt = "ExecResult: context: {:?}, exec_result: {}", _0, _1)]
-    ExecResult(Context, ExecResult<S>),
+    HandleMsgError(Context, OverlordMsg<B, F>, OverlordError),
     #[display(
-        fmt = "FetchedFullBlock: context: {:?}, full_block_result: {:?}",
+        fmt = "HandleTimeoutError: {{ context: {:?}, timeout: {}, error: {} }}",
         _0,
-        _1
+        _1,
+        _2
     )]
-    FetchedFullBlock(Context, OverlordResult<FetchedFullBlock<B, F>>),
-    #[display(fmt = "TimeoutEvent: context: {:?}, timeout_event: {}", _0, _1)]
+    HandleTimeoutError(Context, TimeoutEvent, OverlordError),
+    #[display(fmt = "ExecRequest: {{ context: {:?}, exec_request: {} }}", _0, _1)]
+    ExecRequest(Context, ExecRequest<B, F, S>),
+    #[display(fmt = "ExecResult: {{ context: {:?}, exec_result: {} }}", _0, _1)]
+    ExecResult(Context, ExecResult<S>),
+    #[display(fmt = "TimeoutEvent: {{ context: {:?}, timeout_event: {} }}", _0, _1)]
     TimeoutEvent(Context, TimeoutEvent),
 }
 
@@ -99,6 +99,10 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> EventAgent<A, B, F, S> {
     pub async fn next_height(&self) {
         self.fetch_set.write().await.clear();
         *self.start_time.write().await = Instant::now();
+    }
+
+    pub async fn remove_block_hash(&self, block_hash: Hash) {
+        self.fetch_set.write().await.remove(&block_hash);
     }
 
     pub async fn transmit(
@@ -160,21 +164,6 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> EventAgent<A, B, F, S> {
             .expect("Net Channel is down! It's meaningless to continue running");
     }
 
-    pub async fn handle_fetch(
-        &self,
-        fetch_result: OverlordResult<FetchedFullBlock<B, F>>,
-    ) -> OverlordResult<FetchedFullBlock<B, F>> {
-        if let Err(error) = fetch_result {
-            if let ErrorInfo::FetchFullBlock(hash, e) = error.info {
-                self.fetch_set.write().await.remove(&hash);
-                return Err(OverlordError::net_fetch(hash, e));
-            }
-            unreachable!()
-        } else {
-            Ok(fetch_result.unwrap())
-        }
-    }
-
     pub async fn request_full_block(&self, ctx: Context, block: B) {
         let block_hash = block
             .get_block_hash()
@@ -192,16 +181,25 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> EventAgent<A, B, F, S> {
         let adapter = Arc::<A>::clone(&self.adapter);
         let smr_sender = self.smr_sender.clone();
         let height = block.get_height();
-
         tokio::spawn(async move {
             let rst = adapter
                 .fetch_full_block(ctx.clone(), block)
                 .await
                 .map(|full_block| FetchedFullBlock::new(height, block_hash.clone(), full_block))
-                .map_err(|e| OverlordError::net_fetch(block_hash, e));
-            smr_sender
-                .unbounded_send(ChannelMsg::FetchedFullBlock(ctx, rst))
-                .expect("Fetch Channel is down! It's meaningless to continue running");
+                .map_err(|e| OverlordError::net_fetch(block_hash.clone(), e));
+            if let Err(e) = rst {
+                smr_sender
+                    .unbounded_send(ChannelMsg::HandleMsgError(
+                        ctx,
+                        FetchedFullBlock::new(height, block_hash, F::default()).into(),
+                        e,
+                    ))
+                    .expect("Net Channel is down! It's meaningless to continue running");
+            } else {
+                smr_sender
+                    .unbounded_send(ChannelMsg::PreHandleMsg(ctx, rst.unwrap().into()))
+                    .expect("Net Channel is down! It's meaningless to continue running");
+            }
         });
     }
 

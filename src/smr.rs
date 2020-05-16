@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use bytes::Bytes;
 use creep::Context;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use log::{debug, error, info, warn};
@@ -11,7 +10,7 @@ use crate::state::{ProposePrepare, Stage, StateInfo, Step};
 use crate::types::{
     Choke, ChokeQC, CumWeight, FetchedFullBlock, FullBlockWithProof, PreCommitQC, PreVoteQC,
     Proposal, SignedChoke, SignedHeight, SignedPreCommit, SignedPreVote, SignedProposal,
-    SyncRequest, SyncResponse, UpdateFrom,
+    SyncRequest, SyncResponse, UpdateFrom, Vote,
 };
 use crate::utils::agent::{ChannelMsg, EventAgent};
 use crate::utils::auth::{AuthCell, AuthManage};
@@ -20,7 +19,7 @@ use crate::utils::exec::ExecRequest;
 use crate::utils::sync::{Sync, SyncStat, BLOCK_BATCH};
 use crate::utils::timeout::TimeoutEvent;
 use crate::{
-    Adapter, Address, Blk, Crypto, CryptoConfig, ExecResult, FullBlk, Hash, Height, HeightRange,
+    Adapter, Address, Blk, CryptoConfig, ExecResult, FullBlk, Hash, Height, HeightRange,
     OverlordError, OverlordMsg, OverlordResult, Proof, Round, St, TinyHex, Wal, INIT_ROUND,
 };
 
@@ -149,24 +148,18 @@ where
                         self.handle_msg_err(ctx, msg, e).await;
                     }
                 }
-                ChannelMsg::HandleError(ctx, msg, e) => {
+                ChannelMsg::HandleMsgError(ctx, msg, e) => {
                     self.handle_msg_err(ctx, msg, e).await;
+                }
+                ChannelMsg::HandleTimeoutError(ctx, timeout, e) => {
+                    self.handle_timeout_err(ctx, timeout, e).await;
                 }
                 ChannelMsg::ExecResult(ctx, exec_result) => {
                     self.handle_exec_result(ctx, exec_result);
                 }
-                ChannelMsg::FetchedFullBlock(ctx, fetch) => {
-                    if let Err(e) = self.handle_fetch(ctx.clone(), fetch).await {
-                        let content = format!("[FETCH]\n\t<{}> <- full block\n\t{}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n\n",
-                                              self.address.tiny_hex(), e, self.state, self.prepare, self.sync);
-                        self.handle_err(ctx, e, content).await;
-                    }
-                }
                 ChannelMsg::TimeoutEvent(ctx, timeout) => {
                     if let Err(e) = self.handle_timeout(ctx.clone(), timeout.clone()).await {
-                        let content = format!("[TIMEOUT]\n\t<{}> <- timeout\n\t<timeout> {}\n\t{}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n",
-                                              self.address.tiny_hex(), timeout, e, self.state, self.prepare, self.sync);
-                        self.handle_err(ctx, e, content).await;
+                        self.handle_timeout_err(ctx, timeout, e).await;
                     }
                 }
                 _ => unreachable!(),
@@ -181,29 +174,34 @@ where
                     .await?;
             }
             OverlordMsg::SignedPreVote(signed_pre_vote) => {
-                self.handle_signed_pre_vote(ctx, signed_pre_vote).await?;
+                self.pre_handle_signed_pre_vote(ctx, signed_pre_vote)
+                    .await?;
             }
             OverlordMsg::SignedPreCommit(signed_pre_commit) => {
-                self.handle_signed_pre_commit(ctx, signed_pre_commit)
+                self.pre_handle_signed_pre_commit(ctx, signed_pre_commit)
                     .await?;
             }
             OverlordMsg::SignedChoke(signed_choke) => {
-                self.handle_signed_choke(ctx, signed_choke).await?;
+                self.pre_handle_signed_choke(ctx, signed_choke).await?;
             }
             OverlordMsg::PreVoteQC(pre_vote_qc) => {
-                self.handle_pre_vote_qc(ctx, pre_vote_qc, true).await?;
+                self.pre_handle_pre_vote_qc(ctx, pre_vote_qc).await?;
             }
             OverlordMsg::PreCommitQC(pre_commit_qc) => {
-                self.handle_pre_commit_qc(ctx, pre_commit_qc, true).await?;
+                self.pre_handle_pre_commit_qc(ctx, pre_commit_qc).await?;
             }
             OverlordMsg::SignedHeight(signed_height) => {
-                self.handle_signed_height(ctx, signed_height).await?;
+                self.pre_handle_signed_height(ctx, signed_height).await?;
             }
             OverlordMsg::SyncRequest(request) => {
-                self.handle_sync_request(ctx, request).await?;
+                self.pre_handle_sync_request(ctx, request).await?;
             }
             OverlordMsg::SyncResponse(response) => {
-                self.handle_sync_response(ctx, response).await?;
+                self.pre_handle_sync_response(ctx, response).await?;
+            }
+            OverlordMsg::FetchedFullBlock(fetched_full_block) => {
+                self.pre_handle_fetched_full_block(ctx, fetched_full_block)
+                    .await?;
             }
             OverlordMsg::Stop => {
                 panic!(
@@ -214,6 +212,7 @@ where
                     self.sync
                 );
             }
+            _ => unreachable!(),
         }
 
         Ok(())
@@ -235,10 +234,13 @@ where
                 self.handle_signed_choke(ctx, signed_choke).await?;
             }
             OverlordMsg::PreVoteQC(pre_vote_qc) => {
-                self.handle_pre_vote_qc(ctx, pre_vote_qc, true).await?;
+                self.handle_pre_vote_qc(ctx, pre_vote_qc).await?;
             }
             OverlordMsg::PreCommitQC(pre_commit_qc) => {
-                self.handle_pre_commit_qc(ctx, pre_commit_qc, true).await?;
+                self.handle_pre_commit_qc(ctx, pre_commit_qc).await?;
+            }
+            OverlordMsg::ChokeQC(choke_qc) => {
+                self.handle_choke_qc(ctx, choke_qc).await?;
             }
             OverlordMsg::SignedHeight(signed_height) => {
                 self.handle_signed_height(ctx, signed_height).await?;
@@ -249,15 +251,11 @@ where
             OverlordMsg::SyncResponse(response) => {
                 self.handle_sync_response(ctx, response).await?;
             }
-            OverlordMsg::Stop => {
-                panic!(
-                    "[STOP]\n\t<{}> -> heaven\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n\n\n",
-                    self.address.tiny_hex(),
-                    self.state,
-                    self.prepare,
-                    self.sync
-                );
+            OverlordMsg::FetchedFullBlock(fetched_full_block) => {
+                self.handle_fetched_full_block(ctx, fetched_full_block)
+                    .await?;
             }
+            _ => unreachable!(),
         }
 
         Ok(())
@@ -274,37 +272,6 @@ where
             self.prepare,
             self.sync
         );
-    }
-
-    async fn handle_fetch(
-        &mut self,
-        ctx: Context,
-        fetch_result: OverlordResult<FetchedFullBlock<B, F>>,
-    ) -> OverlordResult<()> {
-        let fetch = self.agent.handle_fetch(fetch_result).await?;
-        if fetch.height < self.state.stage.height {
-            return Err(OverlordError::debug_old());
-        }
-        self.cabinet.insert_full_block(fetch.clone());
-        self.wal.save_full_block(&fetch)?;
-
-        info!(
-            "[FETCH]\n\t<{}> <- full block\n\t<message> full_block: {}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n\n",
-            self.address.tiny_hex(),
-            fetch,
-            self.state,
-            self.prepare,
-            self.sync
-        );
-
-        let hash = fetch.block_hash;
-        if let Some(qc) = self.cabinet.get_pre_commit_qc_by_hash(fetch.height, &hash) {
-            self.handle_pre_commit_qc(ctx, qc, false).await?;
-        } else if let Some(qc) = self.cabinet.get_pre_vote_qc_by_hash(fetch.height, &hash) {
-            self.handle_pre_vote_qc(ctx, qc, false).await?;
-        }
-
-        Ok(())
     }
 
     async fn handle_timeout(
@@ -336,26 +303,70 @@ where
 
     async fn handle_propose_timeout(&mut self, ctx: Context, stage: Stage) -> OverlordResult<()> {
         let old_state = self.state.handle_timeout(&stage)?;
-        self.log_state_update_of_timeout(old_state, stage.into());
+        self.log_state_update_of_timeout(old_state, stage.clone().into());
         self.agent
             .set_step_timeout(ctx.clone(), self.state.stage.clone())
             .await;
         self.wal.save_state(&self.state)?;
 
-        let signed_pre_vote = self.create_signed_pre_vote().await?;
-        self.transmit_vote(ctx, signed_pre_vote.into()).await
+        let vote = self.state.get_vote();
+        let auth = Arc::<_>::clone(&self.auth);
+        let agent = Arc::<_>::clone(&self.agent);
+        let current_height = self.state.stage.height;
+        let current_round = self.state.stage.round;
+        tokio::spawn(async move {
+            if let Err(e) = create_and_transmit_signed_pre_vote(
+                &auth,
+                &agent,
+                current_height,
+                current_round,
+                ctx.clone(),
+                vote,
+            )
+            .await
+            {
+                agent.send_to_myself(ChannelMsg::HandleTimeoutError(
+                    ctx,
+                    TimeoutEvent::from(stage),
+                    e,
+                ));
+            }
+        });
+        Ok(())
     }
 
     async fn handle_pre_vote_timeout(&mut self, ctx: Context, stage: Stage) -> OverlordResult<()> {
         let old_state = self.state.handle_timeout(&stage)?;
-        self.log_state_update_of_timeout(old_state, stage.into());
+        self.log_state_update_of_timeout(old_state, stage.clone().into());
         self.agent
             .set_step_timeout(ctx.clone(), self.state.stage.clone())
             .await;
         self.wal.save_state(&self.state)?;
 
-        let signed_pre_commit = self.create_signed_pre_commit().await?;
-        self.transmit_vote(ctx, signed_pre_commit.into()).await
+        let vote = self.state.get_vote();
+        let auth = Arc::<_>::clone(&self.auth);
+        let agent = Arc::<_>::clone(&self.agent);
+        let current_height = self.state.stage.height;
+        let current_round = self.state.stage.round;
+        tokio::spawn(async move {
+            if let Err(e) = create_and_transmit_signed_pre_commit(
+                &auth,
+                &agent,
+                current_height,
+                current_round,
+                ctx.clone(),
+                vote,
+            )
+            .await
+            {
+                agent.send_to_myself(ChannelMsg::HandleTimeoutError(
+                    ctx,
+                    TimeoutEvent::from(stage),
+                    e,
+                ));
+            }
+        });
+        Ok(())
     }
 
     async fn handle_pre_commit_timeout(
@@ -364,25 +375,57 @@ where
         stage: Stage,
     ) -> OverlordResult<()> {
         let old_state = self.state.handle_timeout(&stage)?;
-        self.log_state_update_of_timeout(old_state, stage.into());
+        self.log_state_update_of_timeout(old_state, stage.clone().into());
         self.agent
             .set_step_timeout(ctx.clone(), self.state.stage.clone())
             .await;
         self.wal.save_state(&self.state)?;
 
-        let signed_choke = self.create_signed_choke().await?;
-        self.agent.broadcast(ctx, signed_choke.into()).await
+        let auth = Arc::<_>::clone(&self.auth);
+        let agent = Arc::<_>::clone(&self.agent);
+        let height = self.state.stage.height;
+        let round = self.state.stage.round;
+        let from = self.state.from.clone();
+        let choke = Choke::new(height, round);
+        tokio::spawn(async move {
+            if let Err(e) =
+                create_and_broadcast_signed_choke(&auth, &agent, ctx.clone(), choke, from).await
+            {
+                agent.send_to_myself(ChannelMsg::HandleTimeoutError(
+                    ctx,
+                    TimeoutEvent::from(stage),
+                    e,
+                ));
+            }
+        });
+        Ok(())
     }
 
     async fn handle_brake_timeout(&mut self, ctx: Context, stage: Stage) -> OverlordResult<()> {
         let old_state = self.state.handle_timeout(&stage)?;
-        self.log_state_update_of_timeout(old_state, stage.into());
+        self.log_state_update_of_timeout(old_state, stage.clone().into());
         self.agent
             .set_step_timeout(ctx.clone(), self.state.stage.clone())
             .await;
 
-        let signed_choke = self.create_signed_choke().await?;
-        self.agent.broadcast(ctx, signed_choke.into()).await
+        let auth = Arc::<_>::clone(&self.auth);
+        let agent = Arc::<_>::clone(&self.agent);
+        let height = self.state.stage.height;
+        let round = self.state.stage.round;
+        let from = self.state.from.clone();
+        let choke = Choke::new(height, round);
+        tokio::spawn(async move {
+            if let Err(e) =
+                create_and_broadcast_signed_choke(&auth, &agent, ctx.clone(), choke, from).await
+            {
+                agent.send_to_myself(ChannelMsg::HandleTimeoutError(
+                    ctx,
+                    TimeoutEvent::from(stage),
+                    e,
+                ));
+            }
+        });
+        Ok(())
     }
 
     async fn handle_next_height_timeout(&mut self, ctx: Context) -> OverlordResult<()> {
@@ -418,7 +461,7 @@ where
             )
             .await;
             if let Err(e) = rst {
-                agent.send_to_myself(ChannelMsg::HandleError(ctx, sp.into(), e));
+                agent.send_to_myself(ChannelMsg::HandleMsgError(ctx, sp.into(), e));
             } else {
                 agent.send_to_myself(ChannelMsg::HandleMsg(ctx, sp.into()));
             }
@@ -447,8 +490,43 @@ where
         self.wal.save_state(&self.state)?;
 
         let vote = self.state.get_vote_for_proposal();
-        let signed_pre_vote = self.auth.sign_pre_vote(vote).await?;
-        self.transmit_vote(ctx, signed_pre_vote.into()).await
+        let auth = Arc::<_>::clone(&self.auth);
+        let agent = Arc::<_>::clone(&self.agent);
+        let current_height = self.state.stage.height;
+        let current_round = self.state.stage.round;
+        tokio::spawn(async move {
+            if let Err(e) = create_and_transmit_signed_pre_vote(
+                &auth,
+                &agent,
+                current_height,
+                current_round,
+                ctx.clone(),
+                vote,
+            )
+            .await
+            {
+                agent.send_to_myself(ChannelMsg::HandleMsgError(ctx, sp.into(), e));
+            }
+        });
+        Ok(())
+    }
+
+    async fn pre_handle_signed_pre_vote(
+        &mut self,
+        ctx: Context,
+        sv: SignedPreVote,
+    ) -> OverlordResult<()> {
+        self.filter_msg(sv.vote.height, sv.vote.round, ctx.clone(), (&sv).into())?;
+        let auth = Arc::<_>::clone(&self.auth);
+        let agent = Arc::<_>::clone(&self.agent);
+        tokio::spawn(async move {
+            if let Err(e) = auth.verify_signed_pre_vote(&sv).await {
+                agent.send_to_myself(ChannelMsg::HandleMsgError(ctx, sv.into(), e));
+            } else {
+                agent.send_to_myself(ChannelMsg::HandleMsg(ctx, sv.into()));
+            }
+        });
+        Ok(())
     }
 
     async fn handle_signed_pre_vote(
@@ -458,10 +536,6 @@ where
     ) -> OverlordResult<()> {
         let msg_h = sv.vote.height;
         let msg_r = sv.vote.round;
-
-        self.filter_msg(msg_h, msg_r, ctx.clone(), (&sv).into())?;
-
-        self.auth.verify_signed_pre_vote(&sv).await?;
         self.cabinet
             .insert(msg_h, msg_r, ctx.clone(), (&sv).into())?;
         let max_w = self
@@ -470,7 +544,26 @@ where
             .expect("Unreachable! pre_vote_max_vote_weight has been set before");
         self.log_vote_received(&sv.voter, (&sv).into(), &max_w);
 
-        self.try_aggregate_pre_votes(ctx, msg_h, msg_r, max_w).await
+        self.try_aggregate_pre_votes(ctx, msg_h, msg_r, max_w, sv)
+            .await
+    }
+
+    async fn pre_handle_signed_pre_commit(
+        &mut self,
+        ctx: Context,
+        sv: SignedPreCommit,
+    ) -> OverlordResult<()> {
+        self.filter_msg(sv.vote.height, sv.vote.round, ctx.clone(), (&sv).into())?;
+        let auth = Arc::<_>::clone(&self.auth);
+        let agent = Arc::<_>::clone(&self.agent);
+        tokio::spawn(async move {
+            if let Err(e) = auth.verify_signed_pre_commit(&sv).await {
+                agent.send_to_myself(ChannelMsg::HandleMsgError(ctx, sv.into(), e));
+            } else {
+                agent.send_to_myself(ChannelMsg::HandleMsg(ctx, sv.into()));
+            }
+        });
+        Ok(())
     }
 
     async fn handle_signed_pre_commit(
@@ -481,9 +574,6 @@ where
         let msg_h = sv.vote.height;
         let msg_r = sv.vote.round;
 
-        self.filter_msg(msg_h, msg_r, ctx.clone(), (&sv).into())?;
-
-        self.auth.verify_signed_pre_commit(&sv).await?;
         self.cabinet
             .insert(msg_h, msg_r, ctx.clone(), (&sv).into())?;
         let max_w = self
@@ -492,17 +582,32 @@ where
             .expect("Unreachable! pre_commit_max_vote_weight has been set before");
         self.log_vote_received(&sv.voter, (&sv).into(), &max_w);
 
-        self.try_aggregate_pre_commit(ctx, msg_h, msg_r, max_w)
+        self.try_aggregate_pre_commit(ctx, msg_h, msg_r, max_w, sv)
             .await
+    }
+
+    async fn pre_handle_signed_choke(
+        &mut self,
+        ctx: Context,
+        sc: SignedChoke,
+    ) -> OverlordResult<()> {
+        self.filter_msg(sc.choke.height, sc.choke.round, ctx.clone(), (&sc).into())?;
+        let auth = Arc::<_>::clone(&self.auth);
+        let agent = Arc::<_>::clone(&self.agent);
+        tokio::spawn(async move {
+            if let Err(e) = auth.verify_signed_choke(&sc).await {
+                agent.send_to_myself(ChannelMsg::HandleMsgError(ctx, sc.into(), e));
+            } else {
+                agent.send_to_myself(ChannelMsg::HandleMsg(ctx, sc.into()));
+            }
+        });
+        Ok(())
     }
 
     async fn handle_signed_choke(&mut self, ctx: Context, sc: SignedChoke) -> OverlordResult<()> {
         let msg_h = sc.choke.height;
         let msg_r = sc.choke.round;
 
-        self.filter_msg(msg_h, msg_r, ctx.clone(), (&sc).into())?;
-
-        self.auth.verify_signed_choke(&sc).await?;
         self.cabinet
             .insert(msg_h, msg_r, ctx.clone(), (&sc).into())?;
         let sum_w = self
@@ -511,71 +616,113 @@ where
             .expect("Unreachable! choke_vote_weight has been set before");
         self.log_vote_received(&sc.voter, (&sc).into(), &sum_w);
 
-        self.try_aggregate_choke(ctx.clone(), msg_h, msg_r, sum_w)
+        self.try_aggregate_choke(ctx.clone(), msg_h, msg_r, sum_w, sc.clone())
             .await?;
         if let Some(from) = sc.from {
             match from {
-                UpdateFrom::PreVoteQC(qc) => self.handle_pre_vote_qc(ctx, qc, true).await?,
-                UpdateFrom::PreCommitQC(qc) => self.handle_pre_commit_qc(ctx, qc, true).await?,
-                UpdateFrom::ChokeQC(qc) => self.handle_choke_qc(ctx, qc).await?,
+                UpdateFrom::PreVoteQC(qc) => self.pre_handle_pre_vote_qc(ctx, qc).await?,
+                UpdateFrom::PreCommitQC(qc) => self.pre_handle_pre_commit_qc(ctx, qc).await?,
+                UpdateFrom::ChokeQC(qc) => self.pre_handle_choke_qc(ctx, qc).await?,
             }
         }
         Ok(())
     }
 
-    async fn handle_pre_vote_qc(
+    async fn pre_handle_pre_vote_qc(&mut self, ctx: Context, qc: PreVoteQC) -> OverlordResult<()> {
+        self.filter_msg(qc.vote.height, qc.vote.round, ctx.clone(), (&qc).into())?;
+        let auth = Arc::<_>::clone(&self.auth);
+        let agent = Arc::<_>::clone(&self.agent);
+        tokio::spawn(async move {
+            if let Err(e) = auth.verify_pre_vote_qc(&qc).await {
+                agent.send_to_myself(ChannelMsg::HandleMsgError(ctx, qc.into(), e));
+            } else {
+                agent.send_to_myself(ChannelMsg::HandleMsg(ctx, qc.into()));
+            }
+        });
+        Ok(())
+    }
+
+    async fn handle_pre_vote_qc(&mut self, ctx: Context, qc: PreVoteQC) -> OverlordResult<()> {
+        let msg_h = qc.vote.height;
+        let msg_r = qc.vote.round;
+
+        self.cabinet
+            .insert(msg_h, msg_r, ctx.clone(), (&qc).into())?;
+
+        if qc.vote.is_empty_vote()
+            || self
+                .cabinet
+                .get_full_block(msg_h, &qc.vote.block_hash)
+                .is_some()
+        {
+            self.handle_pre_vote_qc_with_full_block(ctx, qc).await
+        } else {
+            Err(OverlordError::warn_wait())
+        }
+    }
+
+    async fn handle_pre_vote_qc_with_full_block(
         &mut self,
         ctx: Context,
         qc: PreVoteQC,
-        exist_uncertain: bool,
     ) -> OverlordResult<()> {
         let msg_h = qc.vote.height;
         let msg_r = qc.vote.round;
+        let block = self.cabinet.get_block(msg_h, &qc.vote.block_hash);
+        let leader = self.auth.get_leader(msg_h, msg_r).await;
+        let old_state = self.state.handle_pre_vote_qc(&qc, block)?;
+        self.log_state_update_of_msg(old_state, &leader, (&qc).into());
+        self.agent
+            .set_step_timeout(ctx.clone(), self.state.stage.clone())
+            .await;
+        self.wal.save_state(&self.state)?;
 
-        self.filter_msg(msg_h, msg_r, ctx.clone(), (&qc).into())?;
-        self.auth.verify_pre_vote_qc(&qc).await?;
-        if exist_uncertain {
-            self.cabinet
-                .insert(msg_h, msg_r, ctx.clone(), (&qc).into())?;
-        }
-
-        if qc.vote.is_empty_vote()
-            || self
-                .cabinet
-                .get_full_block(msg_h, &qc.vote.block_hash)
-                .is_some()
-        {
-            let block = self.cabinet.get_block(msg_h, &qc.vote.block_hash);
-            let leader = self.auth.get_leader(msg_h, msg_r).await;
-            let old_state = self.state.handle_pre_vote_qc(&qc, block)?;
-            self.log_state_update_of_msg(old_state, &leader, (&qc).into());
-            self.agent
-                .set_step_timeout(ctx.clone(), self.state.stage.clone())
-                .await;
-            self.wal.save_state(&self.state)?;
-
-            let signed_pre_commit = self.create_signed_pre_commit().await?;
-            self.transmit_vote(ctx, signed_pre_commit.into()).await
-        } else {
-            Err(OverlordError::warn_wait())
-        }
+        let vote = self.state.get_vote();
+        let auth = Arc::<_>::clone(&self.auth);
+        let agent = Arc::<_>::clone(&self.agent);
+        let current_height = self.state.stage.height;
+        let current_round = self.state.stage.round;
+        tokio::spawn(async move {
+            if let Err(e) = create_and_transmit_signed_pre_commit(
+                &auth,
+                &agent,
+                current_height,
+                current_round,
+                ctx.clone(),
+                vote,
+            )
+            .await
+            {
+                agent.send_to_myself(ChannelMsg::HandleMsgError(ctx, qc.into(), e));
+            }
+        });
+        Ok(())
     }
 
-    async fn handle_pre_commit_qc(
+    async fn pre_handle_pre_commit_qc(
         &mut self,
         ctx: Context,
         qc: PreCommitQC,
-        exist_uncertain: bool,
     ) -> OverlordResult<()> {
+        self.filter_msg(qc.vote.height, qc.vote.round, ctx.clone(), (&qc).into())?;
+        let auth = Arc::<_>::clone(&self.auth);
+        let agent = Arc::<_>::clone(&self.agent);
+        tokio::spawn(async move {
+            if let Err(e) = auth.verify_pre_commit_qc(&qc).await {
+                agent.send_to_myself(ChannelMsg::HandleMsgError(ctx, qc.into(), e));
+            } else {
+                agent.send_to_myself(ChannelMsg::HandleMsg(ctx, qc.into()));
+            }
+        });
+        Ok(())
+    }
+
+    async fn handle_pre_commit_qc(&mut self, ctx: Context, qc: PreCommitQC) -> OverlordResult<()> {
         let msg_h = qc.vote.height;
         let msg_r = qc.vote.round;
 
-        self.filter_msg(msg_h, msg_r, ctx.clone(), (&qc).into())?;
-        self.auth.verify_pre_commit_qc(&qc).await?;
-        if exist_uncertain {
-            self.cabinet
-                .insert(msg_h, msg_r, ctx.clone(), (&qc).into())?;
-        }
+        self.cabinet
+            .insert(msg_h, msg_r, ctx.clone(), (&qc).into())?;
 
         if qc.vote.is_empty_vote()
             || self
@@ -583,31 +730,49 @@ where
                 .get_full_block(msg_h, &qc.vote.block_hash)
                 .is_some()
         {
-            let block = self.cabinet.get_block(msg_h, &qc.vote.block_hash);
-            let leader = self.auth.get_leader(msg_h, msg_r).await;
-            let old_state = self.state.handle_pre_commit_qc(&qc, block)?;
-            self.log_state_update_of_msg(old_state, &leader, (&qc).into());
-            self.wal.save_state(&self.state)?;
-
-            if qc.vote.is_empty_vote() {
-                self.new_round(ctx.clone()).await
-            } else {
-                let (commit_hash, proof, commit_exec_h) =
-                    self.save_and_exec_block(ctx.clone()).await;
-                self.handle_commit(ctx, commit_hash, proof, commit_exec_h)
-                    .await
-            }
+            self.handle_pre_commit_qc_with_full_block(ctx, qc).await
         } else {
             Err(OverlordError::warn_wait())
         }
     }
 
-    async fn handle_choke_qc(&mut self, ctx: Context, qc: ChokeQC) -> OverlordResult<()> {
-        let msg_h = qc.choke.height;
-        let msg_r = qc.choke.round;
+    async fn handle_pre_commit_qc_with_full_block(
+        &mut self,
+        ctx: Context,
+        qc: PreCommitQC,
+    ) -> OverlordResult<()> {
+        let msg_h = qc.vote.height;
+        let msg_r = qc.vote.round;
+        let block = self.cabinet.get_block(msg_h, &qc.vote.block_hash);
+        let leader = self.auth.get_leader(msg_h, msg_r).await;
+        let old_state = self.state.handle_pre_commit_qc(&qc, block)?;
+        self.log_state_update_of_msg(old_state, &leader, (&qc).into());
+        self.wal.save_state(&self.state)?;
 
-        self.filter_msg(msg_h, msg_r, ctx.clone(), (&qc).into())?;
-        self.auth.verify_choke_qc(&qc).await?;
+        if qc.vote.is_empty_vote() {
+            self.new_round(ctx.clone()).await
+        } else {
+            let (commit_hash, proof, commit_exec_h) = self.save_and_exec_block(ctx.clone()).await;
+            self.handle_commit(ctx, commit_hash, proof, commit_exec_h)
+                .await
+        }
+    }
+
+    async fn pre_handle_choke_qc(&mut self, ctx: Context, qc: ChokeQC) -> OverlordResult<()> {
+        self.filter_msg(qc.choke.height, qc.choke.round, ctx.clone(), (&qc).into())?;
+        let auth = Arc::<_>::clone(&self.auth);
+        let agent = Arc::<_>::clone(&self.agent);
+        tokio::spawn(async move {
+            if let Err(e) = auth.verify_choke_qc(&qc).await {
+                agent.send_to_myself(ChannelMsg::HandleMsgError(ctx, qc.into(), e));
+            } else {
+                agent.send_to_myself(ChannelMsg::HandleMsg(ctx, qc.into()));
+            }
+        });
+        Ok(())
+    }
+
+    async fn handle_choke_qc(&mut self, ctx: Context, qc: ChokeQC) -> OverlordResult<()> {
         let old_state = self.state.handle_choke_qc(&qc)?;
         self.log_state_update_of_msg(old_state, &self.address, (&qc).into());
         self.wal.save_state(&self.state)?;
@@ -704,7 +869,7 @@ where
         self.next_height(ctx).await
     }
 
-    async fn handle_signed_height(
+    async fn pre_handle_signed_height(
         &mut self,
         ctx: Context,
         signed_height: SignedHeight,
@@ -720,7 +885,23 @@ where
             )));
         }
 
-        self.auth.verify_signed_height(&signed_height)?;
+        let auth = Arc::<_>::clone(&self.auth);
+        let agent = Arc::<_>::clone(&self.agent);
+        tokio::spawn(async move {
+            if let Err(e) = auth.verify_signed_height(&signed_height) {
+                agent.send_to_myself(ChannelMsg::HandleMsgError(ctx, signed_height.into(), e));
+            } else {
+                agent.send_to_myself(ChannelMsg::HandleMsg(ctx, signed_height.into()));
+            }
+        });
+        Ok(())
+    }
+
+    async fn handle_signed_height(
+        &mut self,
+        ctx: Context,
+        signed_height: SignedHeight,
+    ) -> OverlordResult<()> {
         let old_sync = self.sync.handle_signed_height(&signed_height)?;
         self.log_sync_update_of_msg(
             old_sync,
@@ -733,14 +914,22 @@ where
         self.agent
             .set_clear_timeout(ctx.clone(), signed_height.address.clone())
             .await;
-        let range = HeightRange::new(my_height, BLOCK_BATCH);
-        let request = self.auth.sign_sync_request(range)?;
-        self.agent
-            .transmit(ctx, signed_height.address.clone(), request.into())
-            .await
+        let range = HeightRange::new(self.state.stage.height, BLOCK_BATCH);
+
+        let auth = Arc::<_>::clone(&self.auth);
+        let agent = Arc::<_>::clone(&self.agent);
+        tokio::spawn(async move {
+            let request = auth
+                .sign_sync_request(range)
+                .expect("Unreachable! Should never failed when signing sync request");
+            agent
+                .transmit(ctx, signed_height.address.clone(), request.into())
+                .await
+        });
+        Ok(())
     }
 
-    async fn handle_sync_request(
+    async fn pre_handle_sync_request(
         &mut self,
         ctx: Context,
         request: SyncRequest,
@@ -752,7 +941,23 @@ where
             )));
         }
 
-        self.auth.verify_sync_request(&request)?;
+        let auth = Arc::<_>::clone(&self.auth);
+        let agent = Arc::<_>::clone(&self.agent);
+        tokio::spawn(async move {
+            if let Err(e) = auth.verify_sync_request(&request) {
+                agent.send_to_myself(ChannelMsg::HandleMsgError(ctx, request.into(), e));
+            } else {
+                agent.send_to_myself(ChannelMsg::HandleMsg(ctx, request.into()));
+            }
+        });
+        Ok(())
+    }
+
+    async fn handle_sync_request(
+        &mut self,
+        ctx: Context,
+        request: SyncRequest,
+    ) -> OverlordResult<()> {
         let old_sync = self.sync.handle_sync_request(&request)?;
         self.log_sync_update_of_msg(old_sync, &request.requester, request.clone().into());
         self.agent
@@ -760,36 +965,40 @@ where
             .await;
 
         let adapter = Arc::clone(&self.adapter);
-        let self_address = self.address.clone();
-        let pri_key = self.auth.crypto_config.pri_key.clone();
-        let pub_key = self.auth.crypto_config.pub_key.clone();
-
+        let agent = Arc::<_>::clone(&self.agent);
+        let auth = Arc::<_>::clone(&self.auth);
         tokio::spawn(async move {
             let block_with_proofs = adapter
                 .get_full_block_with_proofs(ctx.clone(), request.request_range.clone())
                 .await
                 .map_err(OverlordError::local_get_block)?;
-
-            let hash = A::CryptoImpl::hash(&Bytes::from(rlp::encode(&request.request_range)));
-            let signature =
-                A::CryptoImpl::sign_msg(pri_key, &hash).map_err(OverlordError::local_crypto)?;
-            let response = SyncResponse::new(
-                request.request_range.clone(),
-                block_with_proofs,
-                self_address.clone(),
-                pub_key,
-                signature,
-            );
-            info!(
-                "[TRANSMIT]\n\t<{}> -> {}\n\t<message> sync_response: {} \n\n\n\n\n",
-                self_address.tiny_hex(),
-                request.requester.tiny_hex(),
-                response
-            );
-            adapter
+            let response = auth
+                .sign_sync_response(request.request_range.clone(), block_with_proofs)
+                .expect("Unreachable! Should never failed when signing sync response");
+            agent
                 .transmit(ctx, request.requester, response.into())
                 .await
-                .map_err(OverlordError::net_transmit)
+        });
+        Ok(())
+    }
+
+    async fn pre_handle_sync_response(
+        &mut self,
+        ctx: Context,
+        response: SyncResponse<B, F>,
+    ) -> OverlordResult<()> {
+        if response.request_range.to < self.state.stage.height {
+            return Err(OverlordError::debug_old());
+        }
+
+        let auth = Arc::<_>::clone(&self.auth);
+        let agent = Arc::<_>::clone(&self.agent);
+        tokio::spawn(async move {
+            if let Err(e) = auth.verify_sync_response(&response) {
+                agent.send_to_myself(ChannelMsg::HandleMsgError(ctx, response.into(), e));
+            } else {
+                agent.send_to_myself(ChannelMsg::HandleMsg(ctx, response.into()));
+            }
         });
         Ok(())
     }
@@ -799,11 +1008,6 @@ where
         ctx: Context,
         response: SyncResponse<B, F>,
     ) -> OverlordResult<()> {
-        if response.request_range.to < self.state.stage.height {
-            return Err(OverlordError::debug_old());
-        }
-        self.auth.verify_sync_response(&response)?;
-
         let map: HashMap<Height, FullBlockWithProof<B, F>> = response
             .block_with_proofs
             .clone()
@@ -893,6 +1097,52 @@ where
         }
         let old_sync = self.sync.handle_sync_response();
         self.log_sync_update_of_msg(old_sync, &response.responder.clone(), response.into());
+
+        Ok(())
+    }
+
+    async fn pre_handle_fetched_full_block(
+        &mut self,
+        ctx: Context,
+        fetch: FetchedFullBlock<B, F>,
+    ) -> OverlordResult<()> {
+        if fetch.height < self.state.stage.height {
+            return Err(OverlordError::debug_old());
+        }
+
+        let wal = self.wal.clone();
+        let agent = Arc::<_>::clone(&self.agent);
+        tokio::spawn(async move {
+            if let Err(e) = wal.save_full_block(&fetch) {
+                agent.send_to_myself(ChannelMsg::HandleMsgError(ctx, fetch.into(), e));
+            } else {
+                agent.send_to_myself(ChannelMsg::HandleMsg(ctx, fetch.into()));
+            }
+        });
+        Ok(())
+    }
+
+    async fn handle_fetched_full_block(
+        &mut self,
+        ctx: Context,
+        fetch: FetchedFullBlock<B, F>,
+    ) -> OverlordResult<()> {
+        self.cabinet.insert_full_block(fetch.clone());
+        info!(
+            "[FETCH]\n\t<{}> <- full block\n\t<message> full_block: {}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n\n",
+            self.address.tiny_hex(),
+            fetch,
+            self.state,
+            self.prepare,
+            self.sync
+        );
+
+        let hash = fetch.block_hash;
+        if let Some(qc) = self.cabinet.get_pre_commit_qc_by_hash(fetch.height, &hash) {
+            self.handle_pre_commit_qc_with_full_block(ctx, qc).await?;
+        } else if let Some(qc) = self.cabinet.get_pre_vote_qc_by_hash(fetch.height, &hash) {
+            self.handle_pre_vote_qc_with_full_block(ctx, qc).await?;
+        }
 
         Ok(())
     }
@@ -1039,24 +1289,6 @@ where
         self.auth.sign_proposal(proposal).await
     }
 
-    async fn create_signed_pre_vote(&self) -> OverlordResult<SignedPreVote> {
-        let vote = self.state.get_vote();
-        self.auth.sign_pre_vote(vote).await
-    }
-
-    async fn create_signed_pre_commit(&self) -> OverlordResult<SignedPreCommit> {
-        let vote = self.state.get_vote();
-        self.auth.sign_pre_commit(vote).await
-    }
-
-    async fn create_signed_choke(&self) -> OverlordResult<SignedChoke> {
-        let height = self.state.stage.height;
-        let round = self.state.stage.round;
-        let from = self.state.from.clone();
-        let choke = Choke::new(height, round);
-        self.auth.sign_choke(choke, from).await
-    }
-
     fn replay_msg_received_before(&mut self) {
         if self.sync.state == SyncStat::Off {
             if let Some(grids) = self.cabinet.pop(self.state.stage.height) {
@@ -1090,6 +1322,7 @@ where
         height: Height,
         round: Round,
         max_w: CumWeight,
+        sv: SignedPreVote,
     ) -> OverlordResult<()> {
         if self
             .auth
@@ -1108,10 +1341,15 @@ where
                         .expect("Unreachable! Lost the vote_hash while beyond majority"),
                 )
                 .expect("Unreachable! Lost signed_pre_votes while beyond majority");
-            let pre_vote_qc = self.auth.aggregate_pre_votes(votes).await?;
-            self.agent
-                .broadcast(ctx, pre_vote_qc.clone().into())
-                .await?;
+            let auth = Arc::<_>::clone(&self.auth);
+            let agent = Arc::<_>::clone(&self.agent);
+            tokio::spawn(async move {
+                if let Err(e) =
+                    create_and_broadcast_pre_vote_qc(&auth, &agent, ctx.clone(), votes).await
+                {
+                    agent.send_to_myself(ChannelMsg::HandleMsgError(ctx, sv.into(), e));
+                }
+            });
         }
         Ok(())
     }
@@ -1122,6 +1360,7 @@ where
         height: Height,
         round: Round,
         max_w: CumWeight,
+        sv: SignedPreCommit,
     ) -> OverlordResult<()> {
         if self
             .auth
@@ -1140,10 +1379,15 @@ where
                         .expect("Unreachable! Lost the vote_hash while beyond majority"),
                 )
                 .expect("Unreachable! Lost signed_pre_commits while beyond majority");
-            let pre_commit_qc = self.auth.aggregate_pre_commits(votes).await?;
-            self.agent
-                .broadcast(ctx, pre_commit_qc.clone().into())
-                .await?;
+            let auth = Arc::<_>::clone(&self.auth);
+            let agent = Arc::<_>::clone(&self.agent);
+            tokio::spawn(async move {
+                if let Err(e) =
+                    create_and_broadcast_pre_commit_qc(&auth, &agent, ctx.clone(), votes).await
+                {
+                    agent.send_to_myself(ChannelMsg::HandleMsgError(ctx, sv.into(), e));
+                }
+            });
         }
         Ok(())
     }
@@ -1154,6 +1398,7 @@ where
         height: Height,
         round: Round,
         max_w: CumWeight,
+        sc: SignedChoke,
     ) -> OverlordResult<()> {
         if self
             .auth
@@ -1167,20 +1412,15 @@ where
                 .get_signed_chokes(height, round)
                 .expect("Unreachable! Lost signed_chokes while beyond majority");
 
-            let choke_qc = self.auth.aggregate_chokes(chokes).await?;
-            self.handle_choke_qc(ctx, choke_qc).await?;
+            let auth = Arc::<_>::clone(&self.auth);
+            let agent = Arc::<_>::clone(&self.agent);
+            tokio::spawn(async move {
+                if let Err(e) = create_and_send_choke_qc(&auth, &agent, ctx.clone(), chokes).await {
+                    agent.send_to_myself(ChannelMsg::HandleMsgError(ctx, sc.into(), e));
+                }
+            });
         }
         Ok(())
-    }
-
-    async fn transmit_vote(&self, ctx: Context, vote: OverlordMsg<B, F>) -> OverlordResult<()> {
-        let leader = self.current_leader().await;
-        self.agent
-            .transmit(ctx.clone(), leader, vote.clone())
-            .await?;
-        // new design, when leader is down, next leader can aggregate votes to view change fast
-        let next_leader = self.next_round_leader().await;
-        self.agent.transmit(ctx, next_leader, vote).await
     }
 
     fn filter_msg(
@@ -1254,12 +1494,6 @@ where
             .await
     }
 
-    async fn next_round_leader(&self) -> Address {
-        self.auth
-            .get_leader(self.state.stage.height, self.state.stage.round + 1)
-            .await
-    }
-
     async fn next_height_leader(&self) -> Address {
         self.auth
             .get_leader(self.state.stage.height + 1, INIT_ROUND)
@@ -1280,9 +1514,11 @@ where
             OverlordMsg::PreCommitQC(qc) => {
                 self.auth.get_leader(qc.vote.height, qc.vote.round).await
             }
+            OverlordMsg::ChokeQC(qc) => self.auth.get_leader(qc.choke.height, qc.choke.round).await,
             OverlordMsg::SignedHeight(sh) => sh.address.clone(),
             OverlordMsg::SyncRequest(sq) => sq.requester.clone(),
             OverlordMsg::SyncResponse(sp) => sp.responder.clone(),
+            OverlordMsg::FetchedFullBlock(_) => self.address.clone(),
             OverlordMsg::Stop => unreachable!(),
         }
     }
@@ -1291,6 +1527,15 @@ where
         let sender = self.extract_sender(&msg).await;
         let content = format!("[RECEIVE]\n\t<{}> <- {}\n\t<message> {}\n\t{}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n",
                               self.address.tiny_hex(), sender.tiny_hex(), msg, e, self.state, self.prepare, self.sync);
+        if let OverlordMsg::FetchedFullBlock(fetch) = msg {
+            self.agent.remove_block_hash(fetch.block_hash).await;
+        }
+        self.handle_err(ctx, e, content).await;
+    }
+
+    async fn handle_timeout_err(&self, ctx: Context, timeout: TimeoutEvent, e: OverlordError) {
+        let content = format!("[TIMEOUT]\n\t<{}> <- timeout\n\t<timeout> {}\n\t{}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n",
+                              self.address.tiny_hex(), timeout, e, self.state, self.prepare, self.sync);
         self.handle_err(ctx, e, content).await;
     }
 
@@ -1388,11 +1633,113 @@ async fn pre_handle_signed_proposal<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, 
         .await;
     if sp.proposal.round > state_round {
         if let Some(qc) = sp.proposal.lock {
-            agent.send_to_myself(ChannelMsg::PreHandleMsg(ctx, qc.into()));
+            agent.send_to_myself(ChannelMsg::HandleMsg(ctx, qc.into()));
         }
         return Err(OverlordError::debug_high());
     }
     Ok(sp.into())
+}
+
+async fn create_and_transmit_signed_pre_vote<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(
+    auth: &Arc<AuthManage<A, B, F, S>>,
+    agent: &Arc<EventAgent<A, B, F, S>>,
+    current_height: Height,
+    current_round: Round,
+    ctx: Context,
+    vote: Vote,
+) -> OverlordResult<()> {
+    let signed_pre_vote = auth.sign_pre_vote(vote).await?;
+    transmit_vote(
+        auth,
+        agent,
+        current_height,
+        current_round,
+        ctx,
+        signed_pre_vote.into(),
+    )
+    .await
+}
+
+async fn create_and_transmit_signed_pre_commit<
+    A: Adapter<B, F, S>,
+    B: Blk,
+    F: FullBlk<B>,
+    S: St,
+>(
+    auth: &Arc<AuthManage<A, B, F, S>>,
+    agent: &Arc<EventAgent<A, B, F, S>>,
+    current_height: Height,
+    current_round: Round,
+    ctx: Context,
+    vote: Vote,
+) -> OverlordResult<()> {
+    let signed_pre_commit = auth.sign_pre_commit(vote).await?;
+    transmit_vote(
+        auth,
+        agent,
+        current_height,
+        current_round,
+        ctx,
+        signed_pre_commit.into(),
+    )
+    .await
+}
+
+async fn create_and_broadcast_pre_vote_qc<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(
+    auth: &Arc<AuthManage<A, B, F, S>>,
+    agent: &Arc<EventAgent<A, B, F, S>>,
+    ctx: Context,
+    pre_votes: Vec<SignedPreVote>,
+) -> OverlordResult<()> {
+    let pre_vote_qc = auth.aggregate_pre_votes(pre_votes).await?;
+    agent.broadcast(ctx, pre_vote_qc.into()).await
+}
+
+async fn create_and_broadcast_pre_commit_qc<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(
+    auth: &Arc<AuthManage<A, B, F, S>>,
+    agent: &Arc<EventAgent<A, B, F, S>>,
+    ctx: Context,
+    pre_commits: Vec<SignedPreCommit>,
+) -> OverlordResult<()> {
+    let pre_commit_qc = auth.aggregate_pre_commits(pre_commits).await?;
+    agent.broadcast(ctx, pre_commit_qc.into()).await
+}
+
+async fn create_and_send_choke_qc<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(
+    auth: &Arc<AuthManage<A, B, F, S>>,
+    agent: &Arc<EventAgent<A, B, F, S>>,
+    ctx: Context,
+    chokes: Vec<SignedChoke>,
+) -> OverlordResult<()> {
+    let choke_qc = auth.aggregate_chokes(chokes).await?;
+    agent.send_to_myself(ChannelMsg::HandleMsg(ctx, choke_qc.into()));
+    Ok(())
+}
+
+async fn create_and_broadcast_signed_choke<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(
+    auth: &Arc<AuthManage<A, B, F, S>>,
+    agent: &Arc<EventAgent<A, B, F, S>>,
+    ctx: Context,
+    choke: Choke,
+    from: Option<UpdateFrom>,
+) -> OverlordResult<()> {
+    let signed_choke = auth.sign_choke(choke, from).await?;
+    agent.broadcast(ctx, signed_choke.into()).await
+}
+
+async fn transmit_vote<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(
+    auth: &Arc<AuthManage<A, B, F, S>>,
+    agent: &Arc<EventAgent<A, B, F, S>>,
+    current_height: Height,
+    current_round: Round,
+    ctx: Context,
+    vote: OverlordMsg<B, F>,
+) -> OverlordResult<()> {
+    let leader = current_leader(auth, current_height, current_round).await;
+    agent.transmit(ctx.clone(), leader, vote.clone()).await?;
+    // new design, when leader is down, next leader can aggregate votes to view change fast
+    let next_leader = next_round_leader(auth, current_height, current_round).await;
+    agent.transmit(ctx, next_leader, vote).await
 }
 
 async fn check_proposal<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(
@@ -1469,6 +1816,38 @@ async fn check_block<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(
         .map_err(OverlordError::byz_adapter_check_block)?;
     Ok(())
 }
+
+async fn current_leader<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(
+    auth: &Arc<AuthManage<A, B, F, S>>,
+    current_height: Height,
+    current_round: Round,
+) -> Address {
+    auth.get_leader(current_height, current_round).await
+}
+
+async fn next_round_leader<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(
+    auth: &Arc<AuthManage<A, B, F, S>>,
+    current_height: Height,
+    current_round: Round,
+) -> Address {
+    auth.get_leader(current_height, current_round).await
+}
+
+// async fn next_height_leader<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(
+//     auth: &Arc<AuthManage<A, B, F, S>>,
+//     current_height: Height,
+// ) -> Address {
+//     auth.get_leader(current_height + 1, INIT_ROUND).await
+// }
+
+// async fn is_current_leader<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(
+//     auth: &Arc<AuthManage<A, B, F, S>>,
+//     current_height: Height,
+//     current_round: Round,
+//     address: Address,
+// ) -> bool {
+//     address == current_leader(auth, current_height, current_round).await
+// }
 
 async fn recover_state_by_adapter<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St>(
     adapter: &Arc<A>,

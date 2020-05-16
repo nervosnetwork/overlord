@@ -34,22 +34,10 @@ async fn test_wal_1_node() {
     let address = vec.get(0).unwrap();
     // stop node
     platform.stop_node(&address);
-    thread::sleep(Duration::from_secs(1));
-    let height_after_stop = platform.get_latest_height(&address);
-    thread::sleep(Duration::from_secs(3));
-    let height_after_sleep = platform.get_latest_height(&address);
-    assert_eq!(height_after_stop, height_after_sleep);
 
     // restart node
     platform.restart_node(&address);
-    thread::sleep(Duration::from_secs(3));
-    let height_after_restart = platform.get_latest_height(&address);
-    assert!(
-        height_after_restart > height_after_sleep,
-        "{} > {}",
-        height_after_restart,
-        height_after_sleep
-    );
+    thread::sleep(Duration::from_secs(5));
 }
 
 #[tokio::test(threaded_scheduler)]

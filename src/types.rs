@@ -34,6 +34,10 @@ pub enum OverlordMsg<B: Blk, F: FullBlk<B>> {
     PreVoteQC(PreVoteQC),
     #[display(fmt = "pre_commit_qc: {}", _0)]
     PreCommitQC(PreCommitQC),
+    #[display(fmt = "choke_qc: {}", _0)]
+    ChokeQC(ChokeQC),
+    #[display(fmt = "choke_qc: {}", _0)]
+    FetchedFullBlock(FetchedFullBlock<B, F>),
     #[display(fmt = "signed_choke: {}", _0)]
     SignedChoke(SignedChoke),
     #[display(fmt = "signed_height: {}", _0)]
@@ -55,6 +59,8 @@ impl_from!(
         SignedChoke,
         PreVoteQC,
         PreCommitQC,
+        ChokeQC,
+        FetchedFullBlock<B, F>,
         SignedHeight,
         SyncRequest,
         SyncResponse<B, F>,
