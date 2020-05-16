@@ -1504,17 +1504,15 @@ where
         self.address == self.current_leader().await
     }
 
-    async fn extract_sender(&self, msg: &OverlordMsg<B, F>) -> Address {
+    fn extract_sender(&self, msg: &OverlordMsg<B, F>) -> Address {
         match msg {
             OverlordMsg::SignedProposal(sp) => sp.proposal.proposer.clone(),
             OverlordMsg::SignedPreVote(sv) => sv.voter.clone(),
             OverlordMsg::SignedPreCommit(sv) => sv.voter.clone(),
             OverlordMsg::SignedChoke(sc) => sc.voter.clone(),
-            OverlordMsg::PreVoteQC(qc) => self.auth.get_leader(qc.vote.height, qc.vote.round).await,
-            OverlordMsg::PreCommitQC(qc) => {
-                self.auth.get_leader(qc.vote.height, qc.vote.round).await
-            }
-            OverlordMsg::ChokeQC(qc) => self.auth.get_leader(qc.choke.height, qc.choke.round).await,
+            OverlordMsg::PreVoteQC(qc) => qc.sender.clone(),
+            OverlordMsg::PreCommitQC(qc) => qc.sender.clone(),
+            OverlordMsg::ChokeQC(qc) => qc.sender.clone(),
             OverlordMsg::SignedHeight(sh) => sh.address.clone(),
             OverlordMsg::SyncRequest(sq) => sq.requester.clone(),
             OverlordMsg::SyncResponse(sp) => sp.responder.clone(),
@@ -1524,7 +1522,7 @@ where
     }
 
     async fn handle_msg_err(&self, ctx: Context, msg: OverlordMsg<B, F>, e: OverlordError) {
-        let sender = self.extract_sender(&msg).await;
+        let sender = self.extract_sender(&msg);
         let content = format!("[RECEIVE]\n\t<{}> <- {}\n\t<message> {}\n\t{}\n\t<state> {}\n\t<prepare> {}\n\t<sync> {}\n",
                               self.address.tiny_hex(), sender.tiny_hex(), msg, e, self.state, self.prepare, self.sync);
         if let OverlordMsg::FetchedFullBlock(fetch) = msg {

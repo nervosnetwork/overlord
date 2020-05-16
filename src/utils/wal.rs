@@ -168,36 +168,13 @@ fn open_file(file_path: PathBuf) -> OverlordResult<fs::File> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::state::Stage;
-    use crate::types::{
-        Aggregates, Choke, ChokeQC, PreCommitQC, PreVoteQC, TestBlock, TestFullBlock, UpdateFrom,
-        Vote,
-    };
+    use crate::types::{TestBlock, TestFullBlock};
     use crate::{Crypto, DefaultCrypto};
 
     #[test]
     fn test_wal() {
         let wal = Wal::new("./wal/");
-
-        let aggregates = Aggregates {
-            address_bitmap: Bytes::from("iewuceiu"),
-            signature:      Bytes::from("iewuceiu"),
-        };
-
-        let vote = Vote::new(10, 2, Bytes::from("ckvfkvfv"));
-
-        let state = StateInfo {
-            stage:         Stage::default(),
-            lock:          Some(PreVoteQC::new(vote.clone(), aggregates.clone())),
-            block_hash:    Some(Bytes::from("uhcicbei")),
-            block:         Some(TestBlock::default()),
-            pre_commit_qc: Some(PreCommitQC::new(vote, aggregates.clone())),
-            from:          Some(UpdateFrom::ChokeQC(ChokeQC::new(
-                Choke::default(),
-                aggregates,
-            ))),
-        };
-
+        let state = StateInfo::default();
         wal.save_state(&state).unwrap();
         let load_state = wal.load_state().expect("load state failed");
         assert_eq!(state, load_state);

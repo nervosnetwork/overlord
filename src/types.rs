@@ -215,15 +215,25 @@ impl SignedPreCommit {
 }
 
 #[derive(Clone, Debug, Display, Default, Eq)]
-#[display(fmt = "{{ vote: {}, aggregates: {} }}", vote, aggregates)]
+#[display(
+    fmt = "{{ vote: {}, aggregates: {}, sender: {} }}",
+    vote,
+    aggregates,
+    "sender.tiny_hex()"
+)]
 pub struct PreVoteQC {
     pub vote:       Vote,
     pub aggregates: Aggregates,
+    pub sender:     Address,
 }
 
 impl PreVoteQC {
-    pub fn new(vote: Vote, aggregates: Aggregates) -> Self {
-        PreVoteQC { vote, aggregates }
+    pub fn new(vote: Vote, aggregates: Aggregates, sender: Address) -> Self {
+        PreVoteQC {
+            vote,
+            aggregates,
+            sender,
+        }
     }
 
     pub fn empty() -> Self {
@@ -238,15 +248,25 @@ impl PartialEq for PreVoteQC {
 }
 
 #[derive(Clone, Debug, Display, Default, Eq, Serialize, Deserialize)]
-#[display(fmt = "{{ vote: {}, aggregates: {} }}", vote, aggregates)]
+#[display(
+    fmt = "{{ vote: {}, aggregates: {}, sender: {} }}",
+    vote,
+    aggregates,
+    "sender.tiny_hex()"
+)]
 pub struct PreCommitQC {
     pub vote:       Vote,
     pub aggregates: Aggregates,
+    pub sender:     Address,
 }
 
 impl PreCommitQC {
-    pub fn new(vote: Vote, aggregates: Aggregates) -> Self {
-        PreCommitQC { vote, aggregates }
+    pub fn new(vote: Vote, aggregates: Aggregates, sender: Address) -> Self {
+        PreCommitQC {
+            vote,
+            aggregates,
+            sender,
+        }
     }
 }
 
@@ -327,15 +347,25 @@ impl Choke {
 }
 
 #[derive(Clone, Debug, Display, Default, PartialEq, Eq, Hash)]
-#[display(fmt = "{{ choke: {}, aggregates: {} }}", choke, aggregates)]
+#[display(
+    fmt = "{{ choke: {}, aggregates: {}, sender: {} }}",
+    choke,
+    aggregates,
+    "sender.tiny_hex()"
+)]
 pub struct ChokeQC {
     pub choke:      Choke,
     pub aggregates: Aggregates,
+    pub sender:     Address,
 }
 
 impl ChokeQC {
-    pub fn new(choke: Choke, aggregates: Aggregates) -> Self {
-        ChokeQC { choke, aggregates }
+    pub fn new(choke: Choke, aggregates: Aggregates, sender: Address) -> Self {
+        ChokeQC {
+            choke,
+            aggregates,
+            sender,
+        }
     }
 }
 

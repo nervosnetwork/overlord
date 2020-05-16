@@ -134,17 +134,26 @@ impl Decodable for SignedPreCommit {
 // impl Encodable and Decodable trait for PreVoteQC
 impl Encodable for PreVoteQC {
     fn rlp_append(&self, s: &mut RlpStream) {
-        s.begin_list(2).append(&self.aggregates).append(&self.vote);
+        s.begin_list(3)
+            .append(&self.aggregates)
+            .append(&self.vote)
+            .append(&self.sender.to_vec());
     }
 }
 
 impl Decodable for PreVoteQC {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         match r.prototype()? {
-            Prototype::List(2) => {
+            Prototype::List(3) => {
                 let aggregates: Aggregates = r.val_at(0)?;
                 let vote: Vote = r.val_at(1)?;
-                Ok(PreVoteQC { aggregates, vote })
+                let tmp: Vec<u8> = r.val_at(2)?;
+                let sender = Address::from(tmp);
+                Ok(PreVoteQC {
+                    aggregates,
+                    vote,
+                    sender,
+                })
             }
             _ => Err(DecoderError::RlpInconsistentLengthAndData),
         }
@@ -154,17 +163,26 @@ impl Decodable for PreVoteQC {
 // impl Encodable and Decodable trait for PreCommitQC
 impl Encodable for PreCommitQC {
     fn rlp_append(&self, s: &mut RlpStream) {
-        s.begin_list(2).append(&self.aggregates).append(&self.vote);
+        s.begin_list(3)
+            .append(&self.aggregates)
+            .append(&self.vote)
+            .append(&self.sender.to_vec());
     }
 }
 
 impl Decodable for PreCommitQC {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         match r.prototype()? {
-            Prototype::List(2) => {
+            Prototype::List(3) => {
                 let aggregates: Aggregates = r.val_at(0)?;
                 let vote: Vote = r.val_at(1)?;
-                Ok(PreCommitQC { aggregates, vote })
+                let tmp: Vec<u8> = r.val_at(2)?;
+                let sender = Address::from(tmp);
+                Ok(PreCommitQC {
+                    aggregates,
+                    vote,
+                    sender,
+                })
             }
             _ => Err(DecoderError::RlpInconsistentLengthAndData),
         }
@@ -275,17 +293,26 @@ impl Decodable for SignedChoke {
 // impl Encodable and Decodable trait for ChokeQC
 impl Encodable for ChokeQC {
     fn rlp_append(&self, s: &mut RlpStream) {
-        s.begin_list(2).append(&self.aggregates).append(&self.choke);
+        s.begin_list(3)
+            .append(&self.aggregates)
+            .append(&self.choke)
+            .append(&self.sender.to_vec());
     }
 }
 
 impl Decodable for ChokeQC {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         match r.prototype()? {
-            Prototype::List(2) => {
+            Prototype::List(3) => {
                 let aggregates: Aggregates = r.val_at(0)?;
                 let choke: Choke = r.val_at(1)?;
-                Ok(ChokeQC { aggregates, choke })
+                let tmp: Vec<u8> = r.val_at(2)?;
+                let sender = Address::from(tmp);
+                Ok(ChokeQC {
+                    aggregates,
+                    choke,
+                    sender,
+                })
             }
             _ => Err(DecoderError::RlpInconsistentLengthAndData),
         }

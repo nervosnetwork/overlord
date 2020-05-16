@@ -136,7 +136,11 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> AuthManage<A, B, F, S> {
             .await
             .ensure_majority_weight(pair_list)?;
         let aggregates = self.aggregate(signatures).await?;
-        Ok(PreVoteQC::new(pre_votes[0].vote.clone(), aggregates))
+        Ok(PreVoteQC::new(
+            pre_votes[0].vote.clone(),
+            aggregates,
+            self.crypto_config.address.clone(),
+        ))
     }
 
     pub async fn verify_pre_vote_qc(&self, pre_vote_qc: &PreVoteQC) -> OverlordResult<()> {
@@ -160,7 +164,11 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> AuthManage<A, B, F, S> {
             .await
             .ensure_majority_weight(pair_list)?;
         let aggregates = self.aggregate(signatures).await?;
-        Ok(PreCommitQC::new(pre_commits[0].vote.clone(), aggregates))
+        Ok(PreCommitQC::new(
+            pre_commits[0].vote.clone(),
+            aggregates,
+            self.crypto_config.address.clone(),
+        ))
     }
 
     pub async fn verify_pre_commit_qc(&self, pre_commit_qc: &PreCommitQC) -> OverlordResult<()> {
@@ -213,7 +221,11 @@ impl<A: Adapter<B, F, S>, B: Blk, F: FullBlk<B>, S: St> AuthManage<A, B, F, S> {
             .await
             .ensure_majority_weight(pair_list)?;
         let aggregates = self.aggregate(signatures).await?;
-        Ok(ChokeQC::new(chokes[0].choke.clone(), aggregates))
+        Ok(ChokeQC::new(
+            chokes[0].choke.clone(),
+            aggregates,
+            self.crypto_config.address.clone(),
+        ))
     }
 
     pub async fn verify_choke_qc(&self, choke_qc: &ChokeQC) -> OverlordResult<()> {

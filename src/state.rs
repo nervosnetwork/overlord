@@ -450,6 +450,6 @@ fn test_stage_cmp() {
     let stage_4 = Stage::new(9, 1, Step::Commit);
     assert!(stage_4 < stage_3);
     let vote = Vote::new(10, 0, Bytes::from("1111"));
-    let pre_commit_qc = PreCommitQC::new(vote, Aggregates::default());
+    let pre_commit_qc = PreCommitQC::new(vote, Aggregates::default(), Bytes::from("gene"));
     assert!(pre_commit_qc.next_stage() > stage_4);
 }
