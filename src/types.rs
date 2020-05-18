@@ -132,6 +132,17 @@ impl<T: Codec> OverlordMsg<T> {
             _ => false,
         }
     }
+
+    pub(crate) fn get_height(&self) -> u64 {
+        match self {
+            OverlordMsg::SignedProposal(sp) => sp.proposal.height,
+            OverlordMsg::SignedVote(sv) => sv.get_height(),
+            OverlordMsg::AggregatedVote(av) => av.get_height(),
+            OverlordMsg::RichStatus(s) => s.height,
+            OverlordMsg::SignedChoke(sc) => sc.choke.height,
+            _ => unreachable!(),
+        }
+    }
 }
 
 /// How does state goto the current round.

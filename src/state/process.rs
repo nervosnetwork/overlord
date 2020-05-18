@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+use std::cmp::{Ord, Ordering};
 use std::collections::{HashMap, HashSet};
 use std::string::ToString;
 use std::time::{Duration, Instant};
@@ -8,7 +8,6 @@ use bit_vec::BitVec;
 use bytes::Bytes;
 use creep::Context;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
-use futures::future::try_join_all;
 use futures::{select, StreamExt};
 use futures_timer::Delay;
 use log::{debug, error, info, warn};
@@ -18,7 +17,7 @@ use crate::error::ConsensusError;
 use crate::smr::smr_types::{FromWhere, SMREvent, SMRTrigger, Step, TriggerSource, TriggerType};
 use crate::smr::{Event, SMRHandler};
 use crate::state::collection::{ChokeCollector, ProposalCollector, VoteCollector};
-use crate::state::parallel::{parallel_verify, verify_signature};
+use crate::state::parallel::parallel_verify;
 use crate::types::{
     Address, AggregatedChoke, AggregatedSignature, AggregatedVote, Choke, Commit, Hash, Node,
     OverlordMsg, PoLC, Proof, Proposal, Signature, SignedChoke, SignedProposal, SignedVote, Status,
@@ -56,10 +55,11 @@ pub struct State<T: Codec, F: Consensus<T>, C: Crypto, W: Wal> {
     consensus_power:     bool,
     stopped:             bool,
 
-    resp_tx:  UnboundedSender<VerifyResp>,
-    function: Arc<F>,
-    wal:      Arc<W>,
-    util:     Arc<C>,
+    verify_sig_tx: UnboundedSender<(Context, OverlordMsg<T>)>,
+    resp_tx:       UnboundedSender<VerifyResp>,
+    function:      Arc<F>,
+    wal:           Arc<W>,
+    util:          Arc<C>,
 }
 
 impl<T, F, C, W> State<T, F, C, W>
@@ -75,6 +75,7 @@ where
         addr: Address,
         interval: u64,
         mut authority_list: Vec<Node>,
+        verify_tx: UnboundedSender<(Context, OverlordMsg<T>)>,
         consensus: Arc<F>,
         crypto: Arc<C>,
         wal_engine: Arc<W>,
@@ -102,10 +103,11 @@ where
             consensus_power:     false,
             stopped:             false,
 
-            resp_tx:  tx,
-            function: consensus,
-            util:     crypto,
-            wal:      wal_engine,
+            verify_sig_tx: verify_tx,
+            resp_tx:       tx,
+            function:      consensus,
+            util:          crypto,
+            wal:           wal_engine,
         };
 
         (state, rx)
@@ -117,9 +119,8 @@ where
         mut raw_rx: UnboundedReceiver<(Context, OverlordMsg<T>)>,
         mut event: Event,
         mut verify_resp: UnboundedReceiver<VerifyResp>,
+        mut verify_sig: UnboundedReceiver<(Context, OverlordMsg<T>)>,
     ) {
-        let (verify_tx, mut verify_rx) = unbounded();
-
         debug!("Overlord: state start running");
         if let Err(e) = self.start_with_wal().await {
             error!("Overlord: start with wal error {:?}", e);
@@ -129,10 +130,24 @@ where
             select! {
                 raw = raw_rx.next() => {
                     let (ctx, msg) = raw.expect("Overlord message handler dropped");
-                    let tx_clone = verify_tx.clone();
-                    let crypto = Arc::clone(&self.util);
-                    let authority = self.authority.clone();
-                    parallel_verify(ctx, msg, crypto, authority, tx_clone).await;
+
+                    // Filter message height.
+                    match self.height.cmp(&msg.get_height()) {
+                        Ordering::Less => {
+                            let _ = self.verify_sig_tx.unbounded_send((ctx, msg));
+                        }
+                        Ordering::Equal => {
+                            parallel_verify(
+                                ctx,
+                                msg,
+                                Arc::clone(&self.util),
+                                self.authority.clone(),
+                                self.verify_sig_tx.clone()
+                            )
+                            .await;
+                        }
+                        Ordering::Greater => (),
+                    };
                 }
 
                 evt = event.next() => {
@@ -159,7 +174,7 @@ where
                     }
                 }
 
-                verified_msg = verify_rx.next() => {
+                verified_msg = verify_sig.next() => {
                     let (ctx, msg) = verified_msg.expect("Overlord message handler dropped");
                     if let Err(e) = self.handle_msg(ctx.clone(), msg).await {
                         self.report_error(ctx, e.clone());
@@ -649,8 +664,12 @@ where
             .await?;
 
         if self.is_leader {
-            self.votes
-                .insert_vote(signed_vote.get_hash(), signed_vote, self.address.clone());
+            self.votes.insert_vote(
+                Context::new(),
+                signed_vote.get_hash(),
+                signed_vote,
+                self.address.clone(),
+            );
         } else {
             info!(
                 "Overlord: state transmit a signed vote, height {}, round {}, hash {:?}",
@@ -846,8 +865,12 @@ where
             return Ok(());
         }
 
-        self.votes
-            .insert_vote(signed_vote.get_hash(), signed_vote.clone(), voter);
+        self.votes.insert_vote(
+            ctx.clone(),
+            signed_vote.get_hash(),
+            signed_vote.clone(),
+            voter,
+        );
 
         if height > self.height {
             return Ok(());
@@ -1203,9 +1226,12 @@ where
         block_hash: Hash,
         vote_type: VoteType,
     ) -> ConsensusResult<AggregatedVote> {
-        let mut votes =
-            self.votes
-                .get_votes(self.height, self.round, vote_type.clone(), &block_hash)?;
+        let mut votes = self
+            .votes
+            .get_votes(self.height, self.round, vote_type.clone(), &block_hash)?
+            .into_iter()
+            .map(|item| item.0)
+            .collect::<Vec<_>>();
         votes.sort();
 
         debug!("Overlord: state build aggregated signature");
@@ -1247,42 +1273,35 @@ where
     ) -> ConsensusResult<()> {
         debug!("Overlord: state re-check future signed proposals");
 
-        let crypto = Arc::clone(&self.util);
-        let futs = proposals_and_ctxs
-            .into_iter()
-            .map(|(proposal, ctx)| verify_proposal(ctx, proposal, Arc::clone(&crypto)))
-            .collect::<Vec<_>>();
-
-        for item in try_join_all(futs).await? {
-            if let Some((sp, ctx)) = item {
-                let proposal = sp.proposal.clone();
-                if self
-                    .verify_proposer(proposal.height, proposal.round, &proposal.proposer)
-                    .is_ok()
-                {
-                    self.proposals
-                        .insert(ctx, proposal.height, proposal.round, sp)?;
-                }
-            }
+        for item in proposals_and_ctxs.into_iter() {
+            parallel_verify(
+                item.1,
+                OverlordMsg::SignedProposal(item.0),
+                Arc::clone(&self.util),
+                self.authority.clone(),
+                self.verify_sig_tx.clone(),
+            )
+            .await;
         }
 
         Ok(())
     }
 
-    async fn re_check_votes(&mut self, votes: Vec<SignedVote>) -> ConsensusResult<()> {
+    async fn re_check_votes(
+        &mut self,
+        votes_and_ctxs: Vec<(SignedVote, Context)>,
+    ) -> ConsensusResult<()> {
         debug!("Overlord: state re-check future signed votes");
-        let crypto = Arc::clone(&self.util);
-        let futs = votes
-            .into_iter()
-            .map(|vote| verify_vote(vote, Arc::clone(&crypto)))
-            .collect::<Vec<_>>();
 
-        for vote in try_join_all(futs).await? {
-            if let Some(sv) = vote {
-                if self.verify_address(&sv.voter).is_ok() {
-                    self.votes.insert_vote(sv.get_hash(), sv.clone(), sv.voter);
-                }
-            }
+        for item in votes_and_ctxs.into_iter() {
+            parallel_verify(
+                item.1,
+                OverlordMsg::SignedVote(item.0),
+                Arc::clone(&self.util),
+                self.authority.clone(),
+                self.verify_sig_tx.clone(),
+            )
+            .await;
         }
 
         Ok(())
@@ -1290,17 +1309,16 @@ where
 
     async fn re_check_qcs(&mut self, qcs: Vec<AggregatedVote>) -> ConsensusResult<()> {
         debug!("Overlord: state re-check future QCs");
-        let crypto = Arc::clone(&self.util);
-        let authority = self.authority.clone();
-        let futs = qcs
-            .into_iter()
-            .map(|qc| verify_qc(qc, authority.clone(), Arc::clone(&crypto)))
-            .collect::<Vec<_>>();
 
-        for item in try_join_all(futs).await? {
-            if let Some(qc) = item {
-                self.votes.set_qc(qc);
-            }
+        for item in qcs.into_iter() {
+            parallel_verify(
+                Context::new(),
+                OverlordMsg::AggregatedVote(item),
+                Arc::clone(&self.util),
+                self.authority.clone(),
+                self.verify_sig_tx.clone(),
+            )
+            .await;
         }
 
         Ok(())
@@ -1744,66 +1762,6 @@ async fn check_current_block<U: Consensus<T>, T: Codec>(
         is_pass: true,
     })
     .map_err(|e| ConsensusError::ChannelErr(e.to_string()))
-}
-
-async fn verify_proposal<T: Codec, C: Crypto>(
-    ctx: Context,
-    proposal: SignedProposal<T>,
-    crypto: Arc<C>,
-) -> ConsensusResult<Option<(SignedProposal<T>, Context)>> {
-    if verify_signature(
-        crypto,
-        proposal.signature.clone(),
-        proposal.proposal.proposer.clone(),
-        rlp::encode(&proposal.proposal),
-    ) {
-        Ok(Some((proposal, ctx)))
-    } else {
-        Ok(None)
-    }
-}
-
-async fn verify_vote<C: Crypto>(
-    vote: SignedVote,
-    crypto: Arc<C>,
-) -> ConsensusResult<Option<SignedVote>> {
-    if verify_signature(
-        crypto,
-        vote.signature.clone(),
-        vote.voter.clone(),
-        rlp::encode(&vote.vote),
-    ) {
-        Ok(Some(vote))
-    } else {
-        Ok(None)
-    }
-}
-
-async fn verify_qc<C: Crypto>(
-    qc: AggregatedVote,
-    authority: AuthorityManage,
-    crypto: Arc<C>,
-) -> ConsensusResult<Option<AggregatedVote>> {
-    if authority
-        .is_above_threshold(&qc.signature.address_bitmap)
-        .is_err()
-    {
-        return Ok(None);
-    }
-
-    if let Ok(voters) = authority.get_voters(&qc.signature.address_bitmap) {
-        let hash = crypto.hash(Bytes::from(rlp::encode(&qc.to_vote())));
-        if crypto
-            .verify_aggregated_signature(qc.signature.signature.clone(), hash, voters)
-            .is_ok()
-        {
-            Ok(Some(qc))
-        } else {
-            Ok(None)
-        }
-    } else {
-        Ok(None)
-    }
 }
 
 fn mock_init_qc() -> AggregatedVote {

@@ -61,6 +61,7 @@ where
         let (mut smr_provider, evt_state, evt_timer) = SMR::new();
         let smr_handler = smr_provider.take_smr();
         let timer = Timer::new(evt_timer, smr_handler.clone(), interval, timer_config);
+        let (verify_sig_tx, verify_sig_rx) = unbounded();
 
         let (rx, mut state, resp) = {
             let mut state_rx = self.state_rx.write();
@@ -76,6 +77,7 @@ where
                 address.take().unwrap(),
                 interval,
                 authority_list,
+                verify_sig_tx,
                 consensus.take().unwrap(),
                 crypto.take().unwrap(),
                 wal.take().unwrap(),
@@ -100,7 +102,7 @@ where
         timer.run();
 
         // Run state.
-        state.run(rx, evt_state, resp).await;
+        state.run(rx, evt_state, resp, verify_sig_rx).await;
 
         Ok(())
     }
