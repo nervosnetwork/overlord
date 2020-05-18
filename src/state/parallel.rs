@@ -89,10 +89,6 @@ pub async fn parallel_verify<T: Codec + 'static, C: Crypto + Sync + 'static>(
                     )
             }
 
-            OverlordMsg::RichStatus(_) => {
-                let _ = tx.unbounded_send((ctx, msg_clone));
-            }
-
             _ => (),
         }
     });

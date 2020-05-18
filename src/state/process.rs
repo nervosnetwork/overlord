@@ -131,23 +131,26 @@ where
                 raw = raw_rx.next() => {
                     let (ctx, msg) = raw.expect("Overlord message handler dropped");
 
-                    // Filter message height.
-                    match self.height.cmp(&msg.get_height()) {
-                        Ordering::Less => {
-                            let _ = self.verify_sig_tx.unbounded_send((ctx, msg));
-                        }
-                        Ordering::Equal => {
-                            parallel_verify(
-                                ctx,
-                                msg,
-                                Arc::clone(&self.util),
-                                self.authority.clone(),
-                                self.verify_sig_tx.clone()
-                            )
-                            .await;
-                        }
-                        Ordering::Greater => (),
-                    };
+                    if msg.is_rich_status() {
+                        let _ = self.verify_sig_tx.unbounded_send((ctx, msg));
+                    } else {
+                        match self.height.cmp(&msg.get_height()) {
+                            Ordering::Less => {
+                                let _ = self.verify_sig_tx.unbounded_send((ctx, msg));
+                            }
+                            Ordering::Equal => {
+                                parallel_verify(
+                                    ctx,
+                                    msg,
+                                    Arc::clone(&self.util),
+                                    self.authority.clone(),
+                                    self.verify_sig_tx.clone()
+                                )
+                                .await;
+                            }
+                            Ordering::Greater => (),
+                        };
+                    }
                 }
 
                 evt = event.next() => {
