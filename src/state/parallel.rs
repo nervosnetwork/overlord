@@ -128,13 +128,3 @@ fn verify_qc<T: Codec, C: Crypto>(
             );
     }
 }
-
-// pub fn verify_signature<C: Crypto>(
-//     crypto: Arc<C>,
-//     sig: Signature,
-//     addr: Address,
-//     bytes: Vec<u8>,
-// ) -> bool {
-//     let hash = crypto.hash(Bytes::from(bytes));
-//     crypto.verify_signature(sig, hash, addr).is_ok()
-// }
