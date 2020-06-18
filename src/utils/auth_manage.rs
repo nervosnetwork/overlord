@@ -159,7 +159,7 @@ pub fn extract_voters(
 }
 
 /// Get the leader address of the height and the round, the authority list MUST be sorted.
-pub fn rotation_leader(height: u64, round: u64, mut authority_list: Vec<Node>) -> Address {
+pub fn get_leader(height: u64, round: u64, mut authority_list: Vec<Node>) -> Address {
     authority_list.sort();
     let mut weight_sum = 0;
     let mut propose_weights = Vec::new();
