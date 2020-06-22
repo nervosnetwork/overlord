@@ -114,7 +114,7 @@ where
 
 /// A struct to collect votes in each height. It stores each height and the corresponding votes in a
 /// `BTreeMap`. The votes includes aggregated vote and signed vote.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct VoteCollector(BTreeMap<u64, VoteRoundCollector>);
 
 impl VoteCollector {
@@ -124,11 +124,11 @@ impl VoteCollector {
     }
 
     /// Insert a vote to the collector.
-    pub fn insert_vote(&mut self, hash: Hash, vote: SignedVote, addr: Address) {
+    pub fn insert_vote(&mut self, ctx: Context, hash: Hash, vote: SignedVote, addr: Address) {
         self.0
             .entry(vote.get_height())
             .or_insert_with(VoteRoundCollector::new)
-            .insert_vote(hash, vote, addr);
+            .insert_vote(ctx, hash, vote, addr);
     }
 
     /// Set a given quorum certificate to the collector.
@@ -165,7 +165,7 @@ impl VoteCollector {
         round: u64,
         vote_type: VoteType,
         hash: &Hash,
-    ) -> ConsensusResult<Vec<SignedVote>> {
+    ) -> ConsensusResult<Vec<(SignedVote, Context)>> {
         self.0
             .get_mut(&height)
             .and_then(|vrc| vrc.get_votes(round, vote_type.clone(), hash))
@@ -207,10 +207,11 @@ impl VoteCollector {
     }
 
     /// Get all votes and quorum certificates of the given height.
+    #[allow(clippy::type_complexity)]
     pub fn get_height_votes(
         &mut self,
         height: u64,
-    ) -> Option<(Vec<SignedVote>, Vec<AggregatedVote>)> {
+    ) -> Option<(Vec<(SignedVote, Context)>, Vec<AggregatedVote>)> {
         self.0.remove(&height).map_or_else(
             || None,
             |mut vrc| {
@@ -242,7 +243,7 @@ impl VoteCollector {
 
 /// A struct to collect votes in each round.  It stores each round votes and the corresponding votes
 /// in a `HashMap`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 struct VoteRoundCollector {
     general:    HashMap<u64, RoundCollector>,
     qc_by_hash: HashMap<Hash, QuorumCertificate>,
@@ -256,11 +257,11 @@ impl VoteRoundCollector {
         }
     }
 
-    fn insert_vote(&mut self, hash: Hash, vote: SignedVote, addr: Address) {
+    fn insert_vote(&mut self, ctx: Context, hash: Hash, vote: SignedVote, addr: Address) {
         self.general
             .entry(vote.get_round())
             .or_insert_with(RoundCollector::new)
-            .insert_vote(hash, vote, addr);
+            .insert_vote(ctx, hash, vote, addr);
     }
 
     fn set_qc(&mut self, qc: AggregatedVote) {
@@ -294,7 +295,7 @@ impl VoteRoundCollector {
         round: u64,
         vote_type: VoteType,
         hash: &Hash,
-    ) -> Option<Vec<SignedVote>> {
+    ) -> Option<Vec<(SignedVote, Context)>> {
         self.general
             .get_mut(&round)
             .and_then(|rc| rc.get_votes(vote_type, hash))
@@ -322,7 +323,7 @@ impl VoteRoundCollector {
 }
 
 /// A round collector contains a qc and prevote votes and precommit votes.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 struct RoundCollector {
     qc:        QuorumCertificate,
     prevote:   Votes,
@@ -338,11 +339,11 @@ impl RoundCollector {
         }
     }
 
-    fn insert_vote(&mut self, hash: Hash, vote: SignedVote, addr: Address) {
+    fn insert_vote(&mut self, ctx: Context, hash: Hash, vote: SignedVote, addr: Address) {
         if vote.is_prevote() {
-            self.prevote.insert(hash, addr, vote);
+            self.prevote.insert(ctx, hash, addr, vote);
         } else {
-            self.precommit.insert(hash, addr, vote);
+            self.precommit.insert(ctx, hash, addr, vote);
         }
     }
 
@@ -357,7 +358,11 @@ impl RoundCollector {
         }
     }
 
-    fn get_votes(&mut self, vote_type: VoteType, hash: &Hash) -> Option<Vec<SignedVote>> {
+    fn get_votes(
+        &mut self,
+        vote_type: VoteType,
+        hash: &Hash,
+    ) -> Option<Vec<(SignedVote, Context)>> {
         match vote_type {
             VoteType::Prevote => self.prevote.get_votes(hash),
             VoteType::Precommit => self.precommit.get_votes(hash),
@@ -421,10 +426,10 @@ impl QuorumCertificate {
 }
 
 ///
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 struct Votes {
     by_hash:    HashMap<Hash, HashSet<Address>>,
-    by_address: HashMap<Address, SignedVote>,
+    by_address: HashMap<Address, (SignedVote, Context)>,
 }
 
 impl Votes {
@@ -435,14 +440,14 @@ impl Votes {
         }
     }
 
-    fn insert(&mut self, hash: Hash, addr: Address, vote: SignedVote) {
+    fn insert(&mut self, ctx: Context, hash: Hash, addr: Address, vote: SignedVote) {
         if self.by_address.contains_key(&addr) {
             // the addr somehow has already inserted a Vote we ignore the incoming SignedVote no
             // matter it duplicates or differs(byzantine), reject the current request!
             let exist = self.by_address.get(&addr).unwrap().clone();
-            if vote.vote.block_hash != exist.vote.block_hash {
+            if vote.vote.block_hash != exist.0.vote.block_hash {
                 // this is a byzantine behaviour
-                log::error!("Overlord: VoteCollector detects byzantine behaviour: existing: {}, signed vote inserting: {}",
+                log::error!("Overlord: VoteCollector detects byzantine behaviour: existing: {:?}, signed vote inserting: {:?}",
                 exist,vote);
             }
             return;
@@ -452,14 +457,14 @@ impl Votes {
             .entry(hash)
             .or_insert_with(HashSet::new)
             .insert(addr.clone());
-        self.by_address.entry(addr).or_insert(vote);
+        self.by_address.entry(addr).or_insert((vote, ctx));
     }
 
     fn get_vote_map(&self) -> &HashMap<Hash, HashSet<Address>> {
         &self.by_hash
     }
 
-    fn get_votes(&mut self, hash: &Hash) -> Option<Vec<SignedVote>> {
+    fn get_votes(&mut self, hash: &Hash) -> Option<Vec<(SignedVote, Context)>> {
         self.by_hash.get(hash).and_then(|addresses| {
             addresses
                 .iter()
@@ -468,7 +473,7 @@ impl Votes {
         })
     }
 
-    fn get_all_votes(&mut self) -> Vec<SignedVote> {
+    fn get_all_votes(&mut self) -> Vec<(SignedVote, Context)> {
         self.by_address.values().cloned().collect::<Vec<_>>()
     }
 
@@ -719,7 +724,12 @@ mod test {
         let signed_vote_02 =
             gen_signed_vote(1, 0, VoteType::Prevote, hash_01.clone(), addr_02.clone());
 
-        votes.insert_vote(hash_01.clone(), signed_vote_01.clone(), addr_01.clone());
+        votes.insert_vote(
+            Context::new(),
+            hash_01.clone(),
+            signed_vote_01.clone(),
+            addr_01.clone(),
+        );
 
         set.insert(addr_01);
         map.insert(hash_01.clone(), set);
@@ -727,8 +737,14 @@ mod test {
 
         assert_eq!(votes.get_vote_map(1, 0, VoteType::Prevote), Ok(&map));
         assert_eq!(
-            votes.get_votes(1, 0, VoteType::Prevote, &hash_01),
-            Ok(vec.clone())
+            votes
+                .get_votes(1, 0, VoteType::Prevote, &hash_01)
+                .unwrap()
+                .iter()
+                .map(|item| item.0.clone())
+                .clone()
+                .collect::<Vec<_>>(),
+            vec.clone()
         );
         assert!(votes.get_vote_map(1, 0, VoteType::Precommit).is_err());
         assert!(votes
@@ -738,7 +754,12 @@ mod test {
         assert!(votes.get_votes(1, 1, VoteType::Prevote, &hash_01).is_err());
         assert!(votes.get_votes(1, 0, VoteType::Prevote, &hash_02).is_err());
 
-        votes.insert_vote(hash_01.clone(), signed_vote_02.clone(), addr_02.clone());
+        votes.insert_vote(
+            Context::new(),
+            hash_01.clone(),
+            signed_vote_02.clone(),
+            addr_02.clone(),
+        );
         map.get_mut(&hash_01).unwrap().insert(addr_02);
         vec.push(signed_vote_02);
 
@@ -747,7 +768,7 @@ mod test {
             .get_votes(1, 0, VoteType::Prevote, &hash_01)
             .unwrap()
             .iter()
-            .cloned()
+            .map(|item| item.0.clone())
             .collect::<HashSet<_>>();
         assert_eq!(res, vec.iter().cloned().collect::<HashSet<_>>());
     }
@@ -771,7 +792,7 @@ mod test {
             hash.clone(),
             addr.clone(),
         );
-        b.iter(|| votes.insert_vote(hash.clone(), sv.clone(), addr.clone()))
+        b.iter(|| votes.insert_vote(Context::new(), hash.clone(), sv.clone(), addr.clone()))
     }
 
     #[bench]
@@ -788,7 +809,7 @@ mod test {
         for _ in 0..10 {
             let addr = gen_address();
             let sv = gen_signed_vote(1, 0, VoteType::Prevote, hash.clone(), addr.clone());
-            votes.insert_vote(hash.clone(), sv, addr);
+            votes.insert_vote(Context::new(), hash.clone(), sv, addr);
         }
         b.iter(|| votes.get_votes(1, 0, VoteType::Prevote, &hash));
     }

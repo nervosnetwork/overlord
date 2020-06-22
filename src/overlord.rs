@@ -61,6 +61,7 @@ where
         let (mut smr_provider, evt_state, evt_timer) = SMR::new();
         let smr_handler = smr_provider.take_smr();
         let timer = Timer::new(evt_timer, smr_handler.clone(), interval, timer_config);
+        let (verify_sig_tx, verify_sig_rx) = unbounded();
 
         let (rx, mut state, resp) = {
             let mut state_rx = self.state_rx.write();
@@ -76,6 +77,7 @@ where
                 address.take().unwrap(),
                 interval,
                 authority_list,
+                verify_sig_tx,
                 consensus.take().unwrap(),
                 crypto.take().unwrap(),
                 wal.take().unwrap(),
@@ -100,7 +102,7 @@ where
         timer.run();
 
         // Run state.
-        state.run(rx, evt_state, resp).await;
+        state.run(rx, evt_state, resp, verify_sig_rx).await;
 
         Ok(())
     }
@@ -117,6 +119,18 @@ impl<T: Codec> OverlordHandler<T> {
 
     /// Send overlord message to the instance. Return `Err()` when the message channel is closed.
     pub fn send_msg(&self, ctx: Context, msg: OverlordMsg<T>) -> ConsensusResult<()> {
+        let ctx = match muta_apm::MUTA_TRACER.span("overlord.send_msg_to_inner", vec![
+            muta_apm::rustracing::tag::Tag::new("kind", "overlord"),
+        ]) {
+            Some(mut span) => {
+                span.log(|log| {
+                    log.time(std::time::SystemTime::now());
+                });
+                ctx.with_value("parent_span_ctx", span.context().cloned())
+            }
+            None => ctx,
+        };
+
         if self.0.is_closed() {
             log::error!("[OverlordHandler]: channel closed");
             Ok(())
