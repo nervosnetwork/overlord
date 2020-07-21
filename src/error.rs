@@ -88,7 +88,10 @@ impl Error for ConsensusError {}
 #[cfg(test)]
 impl PartialEq for ConsensusError {
     fn eq(&self, other: &Self) -> bool {
-        use self::ConsensusError::*;
+        use self::ConsensusError::{
+            CorrectnessErr, InvalidAddress, MonitorEventErr, Other, PrecommitErr, PrevoteErr,
+            ProposalErr, RoundDiff, SelfCheckErr, ThrowEventErr, TriggerSMRErr,
+        };
         match (self, other) {
             // If compare objects are the following types of error, as long as the error type need
             // the same, the details are ignored.
