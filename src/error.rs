@@ -39,7 +39,7 @@ pub enum ConsensusError {
         ///
         local: u64,
         ///
-        vote: u64,
+        vote:  u64,
     },
     ///
     #[display(fmt = "Self check not pass {}", _0)]
@@ -65,9 +65,9 @@ pub enum ConsensusError {
         ///
         height: u64,
         ///
-        round: u64,
+        round:  u64,
         ///
-        step: String,
+        step:   String,
     },
     ///
     #[display(fmt = "Load Wal error {}", _0)]

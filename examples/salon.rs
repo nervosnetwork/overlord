@@ -1,3 +1,5 @@
+#![allow(clippy::mutable_key_type)]
+
 use std::collections::HashMap;
 use std::error::Error;
 use std::sync::{Arc, Mutex};
