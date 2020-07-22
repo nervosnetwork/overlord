@@ -132,8 +132,9 @@ impl<T: Codec> OverlordHandler<T> {
         };
 
         if self.0.is_closed() {
-            log::error!("[OverlordHandler]: channel closed");
-            Ok(())
+            Err(ConsensusError::ChannelErr(
+                "[OverlordHandler]: channel closed".to_string(),
+            ))
         } else {
             self.0
                 .unbounded_send((ctx, msg))
