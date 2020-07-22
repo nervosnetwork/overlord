@@ -691,7 +691,7 @@ mod test {
 
         proposals.flush(2);
         assert!(proposals.get(1, 0).is_err());
-        assert_eq!(proposals.get(2, 0).unwrap().0, proposal_03.clone());
+        assert_eq!(proposals.get(2, 0).unwrap().0, proposal_03);
         assert_eq!(proposals.get(3, 0).unwrap().0, proposal_04);
 
         assert!(proposals.get_height_proposals(1).is_none());
@@ -744,7 +744,7 @@ mod test {
                 .map(|item| item.0.clone())
                 .clone()
                 .collect::<Vec<_>>(),
-            vec.clone()
+            vec
         );
         assert!(votes.get_vote_map(1, 0, VoteType::Precommit).is_err());
         assert!(votes

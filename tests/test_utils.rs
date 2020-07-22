@@ -56,7 +56,7 @@ impl Consensus<Pill> for ConsensusHelper<Pill> {
         height: u64,
     ) -> Result<(Pill, Hash), Box<dyn Error + Send>> {
         let epoch = Pill::new(height);
-        let hash = BytesMut::from(blake2b(epoch.clone().encode()?.as_ref()).as_bytes()).freeze();
+        let hash = BytesMut::from(blake2b(epoch.encode()?.as_ref()).as_bytes()).freeze();
         Ok((epoch, hash))
     }
 

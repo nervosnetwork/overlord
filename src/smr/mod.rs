@@ -71,7 +71,7 @@ impl SMRHandler {
 
     /// A function to touch off SMR trigger gate.
     pub fn trigger(&mut self, gate: SMRTrigger) -> ConsensusResult<()> {
-        let trigger_type = gate.trigger_type.clone().to_string();
+        let trigger_type = gate.trigger_type.to_string();
         self.tx
             .unbounded_send(gate)
             .map_err(|_| ConsensusError::TriggerSMRErr(trigger_type))

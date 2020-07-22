@@ -9,7 +9,6 @@ use bytes::Bytes;
 use lru_cache::LruCache;
 use rlp::Encodable;
 use serde::{Deserialize, Serialize};
-use serde_json;
 
 use overlord::types::Node;
 use overlord::{Wal, WalInfo};
