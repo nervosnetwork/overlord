@@ -62,7 +62,7 @@ impl AuthorityManage {
 
     /// Get the proposer address by a given seed.
     pub fn get_proposer(&self, height: u64, round: u64) -> ConsensusResult<Address> {
-        let index = if cfg!(features = "random_leader") {
+        let index = if cfg!(feature = "random_leader") {
             get_random_proposer_index(
                 height + round,
                 &self.propose_weights,
