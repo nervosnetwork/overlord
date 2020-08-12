@@ -587,6 +587,13 @@ where
             hex::encode(signed_proposal.proposal.block_hash.clone())
         );
 
+        // Verify proposer before filter proposal.
+        self.verify_proposer(
+            proposal_height,
+            proposal_round,
+            &signed_proposal.proposal.proposer,
+        )?;
+
         if self.filter_signed_proposal(
             ctx.clone(),
             proposal_height,
@@ -596,10 +603,8 @@ where
             return Ok(());
         }
 
-        //  Verify proposal signature.
         let proposal = signed_proposal.proposal.clone();
         let signature = signed_proposal.signature.clone();
-        self.verify_proposer(proposal_height, proposal_round, &proposal.proposer)?;
 
         // If the signed proposal is with a lock, check the lock round and the QC then trigger it to
         // SMR. Otherwise, touch off SMR directly.
