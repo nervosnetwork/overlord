@@ -45,7 +45,7 @@ use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ConsensusError;
-use crate::types::{Address, Commit, Hash, Node, OverlordMsg, Signature, Status};
+use crate::types::{Address, Commit, Hash, Node, OverlordMsg, Signature, Status, ViewChangeReason};
 
 /// Overlord consensus result.
 pub type ConsensusResult<T> = ::std::result::Result<T, ConsensusError>;
@@ -105,6 +105,9 @@ pub trait Consensus<T: Codec>: Send + Sync {
 
     /// Report the overlord error with the corresponding context.
     fn report_error(&self, ctx: Context, error: ConsensusError);
+
+    /// Report the overlord view change reason.
+    fn report_view_change(&self, ctx: Context, height: u64, round: u64, reason: ViewChangeReason);
 }
 
 /// Trait for doing serialize and deserialize.

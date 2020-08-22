@@ -16,7 +16,7 @@ use rand::random;
 use serde::{Deserialize, Serialize};
 
 use overlord::error::ConsensusError;
-use overlord::types::{Commit, Hash, Node, OverlordMsg, Status};
+use overlord::types::{Commit, Hash, Node, OverlordMsg, Status, ViewChangeReason};
 use overlord::{Codec, Consensus, Crypto, DurationConfig, Overlord, OverlordHandler, Wal};
 
 lazy_static! {
@@ -234,6 +234,15 @@ impl Consensus<Speech> for Brain {
     }
 
     fn report_error(&self, _ctx: Context, _err: ConsensusError) {}
+
+    fn report_view_change(
+        &self,
+        _ctx: Context,
+        _height: u64,
+        _round: u64,
+        _reason: ViewChangeReason,
+    ) {
+    }
 }
 
 struct Speaker {

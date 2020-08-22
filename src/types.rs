@@ -156,6 +156,30 @@ pub enum UpdateFrom {
     ChokeQC(AggregatedChoke),
 }
 
+/// The reason of overlord view change.
+#[derive(Serialize, Deserialize, Clone, Debug, Display)]
+pub enum ViewChangeReason {
+    ///
+    #[display(fmt = "Do not receive proposal from network")]
+    NoProposalFromNetwork,
+
+    ///
+    #[display(fmt = "Do not receive Prevote QC from network")]
+    NoPrevoteQCFromNetwork,
+
+    ///
+    #[display(fmt = "Do not receive precommit QC from network")]
+    NoPrecommitQCFromNetwork,
+
+    ///
+    #[display(fmt = "Check the block failed")]
+    CheckBlockFailed,
+
+    ///
+    #[display(fmt = "{:?} votes count is below threshold", _0)]
+    LeaderReceivedVoteBelowThreshold(VoteType),
+}
+
 /// A signed proposal.
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
 #[display(fmt = "Signed Proposal {:?}", proposal)]

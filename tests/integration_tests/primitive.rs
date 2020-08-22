@@ -10,7 +10,7 @@ use crossbeam_channel::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
 
 use overlord::error::ConsensusError;
-use overlord::types::{Commit, Hash, Node, OverlordMsg, Status};
+use overlord::types::{Commit, Hash, Node, OverlordMsg, Status, ViewChangeReason};
 use overlord::{Codec, Consensus, DurationConfig, Overlord, OverlordHandler};
 
 use super::crypto::MockCrypto;
@@ -177,6 +177,15 @@ impl Consensus<Block> for Adapter {
     }
 
     fn report_error(&self, _ctx: Context, _err: ConsensusError) {}
+
+    fn report_view_change(
+        &self,
+        _ctx: Context,
+        _height: u64,
+        _round: u64,
+        _reason: ViewChangeReason,
+    ) {
+    }
 }
 
 pub struct Participant {
