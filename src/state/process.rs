@@ -21,7 +21,7 @@ use crate::state::parallel::parallel_verify;
 use crate::types::{
     Address, AggregatedChoke, AggregatedSignature, AggregatedVote, Choke, Commit, Hash, Node,
     OverlordMsg, PoLC, Proof, Proposal, Signature, SignedChoke, SignedProposal, SignedVote, Status,
-    UpdateFrom, VerifyResp, Vote, VoteType,
+    UpdateFrom, VerifyResp, ViewChangeReason, Vote, VoteType,
 };
 use crate::utils::auth_manage::AuthorityManage;
 use crate::wal::{WalInfo, WalLock};
@@ -449,14 +449,18 @@ where
     /// network. Otherwise, make up a proposal, broadcast it and touch off SMR trigger.
     async fn handle_new_round(
         &mut self,
-        round: u64,
+        new_round: u64,
         lock_round: Option<u64>,
         lock_proposal: Option<Hash>,
         from_where: FromWhere,
     ) -> ConsensusResult<()> {
-        info!("Overlord: state goto new round {}", round);
+        info!("Overlord: state goto new round {}", new_round);
 
-        self.round = round;
+        if new_round != INIT_ROUND {
+            self.report_view_change(new_round - 1);
+        }
+
+        self.round = new_round;
         self.is_leader = false;
 
         if lock_round.is_some().bitxor(lock_proposal.is_some()) {
@@ -1464,6 +1468,12 @@ where
 
     fn report_error(&self, ctx: Context, err: ConsensusError) {
         self.function.report_error(ctx, err);
+    }
+
+    fn report_view_change(&self, round: u64) {
+        if self.is_leader {
+
+        }
     }
 
     fn check_choke_above_threshold(&mut self) -> ConsensusResult<()> {
