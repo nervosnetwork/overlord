@@ -484,7 +484,7 @@ impl Votes {
 
 #[derive(Clone, Debug)]
 pub struct ChokeCollector {
-    chokes: BTreeMap<u64, HashSet<SignedChoke>>,
+    chokes: BTreeMap<u64, HashMap<Address, SignedChoke>>,
     qcs:    HashMap<u64, AggregatedChoke>,
 }
 
@@ -499,8 +499,8 @@ impl ChokeCollector {
     pub fn insert(&mut self, round: u64, signed_choke: SignedChoke) {
         self.chokes
             .entry(round)
-            .or_insert_with(HashSet::new)
-            .insert(signed_choke);
+            .or_insert_with(HashMap::new)
+            .insert(signed_choke.address.clone(), signed_choke);
     }
 
     pub fn set_qc(&mut self, round: u64, qc: AggregatedChoke) {
@@ -510,7 +510,7 @@ impl ChokeCollector {
     pub fn get_chokes(&self, round: u64) -> Option<Vec<SignedChoke>> {
         self.chokes
             .get(&round)
-            .map(|set| set.iter().cloned().collect::<Vec<_>>())
+            .map(|map| map.values().cloned().collect::<Vec<_>>())
     }
 
     pub fn get_qc(&self, round: u64) -> Option<AggregatedChoke> {
@@ -527,15 +527,11 @@ impl ChokeCollector {
     }
 
     pub fn print_round_choke_log(&self, round: u64) {
-        if let Some(set) = self.chokes.get(&round) {
-            let num = set.len();
-            let voters = set
-                .iter()
-                .map(|sc| hex::encode(sc.address.clone()))
-                .collect::<Vec<_>>();
+        if let Some(map) = self.chokes.get(&round) {
+            let voters = map.keys().map(hex::encode).collect::<Vec<_>>();
             log::info!(
                 "Overlord: {} chokes in round {}, voters {:?}",
-                num,
+                map.len(),
                 round,
                 voters
             );
