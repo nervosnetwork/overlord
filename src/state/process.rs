@@ -457,7 +457,9 @@ where
         info!("Overlord: state goto new round {}", new_round);
 
         if new_round != INIT_ROUND {
-            self.report_view_change(new_round - 1);
+            let last_round = new_round - 1;
+            let reason = self.view_change_reason(last_round);
+            self.report_view_change(last_round, reason);
         }
 
         self.round = new_round;
@@ -1470,9 +1472,49 @@ where
         self.function.report_error(ctx, err);
     }
 
-    fn report_view_change(&self, round: u64) {
-        if self.is_leader {
+    fn report_view_change(&self, round: u64, reason: ViewChangeReason) {
+        self.function
+            .report_view_change(Context::new(), self.height, round, reason)
+    }
 
+    fn view_change_reason(&mut self, round: u64) -> ViewChangeReason {
+        let height = self.height;
+
+        // Leader condition
+        if self.is_leader {
+            if let Ok(qc) = self.votes.get_qc_by_id(height, round, VoteType::Prevote) {
+                if !qc.block_hash.is_empty() {
+                    return ViewChangeReason::LeaderReceivedVoteBelowThreshold(VoteType::Precommit);
+                }
+            }
+            return ViewChangeReason::LeaderReceivedVoteBelowThreshold(VoteType::Prevote);
+        }
+
+        // Replica condition
+        // No proposal case.
+        let proposal = self.proposals.get(height, round);
+        if proposal.is_err() {
+            return ViewChangeReason::NoProposalFromNetwork;
+        }
+
+        // Check block failed case.
+        let proposal = proposal.unwrap().0;
+        if self
+            .is_full_transcation
+            .get(&proposal.proposal.block_hash)
+            .is_none()
+        {
+            return ViewChangeReason::CheckBlockFailed;
+        }
+
+        if self
+            .votes
+            .get_qc_by_id(height, round, VoteType::Prevote)
+            .is_err()
+        {
+            ViewChangeReason::NoPrevoteQCFromNetwork
+        } else {
+            ViewChangeReason::NoPrecommitQCFromNetwork
         }
     }
 
