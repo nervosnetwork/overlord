@@ -1508,7 +1508,7 @@ where
             .get(&proposal.proposal.block_hash)
             .is_none()
         {
-            return ViewChangeReason::CheckBlockFailed;
+            return ViewChangeReason::CheckBlockNotPass;
         }
 
         if self
@@ -1517,8 +1517,14 @@ where
             .is_err()
         {
             ViewChangeReason::NoPrevoteQCFromNetwork
-        } else {
+        } else if self
+            .votes
+            .get_qc_by_id(height, round, VoteType::Precommit)
+            .is_err()
+        {
             ViewChangeReason::NoPrecommitQCFromNetwork
+        } else {
+            ViewChangeReason::Others
         }
     }
 

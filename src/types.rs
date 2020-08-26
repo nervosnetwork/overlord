@@ -173,7 +173,7 @@ pub enum ViewChangeReason {
 
     ///
     #[display(fmt = "Check the block failed")]
-    CheckBlockFailed,
+    CheckBlockNotPass,
 
     ///
     #[display(fmt = "Update from a higher round prevote QC from {} to {}", _0, _1)]
@@ -190,6 +190,10 @@ pub enum ViewChangeReason {
     ///
     #[display(fmt = "{:?} votes count is below threshold", _0)]
     LeaderReceivedVoteBelowThreshold(VoteType),
+
+    ///
+    #[display(fmt = "other reasons")]
+    Others,
 }
 
 /// A signed proposal.
