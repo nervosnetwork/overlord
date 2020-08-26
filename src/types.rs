@@ -172,7 +172,7 @@ pub enum ViewChangeReason {
     NoPrecommitQCFromNetwork,
 
     ///
-    #[display(fmt = "Check the block failed")]
+    #[display(fmt = "Check the block not pass")]
     CheckBlockNotPass,
 
     ///
