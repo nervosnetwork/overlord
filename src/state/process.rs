@@ -21,7 +21,7 @@ use crate::state::parallel::parallel_verify;
 use crate::types::{
     Address, AggregatedChoke, AggregatedSignature, AggregatedVote, Choke, Commit, Hash, Node,
     OverlordMsg, PoLC, Proof, Proposal, Signature, SignedChoke, SignedProposal, SignedVote, Status,
-    UpdateFrom, VerifyResp, Vote, VoteType,
+    UpdateFrom, VerifyResp, ViewChangeReason, Vote, VoteType,
 };
 use crate::utils::auth_manage::AuthorityManage;
 use crate::wal::{WalInfo, WalLock};
@@ -449,14 +449,20 @@ where
     /// network. Otherwise, make up a proposal, broadcast it and touch off SMR trigger.
     async fn handle_new_round(
         &mut self,
-        round: u64,
+        new_round: u64,
         lock_round: Option<u64>,
         lock_proposal: Option<Hash>,
         from_where: FromWhere,
     ) -> ConsensusResult<()> {
-        info!("Overlord: state goto new round {}", round);
+        info!("Overlord: state goto new round {}", new_round);
 
-        self.round = round;
+        if new_round != INIT_ROUND {
+            let last_round = self.round;
+            let reason = self.view_change_reason(last_round, &from_where);
+            self.report_view_change(last_round, reason);
+        }
+
+        self.round = new_round;
         self.is_leader = false;
 
         if lock_round.is_some().bitxor(lock_proposal.is_some()) {
@@ -1464,6 +1470,62 @@ where
 
     fn report_error(&self, ctx: Context, err: ConsensusError) {
         self.function.report_error(ctx, err);
+    }
+
+    fn report_view_change(&self, round: u64, reason: ViewChangeReason) {
+        self.function
+            .report_view_change(Context::new(), self.height, round, reason)
+    }
+
+    fn view_change_reason(&mut self, round: u64, update_from: &FromWhere) -> ViewChangeReason {
+        if round != update_from.get_round() {
+            return update_from.to_reason(round);
+        }
+
+        let height = self.height;
+
+        // Leader condition
+        if self.is_leader {
+            if let Ok(qc) = self.votes.get_qc_by_id(height, round, VoteType::Prevote) {
+                if !qc.block_hash.is_empty() {
+                    return ViewChangeReason::LeaderReceivedVoteBelowThreshold(VoteType::Precommit);
+                }
+            }
+            return ViewChangeReason::LeaderReceivedVoteBelowThreshold(VoteType::Prevote);
+        }
+
+        // Replica condition
+        // No proposal case.
+        let proposal = self.proposals.get(height, round);
+        if proposal.is_err() {
+            return ViewChangeReason::NoProposalFromNetwork;
+        }
+
+        // Check block failed case.
+        let proposal = proposal.unwrap().0;
+        if self
+            .is_full_transcation
+            .get(&proposal.proposal.block_hash)
+            .is_none()
+        {
+            return ViewChangeReason::CheckBlockNotPass;
+        }
+
+        if self
+            .votes
+            .get_qc_by_id(height, round, VoteType::Prevote)
+            .is_err()
+        {
+            ViewChangeReason::NoPrevoteQCFromNetwork
+        } else if self
+            .votes
+            .get_qc_by_id(height, round, VoteType::Precommit)
+            .is_err()
+        {
+            ViewChangeReason::NoPrecommitQCFromNetwork
+        } else {
+            ViewChangeReason::Others
+        }
     }
 
     fn check_choke_above_threshold(&mut self) -> ConsensusResult<()> {

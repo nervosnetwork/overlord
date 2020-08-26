@@ -7,7 +7,9 @@ use bytes::{Bytes, BytesMut};
 use creep::Context;
 use crossbeam_channel::Sender;
 use overlord::error::ConsensusError;
-use overlord::types::{Address, Commit, Hash, Node, OverlordMsg, Signature, Status};
+use overlord::types::{
+    Address, Commit, Hash, Node, OverlordMsg, Signature, Status, ViewChangeReason,
+};
 use overlord::{Codec, Consensus, Crypto};
 use rand::random;
 use serde::{Deserialize, Serialize};
@@ -124,6 +126,15 @@ impl Consensus<Pill> for ConsensusHelper<Pill> {
     }
 
     fn report_error(&self, _ctx: Context, _err: ConsensusError) {}
+
+    fn report_view_change(
+        &self,
+        _ctx: Context,
+        _height: u64,
+        _round: u64,
+        _reason: ViewChangeReason,
+    ) {
+    }
 }
 
 #[derive(Clone)]
