@@ -1,7 +1,7 @@
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
 
-use crate::types::Hash;
+use crate::types::{Hash, ViewChangeReason};
 use crate::wal::SMRBase;
 use crate::DurationConfig;
 
@@ -96,6 +96,30 @@ pub enum FromWhere {
     PrecommitQC(u64),
     ///
     ChokeQC(u64),
+}
+
+impl FromWhere {
+    pub fn get_round(&self) -> u64 {
+        match self {
+            FromWhere::PrevoteQC(round) => *round,
+            FromWhere::PrecommitQC(round) => *round,
+            FromWhere::ChokeQC(round) => *round,
+        }
+    }
+
+    pub fn to_reason(&self, old_round: u64) -> ViewChangeReason {
+        match self {
+            FromWhere::PrevoteQC(round) => {
+                ViewChangeReason::UpdateFromHigherPrevoteQC(old_round, *round)
+            }
+            FromWhere::PrecommitQC(round) => {
+                ViewChangeReason::UpdateFromHigherPrecommitQC(old_round, *round)
+            }
+            FromWhere::ChokeQC(round) => {
+                ViewChangeReason::UpdateFromHigherChokeQC(old_round, *round)
+            }
+        }
+    }
 }
 
 /// SMR event that state and timer monitor this.

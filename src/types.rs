@@ -176,6 +176,18 @@ pub enum ViewChangeReason {
     CheckBlockFailed,
 
     ///
+    #[display(fmt = "Update from a higher round prevote QC from {} to {}", _0, _1)]
+    UpdateFromHigherPrevoteQC(u64, u64),
+
+    ///
+    #[display(fmt = "Update from a higher round precommit QC from {} to {}", _0, _1)]
+    UpdateFromHigherPrecommitQC(u64, u64),
+
+    ///
+    #[display(fmt = "Update from a higher round choke QC from {} to {}", _0, _1)]
+    UpdateFromHigherChokeQC(u64, u64),
+
+    ///
     #[display(fmt = "{:?} votes count is below threshold", _0)]
     LeaderReceivedVoteBelowThreshold(VoteType),
 }

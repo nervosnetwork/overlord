@@ -457,8 +457,8 @@ where
         info!("Overlord: state goto new round {}", new_round);
 
         if new_round != INIT_ROUND {
-            let last_round = new_round - 1;
-            let reason = self.view_change_reason(last_round);
+            let last_round = self.round;
+            let reason = self.view_change_reason(last_round, &from_where);
             self.report_view_change(last_round, reason);
         }
 
@@ -1477,7 +1477,11 @@ where
             .report_view_change(Context::new(), self.height, round, reason)
     }
 
-    fn view_change_reason(&mut self, round: u64) -> ViewChangeReason {
+    fn view_change_reason(&mut self, round: u64, update_from: &FromWhere) -> ViewChangeReason {
+        if round != update_from.get_round() {
+            return update_from.to_reason(round);
+        }
+
         let height = self.height;
 
         // Leader condition
