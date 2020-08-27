@@ -1667,11 +1667,12 @@ where
     }
 
     async fn start_with_wal(&mut self) -> ConsensusResult<()> {
-        if !self.authority.contains(&self.address) {
+        if self.authority.contains(&self.address) {
+            self.consensus_power = true;
+        } else {
             return Ok(());
         }
-
-        self.consensus_power = true;
+        
         let wal_info = self.load_wal().await?;
         if wal_info.is_none() {
             if self.height != INIT_HEIGHT {
