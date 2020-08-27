@@ -89,6 +89,7 @@ where
             height:              init_height,
             round:               INIT_ROUND,
             state_machine:       smr,
+            consensus_power:     auth.contains(&addr),
             address:             addr,
             proposals:           ProposalCollector::new(),
             votes:               VoteCollector::new(),
@@ -101,7 +102,6 @@ where
             update_from_where:   UpdateFrom::PrecommitQC(mock_init_qc()),
             height_start:        Instant::now(),
             block_interval:      interval,
-            consensus_power:     false,
             stopped:             false,
 
             verify_sig_tx: verify_tx,
@@ -1667,9 +1667,7 @@ where
     }
 
     async fn start_with_wal(&mut self) -> ConsensusResult<()> {
-        if self.authority.contains(&self.address) {
-            self.consensus_power = true;
-        } else {
+        if !self.consensus_power {
             return Ok(());
         }
 
