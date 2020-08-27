@@ -1648,12 +1648,6 @@ where
     }
 
     fn wal_lost(&mut self) -> ConsensusResult<()> {
-        if !self.authority.contains(&self.address) {
-            return Ok(());
-        }
-
-        // Set consensus power.
-        self.consensus_power = true;
         let smr_base = SMRBase {
             height: self.height,
             round:  self.round,
@@ -1673,6 +1667,11 @@ where
     }
 
     async fn start_with_wal(&mut self) -> ConsensusResult<()> {
+        if !self.authority.contains(&self.address) {
+            return Ok(());
+        }
+
+        self.consensus_power = true;
         let wal_info = self.load_wal().await?;
         if wal_info.is_none() {
             if self.height != INIT_HEIGHT {
