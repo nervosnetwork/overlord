@@ -24,7 +24,7 @@ use crate::types::{
     UpdateFrom, VerifyResp, ViewChangeReason, Vote, VoteType,
 };
 use crate::utils::auth_manage::AuthorityManage;
-use crate::wal::{WalInfo, WalLock};
+use crate::wal::{SMRBase, WalInfo, WalLock};
 use crate::{Codec, Consensus, ConsensusResult, Crypto, Wal, INIT_HEIGHT, INIT_ROUND};
 
 const FUTURE_HEIGHT_GAP: u64 = 5;
@@ -74,6 +74,7 @@ where
         smr: SMRHandler,
         addr: Address,
         interval: u64,
+        init_height: u64,
         mut authority_list: Vec<Node>,
         verify_tx: UnboundedSender<(Context, OverlordMsg<T>)>,
         consensus: Arc<F>,
@@ -85,9 +86,10 @@ where
         auth.update(&mut authority_list);
 
         let state = State {
-            height:              INIT_HEIGHT,
+            height:              init_height,
             round:               INIT_ROUND,
             state_machine:       smr,
+            consensus_power:     auth.contains(&addr),
             address:             addr,
             proposals:           ProposalCollector::new(),
             votes:               VoteCollector::new(),
@@ -100,7 +102,6 @@ where
             update_from_where:   UpdateFrom::PrecommitQC(mock_init_qc()),
             height_start:        Instant::now(),
             block_interval:      interval,
-            consensus_power:     false,
             stopped:             false,
 
             verify_sig_tx: verify_tx,
@@ -1646,17 +1647,43 @@ where
         Ok(())
     }
 
+    fn wal_lost(&mut self) -> ConsensusResult<()> {
+        let smr_base = SMRBase {
+            height: self.height,
+            round:  self.round,
+            step:   Step::Propose,
+            polc:   None,
+        };
+
+        self.state_machine.trigger(SMRTrigger {
+            trigger_type: TriggerType::WalInfo,
+            source:       TriggerSource::State,
+            hash:         Hash::new(),
+            lock_round:   None,
+            round:        self.round,
+            height:       self.height,
+            wal_info:     Some(smr_base),
+        })
+    }
+
     async fn start_with_wal(&mut self) -> ConsensusResult<()> {
+        if !self.consensus_power {
+            return Ok(());
+        }
+
         let wal_info = self.load_wal().await?;
         if wal_info.is_none() {
-            return Ok(());
+            if self.height != INIT_HEIGHT {
+                return self.wal_lost();
+            } else {
+                return Ok(());
+            }
         }
 
         let wal_info = wal_info.unwrap();
         info!("overlord: start from wal {}", wal_info);
 
         // recover basic state
-        self.consensus_power = true;
         self.height = wal_info.height;
         self.round = wal_info.round;
         self.is_leader = self.is_proposer()?;
