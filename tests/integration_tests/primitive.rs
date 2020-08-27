@@ -270,7 +270,7 @@ impl Participant {
         });
 
         self.overlord
-            .run(interval, node_list, timer_config)
+            .run(0, interval, node_list, timer_config)
             .await
             .unwrap();
 

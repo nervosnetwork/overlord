@@ -54,6 +54,7 @@ where
     /// Run overlord consensus process. The `interval` is the height interval as millisecond.
     pub async fn run(
         &self,
+        init_height: u64,
         interval: u64,
         authority_list: Vec<Node>,
         timer_config: Option<DurationConfig>,
@@ -75,6 +76,7 @@ where
             let (tmp_state, tmp_resp) = State::new(
                 smr_handler,
                 address.take().unwrap(),
+                init_height,
                 interval,
                 authority_list,
                 verify_sig_tx,

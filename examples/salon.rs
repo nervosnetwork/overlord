@@ -331,7 +331,7 @@ impl Speaker {
         });
 
         self.overlord
-            .run(interval, speaker_list, timer_config)
+            .run(0, interval, speaker_list, timer_config)
             .await
             .unwrap();
 

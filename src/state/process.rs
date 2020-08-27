@@ -24,7 +24,7 @@ use crate::types::{
     UpdateFrom, VerifyResp, ViewChangeReason, Vote, VoteType,
 };
 use crate::utils::auth_manage::AuthorityManage;
-use crate::wal::{WalInfo, WalLock};
+use crate::wal::{SMRBase, WalInfo, WalLock};
 use crate::{Codec, Consensus, ConsensusResult, Crypto, Wal, INIT_HEIGHT, INIT_ROUND};
 
 const FUTURE_HEIGHT_GAP: u64 = 5;
@@ -74,6 +74,7 @@ where
         smr: SMRHandler,
         addr: Address,
         interval: u64,
+        init_height: u64,
         mut authority_list: Vec<Node>,
         verify_tx: UnboundedSender<(Context, OverlordMsg<T>)>,
         consensus: Arc<F>,
@@ -85,7 +86,7 @@ where
         auth.update(&mut authority_list);
 
         let state = State {
-            height:              INIT_HEIGHT,
+            height:              init_height,
             round:               INIT_ROUND,
             state_machine:       smr,
             address:             addr,
@@ -1646,10 +1647,33 @@ where
         Ok(())
     }
 
+    fn wal_lost(&mut self) -> ConsensusResult<()> {
+        let smr_base = SMRBase {
+            height: self.height,
+            round:  self.round,
+            step:   Step::Propose,
+            polc:   None,
+        };
+
+        self.state_machine.trigger(SMRTrigger {
+            trigger_type: TriggerType::WalInfo,
+            source:       TriggerSource::State,
+            hash:         Hash::new(),
+            lock_round:   None,
+            round:        self.round,
+            height:       self.height,
+            wal_info:     Some(smr_base),
+        })
+    }
+
     async fn start_with_wal(&mut self) -> ConsensusResult<()> {
         let wal_info = self.load_wal().await?;
         if wal_info.is_none() {
-            return Ok(());
+            if self.height != INIT_HEIGHT {
+                return self.wal_lost();
+            } else {
+                return Ok(());
+            }
         }
 
         let wal_info = wal_info.unwrap();
