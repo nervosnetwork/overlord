@@ -48,7 +48,7 @@ use crate::error::ConsensusError;
 use crate::types::{Address, Commit, Hash, Node, OverlordMsg, Signature, Status, ViewChangeReason};
 
 /// Overlord consensus result.
-pub type ConsensusResult<T> = ::std::result::Result<T, ConsensusError>;
+pub type ConsensusResult<T> = std::result::Result<T, ConsensusError>;
 
 const INIT_HEIGHT: u64 = 0;
 const INIT_ROUND: u64 = 0;

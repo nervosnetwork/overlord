@@ -1648,6 +1648,12 @@ where
     }
 
     fn wal_lost(&mut self) -> ConsensusResult<()> {
+        if !self.authority.contains(&self.address) {
+            return Ok(());
+        }
+
+        // Set consensus power.
+        self.consensus_power = true;
         let smr_base = SMRBase {
             height: self.height,
             round:  self.round,
@@ -1680,7 +1686,6 @@ where
         info!("overlord: start from wal {}", wal_info);
 
         // recover basic state
-        self.consensus_power = true;
         self.height = wal_info.height;
         self.round = wal_info.round;
         self.is_leader = self.is_proposer()?;
