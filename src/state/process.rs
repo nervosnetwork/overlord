@@ -1672,7 +1672,7 @@ where
         } else {
             return Ok(());
         }
-        
+
         let wal_info = self.load_wal().await?;
         if wal_info.is_none() {
             if self.height != INIT_HEIGHT {
