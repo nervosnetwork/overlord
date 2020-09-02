@@ -18,7 +18,14 @@ Detaild intruduction: [中文](./docs/architecture_zh.md)|[English](./docs/archi
 
 ```toml
 [dependencies]
-overlord = "0.2.0-alpha.13"
+overlord = "0.2"
+```
+
+Overlord takes turns to become the leader by default. If you want to choose a leader randomly, add the `random_leader` feature to the dependency as below.
+
+```toml
+[dependencies]
+overlord = { version = "0.2", features = ["random_leader"] }
 ```
 
 ### Example

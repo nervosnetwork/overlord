@@ -1,9 +1,11 @@
 use std::cmp::{Ord, Ordering, PartialOrd};
+use std::convert::TryFrom;
 
 use bytes::Bytes;
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
 
+use crate::error::ConsensusError;
 use crate::smr::smr_types::{SMRStatus, Step, TriggerType};
 use crate::{Codec, DurationConfig};
 
@@ -13,40 +15,6 @@ pub type Address = Bytes;
 pub type Hash = Bytes;
 /// Signature type.
 pub type Signature = Bytes;
-
-/// There are three roles in overlord consensus protocol, leader, relayer and others. Leader needs
-/// to propose proposal in a round to propel consensus process. Relayer is the node that responsible
-/// to aggregate vote. The others node only vote for a proposal and receive QCs. To simplify the
-/// process, the leader and the relayer will be a same node which means leader will alse do what
-/// relayer node do.
-#[derive(Clone, Debug, Display, PartialEq, Eq)]
-pub enum Role {
-    /// The node is a leader.
-    #[display(fmt = "Leader")]
-    Leader,
-    /// The node is not a leader.
-    #[display(fmt = "Replica")]
-    Replica,
-}
-
-impl Into<u8> for Role {
-    fn into(self) -> u8 {
-        match self {
-            Role::Leader => 0,
-            Role::Replica => 1,
-        }
-    }
-}
-
-impl From<u8> for Role {
-    fn from(s: u8) -> Self {
-        match s {
-            0 => Role::Leader,
-            1 => Role::Replica,
-            _ => panic!("Invalid role!"),
-        }
-    }
-}
 
 /// Vote or QC types. Prevote and precommit QC will promise the rightness and the final consistency
 /// of overlord consensus protocol.
@@ -87,12 +55,14 @@ impl Into<Step> for VoteType {
     }
 }
 
-impl From<u8> for VoteType {
-    fn from(s: u8) -> Self {
+impl TryFrom<u8> for VoteType {
+    type Error = ConsensusError;
+
+    fn try_from(s: u8) -> Result<Self, Self::Error> {
         match s {
-            1 => VoteType::Prevote,
-            2 => VoteType::Precommit,
-            _ => panic!("Invalid vote type!"),
+            1 => Ok(VoteType::Prevote),
+            2 => Ok(VoteType::Precommit),
+            _ => Err(ConsensusError::Other("".to_string())),
         }
     }
 }
