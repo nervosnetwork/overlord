@@ -1,18 +1,35 @@
 # Overlord 架构设计
 
-- [目标](#目标)
-- [设计背景](#设计背景)
-- [Overlord 协议](#Overlord协议)
-  - [总体设计](#总体设计)
-  - [协议描述](#协议描述)
-- [Overlord 架构](#Overlord架构)
-  - [共识状态机](#共识状态机)
-  - [状态存储](#状态存储)
-  - [定时器](#定时器)
-  - [Wal](#Wal)
-- [Overlord 接口](#Overlord接口)
-  - [共识接口](#共识接口)
-  - [密码学接口](#密码学接口)
+- [Overlord 架构设计](#overlord-架构设计)
+  - [目标](#目标)
+  - [设计背景](#设计背景)
+  - [Overlord 协议](#overlord-协议)
+    - [总体设计](#总体设计)
+    - [协议描述](#协议描述)
+      - [聚合签名](#聚合签名)
+      - [同步并行](#同步并行)
+      - [校验并行](#校验并行)
+  - [Overlord 架构](#overlord-架构)
+    - [共识状态机(SMR)](#共识状态机smr)
+      - [propose 阶段](#propose-阶段)
+      - [prevote 阶段](#prevote-阶段)
+      - [precommit 阶段](#precommit-阶段)
+      - [brake 阶段](#brake-阶段)
+      - [状态机状态](#状态机状态)
+      - [数据结构](#数据结构)
+      - [状态机接口](#状态机接口)
+    - [状态存储(State)](#状态存储state)
+      - [存储状态](#存储状态)
+      - [消息分发](#消息分发)
+      - [出块](#出块)
+      - [密码学操作](#密码学操作)
+      - [状态存储接口](#状态存储接口)
+    - [定时器](#定时器)
+    - [Wal](#wal)
+      - [Wal 接口](#wal-接口)
+  - [Overlord 接口](#overlord-接口)
+    - [共识接口](#共识接口)
+    - [密码学接口](#密码学接口)
 
 ## 目标
 
@@ -173,6 +190,14 @@ pub enum SMREvent {
     /// for state: do commit,
     /// for timer: do nothing.
     Commit(Hash),
+    /// Brake event,
+    /// for state: broadcast Choke message,
+    /// for timer: set a retry timeout timer.
+    Brake {
+        height:     u64,
+        round:      u64,
+        lock_round: Option<u64>,
+    },
     /// Stop event,
     /// for state: stop process,
     /// for timer: stop process.
@@ -256,8 +281,9 @@ pub fn new_height(&self, height: u64) -> Result<(), Error>
 ```rust
 /// Save wal information.
 pub async fn save(&self, info: Bytes) -> Result<(), Error>;
+
 /// Load wal information.
-pub fn load(&self) -> Result<Option<Bytes>, Error>;
+pub async fn load(&self) -> Result<Option<Bytes>, Error>;
 ```
 
 ## Overlord 接口
@@ -293,8 +319,8 @@ pub trait Consensus<T: Codec>: Send + Sync {
 
     /// Get an authority list of the given height.
     async fn get_authority_list(
-        &self, 
-        _ctx: Vec<u8>, 
+        &self,
+        _ctx: Vec<u8>,
         height: u64
     ) -> Result<Vec<Node>, Box<dyn Error + Send>>;
 
@@ -337,7 +363,7 @@ pub trait Crypto {
         signature: Signature,
         hash: Hash,
     ) -> Result<Address, Box<dyn Error + Send>>;
-    
+
     /// Verify an aggregated signature.
     fn verify_aggregated_signature(
         &self,

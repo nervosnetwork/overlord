@@ -11,6 +11,7 @@ pub enum ConsensusError {
     #[display(fmt = "Invalid address")]
     InvalidAddress,
     ///
+    #[display(fmt = "Channel error {:?}", _0)]
     ChannelErr(String),
     ///
     #[display(fmt = "Trigger {} SMR error", _0)]

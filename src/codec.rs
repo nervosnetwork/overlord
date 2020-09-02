@@ -1,3 +1,5 @@
+use std::convert::TryFrom;
+
 use bytes::Bytes;
 use rlp::{Decodable, DecoderError, Encodable, Prototype, Rlp, RlpStream};
 
@@ -150,7 +152,8 @@ impl Decodable for AggregatedVote {
             Prototype::List(6) => {
                 let signature: AggregatedSignature = r.val_at(0)?;
                 let tmp: u8 = r.val_at(1)?;
-                let vote_type = VoteType::from(tmp);
+                let vote_type = VoteType::try_from(tmp)
+                    .map_err(|_| DecoderError::Custom("Invalid vote type"))?;
                 let height: u64 = r.val_at(2)?;
                 let round: u64 = r.val_at(3)?;
                 let tmp: Vec<u8> = r.val_at(4)?;
@@ -220,7 +223,8 @@ impl Decodable for Vote {
                 let height: u64 = r.val_at(0)?;
                 let round: u64 = r.val_at(1)?;
                 let tmp: u8 = r.val_at(2)?;
-                let vote_type = VoteType::from(tmp);
+                let vote_type = VoteType::try_from(tmp)
+                    .map_err(|_| DecoderError::Custom("Invalid vote type"))?;
                 let tmp: Vec<u8> = r.val_at(3)?;
                 let block_hash = Hash::from(tmp);
                 Ok(Vote {
@@ -698,7 +702,7 @@ mod test {
         fn new(vote_type: u8) -> Self {
             AggregatedVote {
                 signature:  gen_aggr_signature(),
-                vote_type:  VoteType::from(vote_type),
+                vote_type:  VoteType::try_from(vote_type).unwrap(),
                 height:     random::<u64>(),
                 round:      random::<u64>(),
                 block_hash: gen_hash(),
@@ -712,7 +716,7 @@ mod test {
             Vote {
                 height:     random::<u64>(),
                 round:      random::<u64>(),
-                vote_type:  VoteType::from(vote_type),
+                vote_type:  VoteType::try_from(vote_type).unwrap(),
                 block_hash: gen_hash(),
             }
         }

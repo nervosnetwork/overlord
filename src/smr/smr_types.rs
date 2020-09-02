@@ -82,7 +82,7 @@ impl From<u8> for Step {
             2 => Step::Precommit,
             3 => Step::Brake,
             4 => Step::Commit,
-            _ => panic!("Invalid vote type!"),
+            _ => panic!("Invalid step!"),
         }
     }
 }
