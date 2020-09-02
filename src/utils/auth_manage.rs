@@ -69,10 +69,7 @@ impl AuthorityManage {
                 self.propose_weight_sum,
             )
         } else {
-            let len = self.address.len();
-            let prime_num = *get_primes_less_than_x(len as u32).last().unwrap_or(&1) as u64;
-            let res = (height * prime_num + round) % (len as u64);
-            res as usize
+            rotation_leader_index(height, round, self.address.len())
         };
 
         if let Some(addr) = self.address.get(index) {
@@ -144,7 +141,7 @@ impl AuthorityManage {
     }
 }
 
-/// give the validators list and bitmap, returns the activated validators, the authority_list MUST
+/// Give the validators list and bitmap, returns the activated validators, the authority list MUST
 /// be sorted
 pub fn extract_voters(
     authority_list: &mut Vec<Node>,
@@ -159,6 +156,32 @@ pub fn extract_voters(
         .map(|pair| pair.1.address.clone()) //get the corresponding address
         .collect::<Vec<_>>();
     Ok(voters)
+}
+
+/// Get the leader address of the height and the round, the authority list MUST be sorted.
+pub fn get_leader(height: u64, round: u64, mut authority_list: Vec<Node>) -> Address {
+    authority_list.sort();
+    let mut weight_sum = 0;
+    let mut propose_weights = Vec::new();
+    for node in authority_list.iter() {
+        weight_sum += node.propose_weight;
+        propose_weights.push(node.propose_weight as u64);
+    }
+
+    let index = if cfg!(features = "random_leader") {
+        get_random_proposer_index(height + round, &propose_weights, weight_sum as u64)
+    } else {
+        rotation_leader_index(height, round, authority_list.len())
+    };
+
+    authority_list[index].address.clone()
+}
+
+fn rotation_leader_index(height: u64, round: u64, authority_len: usize) -> usize {
+    let len = authority_len as u32;
+    let prime_num = *get_primes_less_than_x(len).last().unwrap_or(&1) as u64;
+    let res = (height * prime_num + round) % (len as u64);
+    res as usize
 }
 
 #[cfg(test)]

@@ -33,7 +33,7 @@ mod wal;
 
 pub use self::overlord::Overlord;
 pub use self::overlord::OverlordHandler;
-pub use self::utils::auth_manage::extract_voters;
+pub use self::utils::auth_manage::{extract_voters, get_leader};
 pub use creep::Context;
 pub use wal::WalInfo;
 
