@@ -73,8 +73,8 @@ where
     pub(crate) fn new(
         smr: SMRHandler,
         addr: Address,
-        interval: u64,
         init_height: u64,
+        interval: u64,
         mut authority_list: Vec<Node>,
         verify_tx: UnboundedSender<(Context, OverlordMsg<T>)>,
         consensus: Arc<F>,
