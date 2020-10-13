@@ -168,7 +168,7 @@ pub fn get_leader(height: u64, round: u64, mut authority_list: Vec<Node>) -> Add
         propose_weights.push(node.propose_weight as u64);
     }
 
-    let index = if cfg!(features = "random_leader") {
+    let index = if cfg!(feature = "random_leader") {
         get_random_proposer_index(height + round, &propose_weights, weight_sum as u64)
     } else {
         rotation_leader_index(height, round, authority_list.len())
