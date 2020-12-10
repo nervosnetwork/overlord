@@ -57,7 +57,7 @@ impl AuthorityManage {
     pub fn get_vote_weight(&self, addr: &Address) -> ConsensusResult<&u32> {
         self.vote_weight_map
             .get(addr)
-            .ok_or_else(|| ConsensusError::InvalidAddress)
+            .ok_or(ConsensusError::InvalidAddress)
     }
 
     /// Get the proposer address by a given seed.
