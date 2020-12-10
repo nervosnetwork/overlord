@@ -97,10 +97,7 @@ pub enum OverlordMsg<T: Codec> {
 
 impl<T: Codec> OverlordMsg<T> {
     pub(crate) fn is_rich_status(&self) -> bool {
-        match self {
-            OverlordMsg::RichStatus(_) => true,
-            _ => false,
-        }
+        matches!(self, OverlordMsg::RichStatus(_))
     }
 
     pub(crate) fn get_height(&self) -> u64 {
