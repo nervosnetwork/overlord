@@ -93,9 +93,9 @@ impl Consensus<Block> for Adapter {
         commit: Commit<Block>,
     ) -> Result<Status, Box<dyn Error + Send>> {
         let status = Status {
-            height:         height + 1,
-            interval:       Some(self.records.interval),
-            timer_config:   None,
+            height: height + 1,
+            interval: Some(self.records.interval),
+            timer_config: None,
             authority_list: self.records.node_record.clone(),
         };
 
@@ -190,8 +190,8 @@ impl Consensus<Block> for Adapter {
 
 pub struct Participant {
     pub overlord: Arc<Overlord<Block, Adapter, MockCrypto, MockWal>>,
-    pub handler:  OverlordHandler<Block>,
-    pub adapter:  Arc<Adapter>,
+    pub handler: OverlordHandler<Block>,
+    pub adapter: Arc<Adapter>,
 }
 
 impl Participant {
@@ -220,9 +220,9 @@ impl Participant {
             .send_msg(
                 Context::new(),
                 OverlordMsg::RichStatus(Status {
-                    height:         1,
-                    interval:       Some(records.interval),
-                    timer_config:   timer_config(),
+                    height: 1,
+                    interval: Some(records.interval),
+                    timer_config: timer_config(),
                     authority_list: records.node_record,
                 }),
             )

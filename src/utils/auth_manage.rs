@@ -16,22 +16,22 @@ use crate::ConsensusResult;
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
 #[display(fmt = "Authority List {:?}", address)]
 pub struct AuthorityManage {
-    address:            Vec<Address>,
-    propose_weights:    Vec<u64>,
-    vote_weight_map:    HashMap<Address, u32>,
+    address: Vec<Address>,
+    propose_weights: Vec<u64>,
+    vote_weight_map: HashMap<Address, u32>,
     propose_weight_sum: u64,
-    vote_weight_sum:    u64,
+    vote_weight_sum: u64,
 }
 
 impl AuthorityManage {
     /// Create a new height authority manage.
     pub fn new() -> Self {
         AuthorityManage {
-            address:            Vec::new(),
-            propose_weights:    Vec::new(),
-            vote_weight_map:    HashMap::new(),
+            address: Vec::new(),
+            propose_weights: Vec::new(),
+            vote_weight_map: HashMap::new(),
             propose_weight_sum: 0u64,
-            vote_weight_sum:    0u64,
+            vote_weight_sum: 0u64,
         }
     }
 

@@ -149,9 +149,9 @@ fn synchronize_height(
                         let _ = node.handler.send_msg(
                             Context::new(),
                             OverlordMsg::RichStatus(Status {
-                                height:         max_height + 1,
-                                interval:       Some(interval),
-                                timer_config:   timer_config(),
+                                height: max_height + 1,
+                                interval: Some(interval),
+                                timer_config: timer_config(),
                                 authority_list: node_record.clone(),
                             }),
                         );

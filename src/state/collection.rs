@@ -245,14 +245,14 @@ impl VoteCollector {
 /// in a `HashMap`.
 #[derive(Clone, Debug)]
 struct VoteRoundCollector {
-    general:    HashMap<u64, RoundCollector>,
+    general: HashMap<u64, RoundCollector>,
     qc_by_hash: HashMap<Hash, QuorumCertificate>,
 }
 
 impl VoteRoundCollector {
     fn new() -> Self {
         VoteRoundCollector {
-            general:    HashMap::new(),
+            general: HashMap::new(),
             qc_by_hash: HashMap::new(),
         }
     }
@@ -325,16 +325,16 @@ impl VoteRoundCollector {
 /// A round collector contains a qc and prevote votes and precommit votes.
 #[derive(Clone, Debug)]
 struct RoundCollector {
-    qc:        QuorumCertificate,
-    prevote:   Votes,
+    qc: QuorumCertificate,
+    prevote: Votes,
     precommit: Votes,
 }
 
 impl RoundCollector {
     fn new() -> Self {
         RoundCollector {
-            qc:        QuorumCertificate::new(),
-            prevote:   Votes::new(),
+            qc: QuorumCertificate::new(),
+            prevote: Votes::new(),
             precommit: Votes::new(),
         }
     }
@@ -384,14 +384,14 @@ impl RoundCollector {
 /// A struct includes prevoteQC and precommitQC in a round.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct QuorumCertificate {
-    prevote:   Option<AggregatedVote>,
+    prevote: Option<AggregatedVote>,
     precommit: Option<AggregatedVote>,
 }
 
 impl QuorumCertificate {
     fn new() -> Self {
         QuorumCertificate {
-            prevote:   None,
+            prevote: None,
             precommit: None,
         }
     }
@@ -428,14 +428,14 @@ impl QuorumCertificate {
 ///
 #[derive(Clone, Debug)]
 struct Votes {
-    by_hash:    HashMap<Hash, HashSet<Address>>,
+    by_hash: HashMap<Hash, HashSet<Address>>,
     by_address: HashMap<Address, (SignedVote, Context)>,
 }
 
 impl Votes {
     fn new() -> Self {
         Votes {
-            by_hash:    HashMap::new(),
+            by_hash: HashMap::new(),
             by_address: HashMap::new(),
         }
     }
@@ -485,14 +485,14 @@ impl Votes {
 #[derive(Clone, Debug)]
 pub struct ChokeCollector {
     chokes: BTreeMap<u64, HashMap<Address, SignedChoke>>,
-    qcs:    HashMap<u64, AggregatedChoke>,
+    qcs: HashMap<u64, AggregatedChoke>,
 }
 
 impl ChokeCollector {
     pub fn new() -> Self {
         ChokeCollector {
             chokes: BTreeMap::new(),
-            qcs:    HashMap::new(),
+            qcs: HashMap::new(),
         }
     }
 
@@ -567,7 +567,7 @@ mod test {
     #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
     struct Pill {
         height: u64,
-        epoch:  Vec<u64>,
+        epoch: Vec<u64>,
     }
 
     impl Codec for Pill {
@@ -604,7 +604,7 @@ mod test {
 
     fn _gen_aggr_signature() -> AggregatedSignature {
         AggregatedSignature {
-            signature:      gen_signature(),
+            signature: gen_signature(),
             address_bitmap: Bytes::from((0..8).map(|_| random::<u8>()).collect::<Vec<_>>()),
         }
     }

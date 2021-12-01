@@ -15,12 +15,12 @@ type Pile<T> = RwLock<Option<T>>;
 
 /// An overlord consensus instance.
 pub struct Overlord<T: Codec, F: Consensus<T>, C: Crypto, W: Wal> {
-    sender:    Pile<UnboundedSender<(Context, OverlordMsg<T>)>>,
-    state_rx:  Pile<UnboundedReceiver<(Context, OverlordMsg<T>)>>,
-    address:   Pile<Address>,
+    sender: Pile<UnboundedSender<(Context, OverlordMsg<T>)>>,
+    state_rx: Pile<UnboundedReceiver<(Context, OverlordMsg<T>)>>,
+    address: Pile<Address>,
     consensus: Pile<Arc<F>>,
-    crypto:    Pile<Arc<C>>,
-    wal:       Pile<Arc<W>>,
+    crypto: Pile<Arc<C>>,
+    wal: Pile<Arc<W>>,
 }
 
 impl<T, F, C, W> Overlord<T, F, C, W>
@@ -34,12 +34,12 @@ where
     pub fn new(address: Address, consensus: Arc<F>, crypto: Arc<C>, wal: Arc<W>) -> Self {
         let (tx, rx) = unbounded();
         Overlord {
-            sender:    RwLock::new(Some(tx)),
-            state_rx:  RwLock::new(Some(rx)),
-            address:   RwLock::new(Some(address)),
+            sender: RwLock::new(Some(tx)),
+            state_rx: RwLock::new(Some(rx)),
+            address: RwLock::new(Some(address)),
             consensus: RwLock::new(Some(consensus)),
-            crypto:    RwLock::new(Some(crypto)),
-            wal:       RwLock::new(Some(wal)),
+            crypto: RwLock::new(Some(crypto)),
+            wal: RwLock::new(Some(wal)),
         }
     }
 
@@ -121,9 +121,10 @@ impl<T: Codec> OverlordHandler<T> {
 
     /// Send overlord message to the instance. Return `Err()` when the message channel is closed.
     pub fn send_msg(&self, ctx: Context, msg: OverlordMsg<T>) -> ConsensusResult<()> {
-        let ctx = match muta_apm::MUTA_TRACER.span("overlord.send_msg_to_inner", vec![
-            muta_apm::rustracing::tag::Tag::new("kind", "overlord"),
-        ]) {
+        let ctx = match muta_apm::MUTA_TRACER.span(
+            "overlord.send_msg_to_inner",
+            vec![muta_apm::rustracing::tag::Tag::new("kind", "overlord")],
+        ) {
             Some(mut span) => {
                 span.log(|log| {
                     log.time(std::time::SystemTime::now());

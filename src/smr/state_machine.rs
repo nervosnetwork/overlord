@@ -89,13 +89,13 @@ impl StateMachine {
         let (tx_timer, rx_timer) = unbounded();
 
         let state_machine = StateMachine {
-            height:     INIT_HEIGHT,
-            round:      INIT_ROUND,
-            step:       Step::default(),
+            height: INIT_HEIGHT,
+            round: INIT_ROUND,
+            step: Step::default(),
             block_hash: Hash::new(),
-            lock:       None,
-            trigger:    trigger_receiver,
-            event:      (tx_state, tx_timer),
+            lock: None,
+            trigger: trigger_receiver,
+            event: (tx_state, tx_timer),
         };
 
         (state_machine, Event::new(rx_state), Event::new(rx_timer))
@@ -173,13 +173,13 @@ impl StateMachine {
 
         self.goto_new_height(height);
         self.throw_event(SMREvent::NewRoundInfo {
-            height:        self.height,
-            round:         INIT_ROUND,
-            lock_round:    None,
+            height: self.height,
+            round: INIT_ROUND,
+            lock_round: None,
             lock_proposal: None,
-            new_interval:  status.new_interval,
-            new_config:    status.new_config,
-            from_where:    FromWhere::PrecommitQC(u64::max_value()),
+            new_interval: status.new_interval,
+            new_config: status.new_config,
+            from_where: FromWhere::PrecommitQC(u64::max_value()),
         })?;
         Ok(())
     }
@@ -222,8 +222,8 @@ impl StateMachine {
             };
 
             self.throw_event(SMREvent::PrevoteVote {
-                height:     self.height,
-                round:      self.round,
+                height: self.height,
+                round: self.round,
                 block_hash: hash,
                 lock_round: round,
             })?;
@@ -256,8 +256,8 @@ impl StateMachine {
         let round = self.lock.as_ref().map(|lock| lock.round);
 
         self.throw_event(SMREvent::PrevoteVote {
-            height:     self.height,
-            round:      self.round,
+            height: self.height,
+            round: self.round,
             block_hash: self.block_hash.clone(),
             lock_round: round,
         })?;
@@ -307,8 +307,8 @@ impl StateMachine {
             };
 
             self.throw_event(SMREvent::PrecommitVote {
-                height:     self.height,
-                round:      self.round,
+                height: self.height,
+                round: self.round,
                 block_hash: Hash::new(),
                 lock_round: round,
             })?;
@@ -349,8 +349,8 @@ impl StateMachine {
         // throw precommit vote event
         let round = self.lock.as_ref().map(|lock| lock.round);
         self.throw_event(SMREvent::PrecommitVote {
-            height:     self.height,
-            round:      self.round,
+            height: self.height,
+            round: self.round,
             block_hash: self.block_hash.clone(),
             lock_round: round,
         })?;

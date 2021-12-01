@@ -21,13 +21,13 @@ const MAX_TIMEOUT_COEF: u32 = 5;
 /// timer will get timeout interval from timer config, then set a delay. When the timeout expires,
 #[derive(Debug)]
 pub struct Timer {
-    config:        TimerConfig,
-    event:         Event,
-    sender:        UnboundedSender<SMREvent>,
-    notify:        UnboundedReceiver<SMREvent>,
+    config: TimerConfig,
+    event: Event,
+    sender: UnboundedSender<SMREvent>,
+    notify: UnboundedReceiver<SMREvent>,
     state_machine: SMRHandler,
-    height:        u64,
-    round:         u64,
+    height: u64,
+    round: u64,
 }
 
 ///
@@ -217,8 +217,8 @@ impl Timer {
 #[display(fmt = "{:?}", info)]
 struct TimeoutInfo {
     timeout: Delay,
-    info:    SMREvent,
-    sender:  UnboundedSender<SMREvent>,
+    info: SMREvent,
+    sender: UnboundedSender<SMREvent>,
 }
 
 impl Future for TimeoutInfo {
@@ -244,8 +244,8 @@ impl TimeoutInfo {
     fn new(interval: Duration, event: SMREvent, tx: UnboundedSender<SMREvent>) -> Self {
         TimeoutInfo {
             timeout: Delay::new(interval),
-            info:    event,
-            sender:  tx,
+            info: event,
+            sender: tx,
         }
     }
 }
@@ -302,13 +302,13 @@ mod test {
         // Test propose step timer.
         test_timer_trigger(
             SMREvent::NewRoundInfo {
-                height:        0,
-                round:         0,
-                lock_round:    None,
+                height: 0,
+                round: 0,
+                lock_round: None,
                 lock_proposal: None,
-                new_interval:  None,
-                new_config:    None,
-                from_where:    FromWhere::PrecommitQC(0),
+                new_interval: None,
+                new_config: None,
+                from_where: FromWhere::PrecommitQC(0),
             },
             gen_output(TriggerType::Proposal, 0, 0),
         )
@@ -317,8 +317,8 @@ mod test {
         // Test prevote step timer.
         test_timer_trigger(
             SMREvent::PrevoteVote {
-                height:     0u64,
-                round:      0u64,
+                height: 0u64,
+                round: 0u64,
                 block_hash: Hash::new(),
                 lock_round: None,
             },
@@ -329,8 +329,8 @@ mod test {
         // Test precommit step timer.
         test_timer_trigger(
             SMREvent::PrecommitVote {
-                height:     0u64,
-                round:      0u64,
+                height: 0u64,
+                round: 0u64,
                 block_hash: Hash::new(),
                 lock_round: None,
             },
@@ -351,25 +351,25 @@ mod test {
         );
 
         let new_round_event = SMREvent::NewRoundInfo {
-            height:        0,
-            round:         0,
-            lock_round:    None,
+            height: 0,
+            round: 0,
+            lock_round: None,
             lock_proposal: None,
-            new_interval:  None,
-            new_config:    None,
-            from_where:    FromWhere::PrecommitQC(0),
+            new_interval: None,
+            new_config: None,
+            from_where: FromWhere::PrecommitQC(0),
         };
 
         let prevote_event = SMREvent::PrevoteVote {
-            height:     0u64,
-            round:      0u64,
+            height: 0u64,
+            round: 0u64,
             block_hash: Hash::new(),
             lock_round: None,
         };
 
         let precommit_event = SMREvent::PrecommitVote {
-            height:     0u64,
-            round:      0u64,
+            height: 0u64,
+            round: 0u64,
             block_hash: Hash::new(),
             lock_round: None,
         };

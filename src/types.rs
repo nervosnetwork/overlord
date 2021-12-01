@@ -47,7 +47,7 @@ impl From<VoteType> for TriggerType {
 }
 
 impl From<VoteType> for Step {
-    fn from(v : VoteType) -> Step {
+    fn from(v: VoteType) -> Step {
         match v {
             VoteType::Prevote => Step::Prevote,
             VoteType::Precommit => Step::Precommit,
@@ -170,7 +170,7 @@ pub struct SignedProposal<T: Codec> {
     /// Signature of the proposal.
     pub signature: Bytes,
     /// A proposal.
-    pub proposal:  Proposal<T>,
+    pub proposal: Proposal<T>,
 }
 
 /// A proposal
@@ -178,17 +178,17 @@ pub struct SignedProposal<T: Codec> {
 #[display(fmt = "Proposal height {}, round {}", height, round)]
 pub struct Proposal<T: Codec> {
     /// Height of the proposal.
-    pub height:     u64,
+    pub height: u64,
     /// Round of the proposal.
-    pub round:      u64,
+    pub round: u64,
     /// Proposal content.
-    pub content:    T,
+    pub content: T,
     /// Proposal block hash.
     pub block_hash: Hash,
     /// Optional field. If the proposal has a PoLC, this contains the lock round and lock votes.
-    pub lock:       Option<PoLC>,
+    pub lock: Option<PoLC>,
     /// Proposer address.
-    pub proposer:   Address,
+    pub proposer: Address,
 }
 
 /// A PoLC.
@@ -207,9 +207,9 @@ pub struct SignedVote {
     /// Signature of the vote.
     pub signature: Bytes,
     /// A vote.
-    pub vote:      Vote,
+    pub vote: Vote,
     /// Voter address.
-    pub voter:     Address,
+    pub voter: Address,
 }
 
 impl PartialOrd for SignedVote {
@@ -251,7 +251,7 @@ impl SignedVote {
 pub struct AggregatedSignature {
     /// Aggregated signature.
     #[serde(with = "super::serde_hex")]
-    pub signature:      Signature,
+    pub signature: Signature,
     /// Voter address bit map.
     #[serde(with = "super::serde_hex")]
     pub address_bitmap: Bytes,
@@ -297,9 +297,9 @@ impl AggregatedVote {
     ///
     pub fn to_vote(&self) -> Vote {
         Vote {
-            height:     self.height,
-            round:      self.round,
-            vote_type:  self.vote_type.clone(),
+            height: self.height,
+            round: self.round,
+            vote_type: self.vote_type.clone(),
             block_hash: self.block_hash.clone(),
         }
     }
@@ -310,11 +310,11 @@ impl AggregatedVote {
 #[display(fmt = "{:?} vote height {}, round {}", vote_type, height, round)]
 pub struct Vote {
     /// Height of the vote.
-    pub height:     u64,
+    pub height: u64,
     /// Round of the vote.
-    pub round:      u64,
+    pub round: u64,
     /// Type of the vote.
-    pub vote_type:  VoteType,
+    pub vote_type: VoteType,
     /// Block hash of the vote.
     pub block_hash: Hash,
 }
@@ -324,24 +324,24 @@ pub struct Vote {
 #[display(fmt = "Commit height {}", height)]
 pub struct Commit<T: Codec> {
     /// Height of the commit.
-    pub height:  u64,
+    pub height: u64,
     /// Commit content.
     pub content: T,
     /// The consensus proof.
-    pub proof:   Proof,
+    pub proof: Proof,
 }
 
 /// A Proof.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Proof {
     /// Height of the proof.
-    pub height:     u64,
+    pub height: u64,
     /// Round of the proof.
-    pub round:      u64,
+    pub round: u64,
     /// Block hash of the proof.
     pub block_hash: Hash,
     /// Aggregated signature of the proof.
-    pub signature:  AggregatedSignature,
+    pub signature: AggregatedSignature,
 }
 
 /// A rich status.
@@ -349,11 +349,11 @@ pub struct Proof {
 #[display(fmt = "Rich status height {}", height)]
 pub struct Status {
     /// New height.
-    pub height:         u64,
+    pub height: u64,
     /// New block interval.
-    pub interval:       Option<u64>,
+    pub interval: Option<u64>,
     /// New timeout configuration.
-    pub timer_config:   Option<DurationConfig>,
+    pub timer_config: Option<DurationConfig>,
     /// New authority list.
     pub authority_list: Vec<Node>,
 }
@@ -361,9 +361,9 @@ pub struct Status {
 impl From<Status> for SMRStatus {
     fn from(s: Status) -> SMRStatus {
         SMRStatus {
-            height:       s.height,
+            height: s.height,
             new_interval: s.interval,
-            new_config:   s.timer_config,
+            new_config: s.timer_config,
         }
     }
 }
@@ -381,12 +381,12 @@ impl Status {
 pub struct Node {
     /// Node address.
     #[serde(with = "super::serde_hex")]
-    pub address:        Address,
+    pub address: Address,
     /// The propose weight of the node. The field is only effective in `features =
     /// "random_leader"`.
     pub propose_weight: u32,
     /// The vote weight of the node.
-    pub vote_weight:    u32,
+    pub vote_weight: u32,
 }
 
 impl PartialOrd for Node {
@@ -405,9 +405,9 @@ impl Node {
     /// Create a new node with defaule propose weight `1` and vote weight `1`.
     pub fn new(addr: Address) -> Self {
         Node {
-            address:        addr,
+            address: addr,
             propose_weight: 1u32,
-            vote_weight:    1u32,
+            vote_weight: 1u32,
         }
     }
 
@@ -427,28 +427,28 @@ impl Node {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct VerifyResp {
     /// The height of the verified block.
-    pub(crate) height:     u64,
+    pub(crate) height: u64,
     /// The round of the verified block.
-    pub(crate) round:      u64,
+    pub(crate) round: u64,
     /// Verified proposal hash.
     pub(crate) block_hash: Hash,
     /// The block is pass or not.
-    pub(crate) is_pass:    bool,
+    pub(crate) is_pass: bool,
 }
 
 /// An aggregated choke.
 #[derive(Serialize, Deserialize, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct AggregatedChoke {
     /// The height of the aggregated choke.
-    pub height:    u64,
+    pub height: u64,
     /// The round of the aggregated choke.
-    pub round:     u64,
+    pub round: u64,
     /// The aggregated signature of the aggregated choke.
     #[serde(with = "super::serde_hex")]
     pub signature: Signature,
     /// The voters of the aggregated choke.
     #[serde(with = "super::serde_multi_hex")]
-    pub voters:    Vec<Address>,
+    pub voters: Vec<Address>,
 }
 
 #[allow(clippy::len_without_is_empty)]
@@ -460,7 +460,7 @@ impl AggregatedChoke {
     pub(crate) fn to_hash(&self) -> HashChoke {
         HashChoke {
             height: self.height,
-            round:  self.round,
+            round: self.round,
         }
     }
 }
@@ -471,9 +471,9 @@ pub struct SignedChoke {
     /// The signature of the choke.
     pub signature: Signature,
     /// The choke message.
-    pub choke:     Choke,
+    pub choke: Choke,
     /// The choke address.
-    pub address:   Address,
+    pub address: Address,
 }
 
 /// A choke.
@@ -482,16 +482,16 @@ pub struct Choke {
     /// The height of the choke.
     pub height: u64,
     /// The round of the choke.
-    pub round:  u64,
+    pub round: u64,
     /// How does state goto the current round.
-    pub from:   UpdateFrom,
+    pub from: UpdateFrom,
 }
 
 impl Choke {
     pub(crate) fn to_hash(&self) -> HashChoke {
         HashChoke {
             height: self.height,
-            round:  self.round,
+            round: self.round,
         }
     }
 }
@@ -499,7 +499,7 @@ impl Choke {
 #[derive(Clone, Debug)]
 pub(crate) struct HashChoke {
     pub(crate) height: u64,
-    pub(crate) round:  u64,
+    pub(crate) round: u64,
 }
 
 #[cfg(test)]
@@ -517,9 +517,9 @@ mod test {
 
     fn mock_status() -> Status {
         Status {
-            height:         random::<u64>(),
-            interval:       None,
-            timer_config:   None,
+            height: random::<u64>(),
+            interval: None,
+            timer_config: None,
             authority_list: vec![mock_node(), mock_node()],
         }
     }

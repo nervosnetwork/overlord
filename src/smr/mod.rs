@@ -19,7 +19,7 @@ use crate::{error::ConsensusError, ConsensusResult, INIT_ROUND};
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Debug)]
 pub struct SMR {
-    smr_handler:   Option<SMRHandler>,
+    smr_handler: Option<SMRHandler>,
     state_machine: StateMachine,
 }
 
