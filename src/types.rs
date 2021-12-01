@@ -28,27 +28,27 @@ pub enum VoteType {
     Precommit,
 }
 
-impl Into<u8> for VoteType {
-    fn into(self) -> u8 {
-        match self {
+impl From<VoteType> for u8 {
+    fn from(v: VoteType) -> u8 {
+        match v {
             VoteType::Prevote => 1,
             VoteType::Precommit => 2,
         }
     }
 }
 
-impl Into<TriggerType> for VoteType {
-    fn into(self) -> TriggerType {
-        match self {
+impl From<VoteType> for TriggerType {
+    fn from(v: VoteType) -> TriggerType {
+        match v {
             VoteType::Prevote => TriggerType::PrevoteQC,
             VoteType::Precommit => TriggerType::PrecommitQC,
         }
     }
 }
 
-impl Into<Step> for VoteType {
-    fn into(self) -> Step {
-        match self {
+impl From<VoteType> for Step {
+    fn from(v : VoteType) -> Step {
+        match v {
             VoteType::Prevote => Step::Prevote,
             VoteType::Precommit => Step::Precommit,
         }
@@ -358,12 +358,12 @@ pub struct Status {
     pub authority_list: Vec<Node>,
 }
 
-impl Into<SMRStatus> for Status {
-    fn into(self) -> SMRStatus {
+impl From<Status> for SMRStatus {
+    fn from(s: Status) -> SMRStatus {
         SMRStatus {
-            height:       self.height,
-            new_interval: self.interval,
-            new_config:   self.timer_config,
+            height:       s.height,
+            new_interval: s.interval,
+            new_config:   s.timer_config,
         }
     }
 }

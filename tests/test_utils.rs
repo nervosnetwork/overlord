@@ -14,7 +14,7 @@ use overlord::{Codec, Consensus, Crypto};
 use rand::random;
 use serde::{Deserialize, Serialize};
 
-enum Approach {
+pub enum Approach {
     Broadcast,
     Directly(Address),
 }
@@ -32,7 +32,7 @@ impl Codec for Pill {
     }
 
     fn decode(data: Bytes) -> Result<Self, Box<dyn Error + Send>> {
-        let decode: Pill = deserialize(&data.as_ref()).expect("Deserialize Pill error.");
+        let decode: Pill = deserialize(data.as_ref()).expect("Deserialize Pill error.");
         Ok(decode)
     }
 }
@@ -182,7 +182,7 @@ impl Crypto for BlsCrypto {
 //     }
 // }
 
-struct Msg<T: Codec> {
+pub struct Msg<T: Codec> {
     pub content:  OverlordMsg<T>,
     pub approach: Approach,
 }

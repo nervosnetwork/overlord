@@ -253,11 +253,7 @@ impl StateMachine {
         }
 
         // throw prevote vote event
-        let round = if let Some(lock) = &self.lock {
-            Some(lock.round)
-        } else {
-            None
-        };
+        let round = self.lock.as_ref().map(|lock| lock.round);
 
         self.throw_event(SMREvent::PrevoteVote {
             height:     self.height,
@@ -351,11 +347,7 @@ impl StateMachine {
         }
 
         // throw precommit vote event
-        let round = if let Some(lock) = &self.lock {
-            Some(lock.round)
-        } else {
-            None
-        };
+        let round = self.lock.as_ref().map(|lock| lock.round);
         self.throw_event(SMREvent::PrecommitVote {
             height:     self.height,
             round:      self.round,
@@ -593,6 +585,6 @@ mod test {
     fn test_xor() {
         let left = Bytes::new();
         let right: Option<u64> = None;
-        assert_eq!(left.is_empty().bitxor(&right.is_none()), false);
+        assert!(!left.is_empty().bitxor(&right.is_none()));
     }
 }

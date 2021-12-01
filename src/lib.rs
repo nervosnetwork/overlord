@@ -5,7 +5,6 @@
 
 #![deny(missing_docs)]
 #![recursion_limit = "512"]
-#![feature(test)]
 #![allow(clippy::mutable_key_type)]
 
 /// A module that impl rlp encodable and decodable trait for types that need to save wal.

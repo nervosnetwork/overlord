@@ -129,7 +129,7 @@ impl Record {
                         .lock()
                         .unwrap()
                         .as_ref()
-                        .map(|wal| rlp::decode(&wal).unwrap()),
+                        .map(|wal| rlp::decode(wal).unwrap()),
                 )
             })
             .collect();
@@ -246,7 +246,7 @@ impl RecordInternal {
                         .lock()
                         .unwrap()
                         .as_ref()
-                        .map(|wal| rlp::decode(&wal).unwrap()),
+                        .map(|wal| rlp::decode(wal).unwrap()),
                 )
             })
             .collect();

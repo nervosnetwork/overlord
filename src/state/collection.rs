@@ -548,8 +548,6 @@ impl ChokeCollector {
 
 #[cfg(test)]
 mod test {
-    extern crate test;
-
     use std::collections::{HashMap, HashSet};
     use std::error::Error;
 
@@ -558,7 +556,6 @@ mod test {
     use creep::Context;
     use rand::random;
     use serde::{Deserialize, Serialize};
-    use test::Bencher;
 
     use crate::state::collection::{ProposalCollector, VoteCollector};
     use crate::types::{
@@ -580,7 +577,7 @@ mod test {
         }
 
         fn decode(data: Bytes) -> Result<Self, Box<dyn Error + Send>> {
-            let decode: Pill = deserialize(&data.as_ref()).expect("Deserialize Pill error.");
+            let decode: Pill = deserialize(data.as_ref()).expect("Deserialize Pill error.");
             Ok(decode)
         }
     }
@@ -605,7 +602,7 @@ mod test {
         Signature::from((0..64).map(|_| random::<u8>()).collect::<Vec<_>>())
     }
 
-    fn gen_aggr_signature() -> AggregatedSignature {
+    fn _gen_aggr_signature() -> AggregatedSignature {
         AggregatedSignature {
             signature:      gen_signature(),
             address_bitmap: Bytes::from((0..8).map(|_| random::<u8>()).collect::<Vec<_>>()),
@@ -650,8 +647,8 @@ mod test {
         }
     }
 
-    fn gen_aggregated_vote(height: u64, round: u64, vote_type: VoteType) -> AggregatedVote {
-        let signature = gen_aggr_signature();
+    fn _gen_aggregated_vote(height: u64, round: u64, vote_type: VoteType) -> AggregatedVote {
+        let signature = _gen_aggr_signature();
 
         AggregatedVote {
             signature,
@@ -767,46 +764,5 @@ mod test {
             .map(|item| item.0.clone())
             .collect::<HashSet<_>>();
         assert_eq!(res, vec.iter().cloned().collect::<HashSet<_>>());
-    }
-
-    #[bench]
-    fn bench_insert_proposal(b: &mut Bencher) {
-        let mut proposals = ProposalCollector::<Pill>::new();
-        let proposal = gen_signed_proposal(1, 0);
-        b.iter(|| proposals.insert(Context::new(), 1, 0, proposal.clone()));
-    }
-
-    #[bench]
-    fn bench_insert_vote(b: &mut Bencher) {
-        let mut votes = VoteCollector::new();
-        let hash = gen_hash();
-        let addr = gen_address();
-        let sv = gen_signed_vote(
-            random::<u64>(),
-            random::<u64>(),
-            VoteType::Prevote,
-            hash.clone(),
-            addr.clone(),
-        );
-        b.iter(|| votes.insert_vote(Context::new(), hash.clone(), sv.clone(), addr.clone()))
-    }
-
-    #[bench]
-    fn bench_insert_qc(b: &mut Bencher) {
-        let mut votes = VoteCollector::new();
-        let av = gen_aggregated_vote(random::<u64>(), random::<u64>(), VoteType::Prevote);
-        b.iter(|| votes.set_qc(av.clone()));
-    }
-
-    #[bench]
-    fn bench_get_votes(b: &mut Bencher) {
-        let mut votes = VoteCollector::new();
-        let hash = gen_hash();
-        for _ in 0..10 {
-            let addr = gen_address();
-            let sv = gen_signed_vote(1, 0, VoteType::Prevote, hash.clone(), addr.clone());
-            votes.insert_vote(Context::new(), hash.clone(), sv, addr);
-        }
-        b.iter(|| votes.get_votes(1, 0, VoteType::Prevote, &hash));
     }
 }

@@ -507,7 +507,7 @@ where
                 .map_err(|err| ConsensusError::Other(format!("get block error {:?}", err)))?;
             (new_block, new_hash, None)
         } else {
-            let round = lock_round.clone().unwrap();
+            let round = lock_round.unwrap();
             let hash = lock_proposal.unwrap();
             let block = self.hash_with_block.get(&hash).ok_or_else(|| {
                 ConsensusError::ProposalErr(format!("Lose whole block that hash is {:?}", hash))

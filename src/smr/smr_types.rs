@@ -62,9 +62,9 @@ impl Default for Step {
     }
 }
 
-impl Into<u8> for Step {
-    fn into(self) -> u8 {
-        match self {
+impl From<Step> for u8 {
+    fn from(step: Step) -> u8 {
+        match step {
             Step::Propose => 0,
             Step::Prevote => 1,
             Step::Precommit => 2,
@@ -247,10 +247,9 @@ pub enum TriggerSource {
     Timer = 1,
 }
 
-impl Into<u8> for TriggerType {
-    /// It should not occur that call `TriggerType::NewHeight(*).into()`.
-    fn into(self) -> u8 {
-        match self {
+impl From<TriggerType> for u8 {
+    fn from(t: TriggerType) -> u8 {
+        match t {
             TriggerType::Proposal => 0u8,
             TriggerType::PrevoteQC => 1u8,
             TriggerType::PrecommitQC => 2u8,

@@ -338,7 +338,7 @@ impl Encodable for Status {
         let interval = if self.interval.is_none() {
             0u64
         } else {
-            self.interval.clone().unwrap()
+            self.interval.unwrap()
         };
 
         let config = if self.timer_config.is_none() {
@@ -640,7 +640,7 @@ mod test {
         }
 
         fn decode(data: Bytes) -> Result<Self, Box<dyn Error + Send>> {
-            let decode: Pill = deserialize(&data.as_ref()).expect("Deserialize Pill error.");
+            let decode: Pill = deserialize(data.as_ref()).expect("Deserialize Pill error.");
             Ok(decode)
         }
     }

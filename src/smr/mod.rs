@@ -16,6 +16,7 @@ use crate::types::Hash;
 use crate::{error::ConsensusError, ConsensusResult, INIT_ROUND};
 
 ///
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Debug)]
 pub struct SMR {
     smr_handler:   Option<SMRHandler>,

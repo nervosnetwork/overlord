@@ -297,7 +297,7 @@ mod test {
         }
     }
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test]
     async fn test_correctness() {
         // Test propose step timer.
         test_timer_trigger(
@@ -339,7 +339,7 @@ mod test {
         .await;
     }
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test]
     async fn test_order() {
         let (trigger_tx, mut trigger_rx) = unbounded();
         let (event_tx, event_rx) = unbounded();
