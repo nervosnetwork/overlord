@@ -30,9 +30,9 @@ impl<T: Codec> WalInfo<T> {
     pub fn into_smr_base(self) -> SMRBase {
         SMRBase {
             height: self.height,
-            round:  self.round,
-            step:   self.step.clone(),
-            polc:   self.lock.map(|polc| polc.to_lock()),
+            round: self.round,
+            step: self.step.clone(),
+            polc: self.lock.map(|polc| polc.to_lock()),
         }
     }
 }
@@ -42,14 +42,14 @@ impl<T: Codec> WalInfo<T> {
 pub struct WalLock<T: Codec> {
     pub lock_round: u64,
     pub lock_votes: AggregatedVote,
-    pub content:    T,
+    pub content: T,
 }
 
 impl<T: Codec> WalLock<T> {
     pub fn to_lock(&self) -> Lock {
         Lock {
             round: self.lock_round,
-            hash:  self.lock_votes.block_hash.clone(),
+            hash: self.lock_votes.block_hash.clone(),
         }
     }
 }
@@ -57,9 +57,9 @@ impl<T: Codec> WalLock<T> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SMRBase {
     pub height: u64,
-    pub round:  u64,
-    pub step:   Step,
-    pub polc:   Option<Lock>,
+    pub round: u64,
+    pub step: Step,
+    pub polc: Option<Lock>,
 }
 
 #[cfg(test)]
@@ -99,17 +99,17 @@ mod test {
 
     fn mock_qc() -> AggregatedVote {
         let aggregated_signature = AggregatedSignature {
-            signature:      Bytes::default(),
+            signature: Bytes::default(),
             address_bitmap: Bytes::default(),
         };
 
         AggregatedVote {
-            signature:  aggregated_signature,
-            vote_type:  VoteType::Precommit,
-            height:     0u64,
-            round:      0u64,
+            signature: aggregated_signature,
+            vote_type: VoteType::Precommit,
+            height: 0u64,
+            round: 0u64,
             block_hash: Bytes::default(),
-            leader:     Bytes::default(),
+            leader: Bytes::default(),
         }
     }
 
@@ -118,16 +118,16 @@ mod test {
         let wal_lock = WalLock {
             lock_round: 0,
             lock_votes: mock_qc(),
-            content:    Pill::new(),
+            content: Pill::new(),
         };
         println!("{}", wal_lock);
 
         let wal_info = WalInfo {
             height: 0,
-            round:  0,
-            step:   Step::Propose,
-            lock:   Some(wal_lock),
-            from:   UpdateFrom::PrecommitQC(mock_qc()),
+            round: 0,
+            step: Step::Propose,
+            lock: Some(wal_lock),
+            from: UpdateFrom::PrecommitQC(mock_qc()),
         };
 
         assert_eq!(

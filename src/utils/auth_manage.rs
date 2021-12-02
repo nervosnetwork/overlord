@@ -13,25 +13,25 @@ use crate::ConsensusResult;
 /// `Vec<Node>`. It transforms the information in `Node` struct into a more suitable data structure
 /// according to its usage scene. The vote weight need look up by address frequently, therefore,
 /// address with vote weight saved in a `HashMap`.
-#[display(fmt = "Authority List {:?}", address)]
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
+#[display(fmt = "Authority List {:?}", address)]
 pub struct AuthorityManage {
-    address:            Vec<Address>,
-    propose_weights:    Vec<u64>,
-    vote_weight_map:    HashMap<Address, u32>,
+    address: Vec<Address>,
+    propose_weights: Vec<u64>,
+    vote_weight_map: HashMap<Address, u32>,
     propose_weight_sum: u64,
-    vote_weight_sum:    u64,
+    vote_weight_sum: u64,
 }
 
 impl AuthorityManage {
     /// Create a new height authority manage.
     pub fn new() -> Self {
         AuthorityManage {
-            address:            Vec::new(),
-            propose_weights:    Vec::new(),
-            vote_weight_map:    HashMap::new(),
+            address: Vec::new(),
+            propose_weights: Vec::new(),
+            vote_weight_map: HashMap::new(),
             propose_weight_sum: 0u64,
-            vote_weight_sum:    0u64,
+            vote_weight_sum: 0u64,
         }
     }
 
@@ -82,7 +82,7 @@ impl AuthorityManage {
 
     /// Calculate whether the sum of vote weights from bitmap is above 2/3.
     pub fn is_above_threshold(&self, bitmap: &[u8]) -> ConsensusResult<bool> {
-        let bitmap = BitVec::from_bytes(&bitmap);
+        let bitmap = BitVec::from_bytes(bitmap);
         let mut acc = 0u64;
 
         for node in bitmap.iter().zip(self.address.iter()) {
@@ -148,7 +148,7 @@ pub fn extract_voters(
     address_bitmap: &bytes::Bytes,
 ) -> ConsensusResult<Vec<Address>> {
     authority_list.sort();
-    let bitmap = BitVec::from_bytes(&address_bitmap);
+    let bitmap = BitVec::from_bytes(address_bitmap);
     let voters: Vec<Address> = bitmap
         .iter()
         .zip(authority_list.iter())
@@ -186,12 +186,9 @@ fn rotation_leader_index(height: u64, round: u64, authority_len: usize) -> usize
 
 #[cfg(test)]
 mod test {
-    extern crate test;
-
     use bit_vec::BitVec;
     use bytes::Bytes;
     use rand::random;
-    use test::Bencher;
 
     use crate::error::ConsensusError;
     use crate::extract_voters;
@@ -285,26 +282,26 @@ mod test {
         for i in 0..4 {
             let bit_map = gen_bitmap(4, vec![i]);
             let res = authority.is_above_threshold(Bytes::from(bit_map.to_bytes()).as_ref());
-            assert_eq!(res.unwrap(), false);
+            assert!(!res.unwrap())
         }
 
         let tmp = vec![vec![1, 2], vec![1, 3], vec![2, 3], vec![0, 1], vec![0, 2]];
         for i in tmp.into_iter() {
             let bit_map = gen_bitmap(4, i);
             let res = authority.is_above_threshold(Bytes::from(bit_map.to_bytes()).as_ref());
-            assert_eq!(res.unwrap(), false);
+            assert!(!res.unwrap())
         }
 
         let tmp = vec![vec![0, 1, 2], vec![0, 1, 3], vec![1, 2, 3]];
         for i in tmp.into_iter() {
             let bit_map = gen_bitmap(4, i);
             let res = authority.is_above_threshold(Bytes::from(bit_map.to_bytes()).as_ref());
-            assert_eq!(res.unwrap(), true);
+            assert!(res.unwrap())
         }
 
         let bit_map = gen_bitmap(4, vec![0, 1, 2, 3]);
         let res = authority.is_above_threshold(Bytes::from(bit_map.to_bytes()).as_ref());
-        assert_eq!(res.unwrap(), true);
+        assert!(res.unwrap())
     }
 
     #[test]
@@ -396,22 +393,5 @@ mod test {
                 address.clone()
             );
         }
-    }
-
-    #[bench]
-    fn bench_update(b: &mut Bencher) {
-        let mut auth_list = gen_auth_list(10);
-        let mut authority = AuthorityManage::new();
-        b.iter(|| authority.update(&mut auth_list));
-    }
-
-    #[bench]
-    fn bench_cal_vote_weight(b: &mut Bencher) {
-        let mut auth_list = gen_auth_list(10);
-        let mut authority = AuthorityManage::new();
-        authority.update(&mut auth_list);
-        let bitmap = BitVec::from_elem(10, true);
-        let vote_bitmap = Bytes::from(bitmap.to_bytes());
-        b.iter(|| authority.is_above_threshold(&vote_bitmap));
     }
 }

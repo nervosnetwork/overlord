@@ -135,9 +135,9 @@ impl Crypto for MockCrypto {
 }
 
 struct Brain {
-    speaker_list:     Vec<Node>,
-    talk_to:          HashMap<Bytes, Sender<OverlordMsg<Speech>>>,
-    hearing:          Receiver<OverlordMsg<Speech>>,
+    speaker_list: Vec<Node>,
+    talk_to: HashMap<Bytes, Sender<OverlordMsg<Speech>>>,
+    hearing: Receiver<OverlordMsg<Speech>>,
     consensus_speech: Arc<Mutex<HashMap<u64, Bytes>>>,
 }
 
@@ -197,9 +197,9 @@ impl Consensus<Speech> for Brain {
         }
 
         Ok(Status {
-            height:         height + 1,
-            interval:       Some(SPEECH_INTERVAL),
-            timer_config:   None,
+            height: height + 1,
+            interval: Some(SPEECH_INTERVAL),
+            timer_config: None,
             authority_list: self.speaker_list.clone(),
         })
     }
@@ -247,8 +247,8 @@ impl Consensus<Speech> for Brain {
 
 struct Speaker {
     overlord: Arc<Overlord<Speech, Brain, MockCrypto, MockWal>>,
-    handler:  OverlordHandler<Speech>,
-    brain:    Arc<Brain>,
+    handler: OverlordHandler<Speech>,
+    brain: Arc<Brain>,
 }
 
 impl Speaker {
@@ -278,9 +278,9 @@ impl Speaker {
             .send_msg(
                 Context::new(),
                 OverlordMsg::RichStatus(Status {
-                    height:         1,
-                    interval:       Some(SPEECH_INTERVAL),
-                    timer_config:   None,
+                    height: 1,
+                    interval: Some(SPEECH_INTERVAL),
+                    timer_config: None,
                     authority_list: speaker_list,
                 }),
             )

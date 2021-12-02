@@ -245,14 +245,14 @@ impl VoteCollector {
 /// in a `HashMap`.
 #[derive(Clone, Debug)]
 struct VoteRoundCollector {
-    general:    HashMap<u64, RoundCollector>,
+    general: HashMap<u64, RoundCollector>,
     qc_by_hash: HashMap<Hash, QuorumCertificate>,
 }
 
 impl VoteRoundCollector {
     fn new() -> Self {
         VoteRoundCollector {
-            general:    HashMap::new(),
+            general: HashMap::new(),
             qc_by_hash: HashMap::new(),
         }
     }
@@ -325,16 +325,16 @@ impl VoteRoundCollector {
 /// A round collector contains a qc and prevote votes and precommit votes.
 #[derive(Clone, Debug)]
 struct RoundCollector {
-    qc:        QuorumCertificate,
-    prevote:   Votes,
+    qc: QuorumCertificate,
+    prevote: Votes,
     precommit: Votes,
 }
 
 impl RoundCollector {
     fn new() -> Self {
         RoundCollector {
-            qc:        QuorumCertificate::new(),
-            prevote:   Votes::new(),
+            qc: QuorumCertificate::new(),
+            prevote: Votes::new(),
             precommit: Votes::new(),
         }
     }
@@ -384,14 +384,14 @@ impl RoundCollector {
 /// A struct includes prevoteQC and precommitQC in a round.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct QuorumCertificate {
-    prevote:   Option<AggregatedVote>,
+    prevote: Option<AggregatedVote>,
     precommit: Option<AggregatedVote>,
 }
 
 impl QuorumCertificate {
     fn new() -> Self {
         QuorumCertificate {
-            prevote:   None,
+            prevote: None,
             precommit: None,
         }
     }
@@ -428,14 +428,14 @@ impl QuorumCertificate {
 ///
 #[derive(Clone, Debug)]
 struct Votes {
-    by_hash:    HashMap<Hash, HashSet<Address>>,
+    by_hash: HashMap<Hash, HashSet<Address>>,
     by_address: HashMap<Address, (SignedVote, Context)>,
 }
 
 impl Votes {
     fn new() -> Self {
         Votes {
-            by_hash:    HashMap::new(),
+            by_hash: HashMap::new(),
             by_address: HashMap::new(),
         }
     }
@@ -485,14 +485,14 @@ impl Votes {
 #[derive(Clone, Debug)]
 pub struct ChokeCollector {
     chokes: BTreeMap<u64, HashMap<Address, SignedChoke>>,
-    qcs:    HashMap<u64, AggregatedChoke>,
+    qcs: HashMap<u64, AggregatedChoke>,
 }
 
 impl ChokeCollector {
     pub fn new() -> Self {
         ChokeCollector {
             chokes: BTreeMap::new(),
-            qcs:    HashMap::new(),
+            qcs: HashMap::new(),
         }
     }
 
@@ -548,8 +548,6 @@ impl ChokeCollector {
 
 #[cfg(test)]
 mod test {
-    extern crate test;
-
     use std::collections::{HashMap, HashSet};
     use std::error::Error;
 
@@ -558,7 +556,6 @@ mod test {
     use creep::Context;
     use rand::random;
     use serde::{Deserialize, Serialize};
-    use test::Bencher;
 
     use crate::state::collection::{ProposalCollector, VoteCollector};
     use crate::types::{
@@ -570,7 +567,7 @@ mod test {
     #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
     struct Pill {
         height: u64,
-        epoch:  Vec<u64>,
+        epoch: Vec<u64>,
     }
 
     impl Codec for Pill {
@@ -580,7 +577,7 @@ mod test {
         }
 
         fn decode(data: Bytes) -> Result<Self, Box<dyn Error + Send>> {
-            let decode: Pill = deserialize(&data.as_ref()).expect("Deserialize Pill error.");
+            let decode: Pill = deserialize(data.as_ref()).expect("Deserialize Pill error.");
             Ok(decode)
         }
     }
@@ -605,9 +602,9 @@ mod test {
         Signature::from((0..64).map(|_| random::<u8>()).collect::<Vec<_>>())
     }
 
-    fn gen_aggr_signature() -> AggregatedSignature {
+    fn _gen_aggr_signature() -> AggregatedSignature {
         AggregatedSignature {
-            signature:      gen_signature(),
+            signature: gen_signature(),
             address_bitmap: Bytes::from((0..8).map(|_| random::<u8>()).collect::<Vec<_>>()),
         }
     }
@@ -650,8 +647,8 @@ mod test {
         }
     }
 
-    fn gen_aggregated_vote(height: u64, round: u64, vote_type: VoteType) -> AggregatedVote {
-        let signature = gen_aggr_signature();
+    fn _gen_aggregated_vote(height: u64, round: u64, vote_type: VoteType) -> AggregatedVote {
+        let signature = _gen_aggr_signature();
 
         AggregatedVote {
             signature,
@@ -767,46 +764,5 @@ mod test {
             .map(|item| item.0.clone())
             .collect::<HashSet<_>>();
         assert_eq!(res, vec.iter().cloned().collect::<HashSet<_>>());
-    }
-
-    #[bench]
-    fn bench_insert_proposal(b: &mut Bencher) {
-        let mut proposals = ProposalCollector::<Pill>::new();
-        let proposal = gen_signed_proposal(1, 0);
-        b.iter(|| proposals.insert(Context::new(), 1, 0, proposal.clone()));
-    }
-
-    #[bench]
-    fn bench_insert_vote(b: &mut Bencher) {
-        let mut votes = VoteCollector::new();
-        let hash = gen_hash();
-        let addr = gen_address();
-        let sv = gen_signed_vote(
-            random::<u64>(),
-            random::<u64>(),
-            VoteType::Prevote,
-            hash.clone(),
-            addr.clone(),
-        );
-        b.iter(|| votes.insert_vote(Context::new(), hash.clone(), sv.clone(), addr.clone()))
-    }
-
-    #[bench]
-    fn bench_insert_qc(b: &mut Bencher) {
-        let mut votes = VoteCollector::new();
-        let av = gen_aggregated_vote(random::<u64>(), random::<u64>(), VoteType::Prevote);
-        b.iter(|| votes.set_qc(av.clone()));
-    }
-
-    #[bench]
-    fn bench_get_votes(b: &mut Bencher) {
-        let mut votes = VoteCollector::new();
-        let hash = gen_hash();
-        for _ in 0..10 {
-            let addr = gen_address();
-            let sv = gen_signed_vote(1, 0, VoteType::Prevote, hash.clone(), addr.clone());
-            votes.insert_vote(Context::new(), hash.clone(), sv, addr);
-        }
-        b.iter(|| votes.get_votes(1, 0, VoteType::Prevote, &hash));
     }
 }

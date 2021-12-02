@@ -8,21 +8,21 @@ use crate::{error::ConsensusError, ConsensusResult};
 /// Overlord timer config.
 #[derive(Debug, Clone)]
 pub struct TimerConfig {
-    interval:  Cell<u64>,
-    propose:   (u64, u64),
-    prevote:   (u64, u64),
+    interval: Cell<u64>,
+    propose: (u64, u64),
+    prevote: (u64, u64),
     precommit: (u64, u64),
-    brake:     (u64, u64),
+    brake: (u64, u64),
 }
 
 impl TimerConfig {
     pub fn new(interval: u64) -> Self {
         TimerConfig {
-            interval:  Cell::new(interval),
-            propose:   (24, 10),
-            prevote:   (10, 10),
+            interval: Cell::new(interval),
+            propose: (24, 10),
+            prevote: (10, 10),
             precommit: (5, 10),
-            brake:     (3, 10),
+            brake: (3, 10),
         }
     }
 

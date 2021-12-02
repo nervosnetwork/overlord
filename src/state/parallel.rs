@@ -98,8 +98,8 @@ fn get_voters(
     addr_bitmap: &Bytes,
     authority_manage: AuthorityManage,
 ) -> ConsensusResult<Vec<Address>> {
-    authority_manage.is_above_threshold(&addr_bitmap)?;
-    authority_manage.get_voters(&addr_bitmap)
+    authority_manage.is_above_threshold(addr_bitmap)?;
+    authority_manage.get_voters(addr_bitmap)
 }
 
 fn verify_qc<T: Codec, C: Crypto>(

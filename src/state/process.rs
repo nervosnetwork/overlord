@@ -37,29 +37,29 @@ const FUTURE_ROUND_GAP: u64 = 10;
 /// than `current_height - 1`.
 #[derive(Debug)]
 pub struct State<T: Codec, F: Consensus<T>, C: Crypto, W: Wal> {
-    height:              u64,
-    round:               u64,
-    state_machine:       SMRHandler,
-    address:             Address,
-    proposals:           ProposalCollector<T>,
-    votes:               VoteCollector,
-    chokes:              ChokeCollector,
-    authority:           AuthorityManage,
-    hash_with_block:     HashMap<Hash, T>,
+    height: u64,
+    round: u64,
+    state_machine: SMRHandler,
+    address: Address,
+    proposals: ProposalCollector<T>,
+    votes: VoteCollector,
+    chokes: ChokeCollector,
+    authority: AuthorityManage,
+    hash_with_block: HashMap<Hash, T>,
     is_full_transcation: HashMap<Hash, bool>,
-    is_leader:           bool,
-    leader_address:      Address,
-    update_from_where:   UpdateFrom,
-    height_start:        Instant,
-    block_interval:      u64,
-    consensus_power:     bool,
-    stopped:             bool,
+    is_leader: bool,
+    leader_address: Address,
+    update_from_where: UpdateFrom,
+    height_start: Instant,
+    block_interval: u64,
+    consensus_power: bool,
+    stopped: bool,
 
     verify_sig_tx: UnboundedSender<(Context, OverlordMsg<T>)>,
-    resp_tx:       UnboundedSender<VerifyResp>,
-    function:      Arc<F>,
-    wal:           Arc<W>,
-    util:          Arc<C>,
+    resp_tx: UnboundedSender<VerifyResp>,
+    function: Arc<F>,
+    wal: Arc<W>,
+    util: Arc<C>,
 }
 
 impl<T, F, C, W> State<T, F, C, W>
@@ -86,29 +86,29 @@ where
         auth.update(&mut authority_list);
 
         let state = State {
-            height:              init_height,
-            round:               INIT_ROUND,
-            state_machine:       smr,
-            consensus_power:     auth.contains(&addr),
-            address:             addr,
-            proposals:           ProposalCollector::new(),
-            votes:               VoteCollector::new(),
-            chokes:              ChokeCollector::new(),
-            authority:           auth,
-            hash_with_block:     HashMap::new(),
+            height: init_height,
+            round: INIT_ROUND,
+            state_machine: smr,
+            consensus_power: auth.contains(&addr),
+            address: addr,
+            proposals: ProposalCollector::new(),
+            votes: VoteCollector::new(),
+            chokes: ChokeCollector::new(),
+            authority: auth,
+            hash_with_block: HashMap::new(),
             is_full_transcation: HashMap::new(),
-            is_leader:           false,
-            leader_address:      Address::default(),
-            update_from_where:   UpdateFrom::PrecommitQC(mock_init_qc()),
-            height_start:        Instant::now(),
-            block_interval:      interval,
-            stopped:             false,
+            is_leader: false,
+            leader_address: Address::default(),
+            update_from_where: UpdateFrom::PrecommitQC(mock_init_qc()),
+            height_start: Instant::now(),
+            block_interval: interval,
+            stopped: false,
 
             verify_sig_tx: verify_tx,
-            resp_tx:       tx,
-            function:      consensus,
-            util:          crypto,
-            wal:           wal_engine,
+            resp_tx: tx,
+            function: consensus,
+            util: crypto,
+            wal: wal_engine,
         };
 
         (state, rx)
@@ -239,12 +239,12 @@ where
             OverlordMsg::Stop => {
                 self.state_machine.trigger(SMRTrigger {
                     trigger_type: TriggerType::Stop,
-                    source:       TriggerSource::State,
-                    hash:         Hash::new(),
-                    lock_round:   None,
-                    round:        self.round,
-                    height:       self.height,
-                    wal_info:     None,
+                    source: TriggerSource::State,
+                    hash: Hash::new(),
+                    lock_round: None,
+                    round: self.round,
+                    height: self.height,
+                    wal_info: None,
                 })?;
                 self.stopped = true;
                 Ok(())
@@ -352,12 +352,12 @@ where
         {
             self.state_machine.trigger(SMRTrigger {
                 trigger_type: TriggerType::PrecommitQC,
-                source:       TriggerSource::State,
-                hash:         qc.block_hash,
-                lock_round:   None,
-                round:        qc.round,
-                height:       qc.height,
-                wal_info:     None,
+                source: TriggerSource::State,
+                hash: qc.block_hash,
+                lock_round: None,
+                round: qc.round,
+                height: qc.height,
+                wal_info: None,
             })?;
         } else if let Some(qc) =
             self.votes
@@ -366,12 +366,12 @@ where
             if qc.round == self.round {
                 self.state_machine.trigger(SMRTrigger {
                     trigger_type: TriggerType::PrevoteQC,
-                    source:       TriggerSource::State,
-                    hash:         qc.block_hash,
-                    lock_round:   None,
-                    round:        qc.round,
-                    height:       qc.height,
-                    wal_info:     None,
+                    source: TriggerSource::State,
+                    hash: qc.block_hash,
+                    lock_round: None,
+                    round: qc.round,
+                    height: qc.height,
+                    wal_info: None,
                 })?;
             }
         }
@@ -507,7 +507,7 @@ where
                 .map_err(|err| ConsensusError::Other(format!("get block error {:?}", err)))?;
             (new_block, new_hash, None)
         } else {
-            let round = lock_round.clone().unwrap();
+            let round = lock_round.unwrap();
             let hash = lock_proposal.unwrap();
             let block = self.hash_with_block.get(&hash).ok_or_else(|| {
                 ConsensusError::ProposalErr(format!("Lose whole block that hash is {:?}", hash))
@@ -530,12 +530,12 @@ where
             .or_insert_with(|| block.clone());
 
         let proposal = Proposal {
-            height:     self.height,
-            round:      self.round,
-            content:    block.clone(),
+            height: self.height,
+            round: self.round,
+            content: block.clone(),
             block_hash: hash.clone(),
-            lock:       polc.clone(),
-            proposer:   self.address.clone(),
+            lock: polc.clone(),
+            proposer: self.address.clone(),
         };
 
         info!(
@@ -669,9 +669,9 @@ where
         );
 
         let signed_vote = self.sign_vote(Vote {
-            height:     self.height,
-            round:      self.round,
-            vote_type:  vote_type.clone(),
+            height: self.height,
+            round: self.round,
+            vote_type: vote_type.clone(),
             block_hash: hash.clone(),
         })?;
 
@@ -711,8 +711,8 @@ where
 
         let choke = Choke {
             height: self.height,
-            round:  self.round,
-            from:   self.update_from_where.clone(),
+            round: self.round,
+            from: self.update_from_where.clone(),
         };
 
         let signature = self
@@ -770,7 +770,7 @@ where
         let polc = Some(WalLock {
             lock_round: self.round,
             lock_votes: qc.clone(),
-            content:    content.clone(),
+            content: content.clone(),
         });
         self.save_wal(Step::Commit, polc).await?;
 
@@ -934,12 +934,12 @@ where
 
         self.state_machine.trigger(SMRTrigger {
             trigger_type: vote_type.clone().into(),
-            source:       TriggerSource::State,
-            hash:         block_hash,
-            lock_round:   None,
-            round:        qc.round,
-            height:       qc.height,
-            wal_info:     None,
+            source: TriggerSource::State,
+            hash: block_hash,
+            lock_round: None,
+            round: qc.round,
+            height: qc.height,
+            wal_info: None,
         })?;
         Ok(())
     }
@@ -1048,12 +1048,12 @@ where
 
         self.state_machine.trigger(SMRTrigger {
             trigger_type: qc_type.into(),
-            source:       TriggerSource::State,
-            hash:         qc_hash,
-            lock_round:   None,
-            round:        vote_round,
-            height:       vote_height,
-            wal_info:     None,
+            source: TriggerSource::State,
+            hash: qc_hash,
+            lock_round: None,
+            round: vote_round,
+            height: vote_height,
+            wal_info: None,
         })?;
         Ok(())
     }
@@ -1085,12 +1085,12 @@ where
 
                 self.state_machine.trigger(SMRTrigger {
                     trigger_type: qc.vote_type.into(),
-                    source:       TriggerSource::State,
-                    hash:         block_hash,
-                    lock_round:   None,
-                    round:        self.round,
-                    height:       self.height,
-                    wal_info:     None,
+                    source: TriggerSource::State,
+                    hash: block_hash,
+                    lock_round: None,
+                    round: self.round,
+                    height: self.height,
+                    wal_info: None,
                 })?;
                 return Ok(());
             }
@@ -1123,12 +1123,12 @@ where
 
             self.state_machine.trigger(SMRTrigger {
                 trigger_type: vote_type.clone().into(),
-                source:       TriggerSource::State,
-                hash:         block_hash,
-                lock_round:   None,
-                round:        self.round,
-                height:       self.height,
-                wal_info:     None,
+                source: TriggerSource::State,
+                hash: block_hash,
+                lock_round: None,
+                round: self.round,
+                height: self.height,
+                wal_info: None,
             })?;
         }
         Ok(())
@@ -1226,12 +1226,12 @@ where
 
         self.state_machine.trigger(SMRTrigger {
             trigger_type: TriggerType::ContinueRound,
-            source:       TriggerSource::State,
-            hash:         Hash::new(),
-            lock_round:   None,
-            round:        choke.round + 1,
-            height:       self.height,
-            wal_info:     None,
+            source: TriggerSource::State,
+            hash: Hash::new(),
+            lock_round: None,
+            round: choke.round + 1,
+            height: self.height,
+            wal_info: None,
         })?;
         Ok(())
     }
@@ -1268,7 +1268,7 @@ where
         }
 
         let aggregated_signature = AggregatedSignature {
-            signature:      self.aggregate_signatures(signatures, voters)?,
+            signature: self.aggregate_signatures(signatures, voters)?,
             address_bitmap: Bytes::from(bit_map.to_bytes()),
         };
         let qc = AggregatedVote {
@@ -1547,12 +1547,15 @@ where
                 voters.push(sc.address.clone());
             }
             let sig = self.aggregate_signatures(sigs, voters.clone())?;
-            self.chokes.set_qc(round, AggregatedChoke {
-                height: self.height,
-                signature: sig,
+            self.chokes.set_qc(
                 round,
-                voters,
-            });
+                AggregatedChoke {
+                    height: self.height,
+                    signature: sig,
+                    round,
+                    voters,
+                },
+            );
 
             info!(
                 "Overlord: state trigger SMR go on {} round of height {}",
@@ -1562,12 +1565,12 @@ where
 
             self.state_machine.trigger(SMRTrigger {
                 trigger_type: TriggerType::ContinueRound,
-                source:       TriggerSource::State,
-                hash:         Hash::new(),
-                round:        round + 1,
-                lock_round:   None,
-                height:       self.height,
-                wal_info:     None,
+                source: TriggerSource::State,
+                hash: Hash::new(),
+                round: round + 1,
+                lock_round: None,
+                height: self.height,
+                wal_info: None,
             })?;
         }
         Ok(())
@@ -1609,8 +1612,8 @@ where
                 error!("Overlord: state save wal error {:?}", e);
                 ConsensusError::SaveWalErr {
                     height: self.height,
-                    round:  self.round,
-                    step:   step.to_string(),
+                    round: self.round,
+                    step: step.to_string(),
                 }
             })?;
         Ok(())
@@ -1634,7 +1637,7 @@ where
                 Some(WalLock {
                     lock_round: round,
                     lock_votes: qc,
-                    content:    block.clone(),
+                    content: block.clone(),
                 })
             } else {
                 return Err(ConsensusError::Other("no qc".to_string()));
@@ -1650,19 +1653,19 @@ where
     fn wal_lost(&mut self) -> ConsensusResult<()> {
         let smr_base = SMRBase {
             height: self.height,
-            round:  self.round,
-            step:   Step::Propose,
-            polc:   None,
+            round: self.round,
+            step: Step::Propose,
+            polc: None,
         };
 
         self.state_machine.trigger(SMRTrigger {
             trigger_type: TriggerType::WalInfo,
-            source:       TriggerSource::State,
-            hash:         Hash::new(),
-            lock_round:   None,
-            round:        self.round,
-            height:       self.height,
-            wal_info:     Some(smr_base),
+            source: TriggerSource::State,
+            hash: Hash::new(),
+            lock_round: None,
+            round: self.round,
+            height: self.height,
+            wal_info: Some(smr_base),
         })
     }
 
@@ -1712,12 +1715,12 @@ where
 
         self.state_machine.trigger(SMRTrigger {
             trigger_type: TriggerType::WalInfo,
-            source:       TriggerSource::State,
-            hash:         Hash::new(),
-            lock_round:   None,
-            round:        self.round,
-            height:       self.height,
-            wal_info:     Some(wal_info.into_smr_base()),
+            source: TriggerSource::State,
+            hash: Hash::new(),
+            lock_round: None,
+            round: self.round,
+            height: self.height,
+            wal_info: Some(wal_info.into_smr_base()),
         })?;
         Ok(())
     }
@@ -1863,16 +1866,16 @@ async fn check_current_block<U: Consensus<T>, T: Codec>(
 
 fn mock_init_qc() -> AggregatedVote {
     let aggregated_signature = AggregatedSignature {
-        signature:      Signature::default(),
+        signature: Signature::default(),
         address_bitmap: Bytes::default(),
     };
 
     AggregatedVote {
-        signature:  aggregated_signature,
-        vote_type:  VoteType::Precommit,
-        height:     0u64,
-        round:      0u64,
+        signature: aggregated_signature,
+        vote_type: VoteType::Precommit,
+        height: 0u64,
+        round: 0u64,
         block_hash: Hash::default(),
-        leader:     Address::default(),
+        leader: Address::default(),
     }
 }

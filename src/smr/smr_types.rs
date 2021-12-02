@@ -62,9 +62,9 @@ impl Default for Step {
     }
 }
 
-impl Into<u8> for Step {
-    fn into(self) -> u8 {
-        match self {
+impl From<Step> for u8 {
+    fn from(step: Step) -> u8 {
+        match step {
             Step::Propose => 0,
             Step::Prevote => 1,
             Step::Precommit => 2,
@@ -137,13 +137,13 @@ pub enum SMREvent {
         lock_proposal
     )]
     NewRoundInfo {
-        height:        u64,
-        round:         u64,
-        lock_round:    Option<u64>,
+        height: u64,
+        round: u64,
+        lock_round: Option<u64>,
         lock_proposal: Option<Hash>,
-        from_where:    FromWhere,
-        new_interval:  Option<u64>,
-        new_config:    Option<DurationConfig>,
+        from_where: FromWhere,
+        new_interval: Option<u64>,
+        new_config: Option<DurationConfig>,
     },
 
     /// Prevote event,
@@ -157,8 +157,8 @@ pub enum SMREvent {
         lock_round
     )]
     PrevoteVote {
-        height:     u64,
-        round:      u64,
+        height: u64,
+        round: u64,
         block_hash: Hash,
         lock_round: Option<u64>,
     },
@@ -174,8 +174,8 @@ pub enum SMREvent {
         lock_round
     )]
     PrecommitVote {
-        height:     u64,
-        round:      u64,
+        height: u64,
+        round: u64,
         block_hash: Hash,
         lock_round: Option<u64>,
     },
@@ -195,8 +195,8 @@ pub enum SMREvent {
         lock_round
     )]
     Brake {
-        height:     u64,
-        round:      u64,
+        height: u64,
+        round: u64,
         lock_round: Option<u64>,
     },
 
@@ -247,10 +247,9 @@ pub enum TriggerSource {
     Timer = 1,
 }
 
-impl Into<u8> for TriggerType {
-    /// It should not occur that call `TriggerType::NewHeight(*).into()`.
-    fn into(self) -> u8 {
-        match self {
+impl From<TriggerType> for u8 {
+    fn from(t: TriggerType) -> u8 {
+        match t {
             TriggerType::Proposal => 0u8,
             TriggerType::PrevoteQC => 1u8,
             TriggerType::PrecommitQC => 2u8,
@@ -296,18 +295,18 @@ pub struct SMRTrigger {
     /// SMR trigger type.
     pub trigger_type: TriggerType,
     /// SMR trigger source.
-    pub source:       TriggerSource,
+    pub source: TriggerSource,
     /// SMR trigger hash, the meaning shown above.
-    pub hash:         Hash,
+    pub hash: Hash,
     /// SMR trigger round, the meaning shown above.
-    pub lock_round:   Option<u64>,
+    pub lock_round: Option<u64>,
     ///
-    pub round:        u64,
+    pub round: u64,
     /// **NOTICE**: This field is only for timer to signed timer's height. Therefore, the SMR can
     /// filter out the outdated timers.
-    pub height:       u64,
+    pub height: u64,
     ///
-    pub wal_info:     Option<SMRBase>,
+    pub wal_info: Option<SMRBase>,
 }
 
 /// An inner lock struct.
@@ -316,18 +315,18 @@ pub struct Lock {
     /// Lock round.
     pub round: u64,
     /// Lock hash.
-    pub hash:  Hash,
+    pub hash: Hash,
 }
 
 /// SMR new status.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SMRStatus {
     /// New height.
-    pub height:       u64,
+    pub height: u64,
     /// New height interval.
     pub new_interval: Option<u64>,
     /// New timeout configuration.
-    pub new_config:   Option<DurationConfig>,
+    pub new_config: Option<DurationConfig>,
 }
 
 #[cfg(test)]

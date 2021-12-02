@@ -14,7 +14,7 @@ use overlord::{Codec, Consensus, Crypto};
 use rand::random;
 use serde::{Deserialize, Serialize};
 
-enum Approach {
+pub enum Approach {
     Broadcast,
     Directly(Address),
 }
@@ -22,7 +22,7 @@ enum Approach {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 struct Pill {
     height: u64,
-    epoch:  Vec<u64>,
+    epoch: Vec<u64>,
 }
 
 impl Codec for Pill {
@@ -32,7 +32,7 @@ impl Codec for Pill {
     }
 
     fn decode(data: Bytes) -> Result<Self, Box<dyn Error + Send>> {
-        let decode: Pill = deserialize(&data.as_ref()).expect("Deserialize Pill error.");
+        let decode: Pill = deserialize(data.as_ref()).expect("Deserialize Pill error.");
         Ok(decode)
     }
 }
@@ -45,7 +45,7 @@ impl Pill {
 }
 
 struct ConsensusHelper<T: Codec> {
-    msg_tx:    Sender<Msg<T>>,
+    msg_tx: Sender<Msg<T>>,
     commit_tx: Sender<Commit<T>>,
     auth_list: Vec<Node>,
 }
@@ -80,9 +80,9 @@ impl Consensus<Pill> for ConsensusHelper<Pill> {
     ) -> Result<Status, Box<dyn Error + Send>> {
         self.commit_tx.send(commit).unwrap();
         let status = Status {
-            height:         height + 1,
-            interval:       None,
-            timer_config:   None,
+            height: height + 1,
+            interval: None,
+            timer_config: None,
             authority_list: self.auth_list.clone(),
         };
         Ok(status)
@@ -102,7 +102,7 @@ impl Consensus<Pill> for ConsensusHelper<Pill> {
         msg: OverlordMsg<Pill>,
     ) -> Result<(), Box<dyn Error + Send>> {
         let message = Msg {
-            content:  msg,
+            content: msg,
             approach: Approach::Broadcast,
         };
 
@@ -117,7 +117,7 @@ impl Consensus<Pill> for ConsensusHelper<Pill> {
         msg: OverlordMsg<Pill>,
     ) -> Result<(), Box<dyn Error + Send>> {
         let message = Msg {
-            content:  msg,
+            content: msg,
             approach: Approach::Directly(addr),
         };
 
@@ -182,8 +182,8 @@ impl Crypto for BlsCrypto {
 //     }
 // }
 
-struct Msg<T: Codec> {
-    pub content:  OverlordMsg<T>,
+pub struct Msg<T: Codec> {
+    pub content: OverlordMsg<T>,
     pub approach: Approach,
 }
 

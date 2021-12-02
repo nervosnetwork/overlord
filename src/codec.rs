@@ -338,7 +338,7 @@ impl Encodable for Status {
         let interval = if self.interval.is_none() {
             0u64
         } else {
-            self.interval.clone().unwrap()
+            self.interval.unwrap()
         };
 
         let config = if self.timer_config.is_none() {
@@ -630,7 +630,7 @@ mod test {
     #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
     struct Pill {
         height: u64,
-        epoch:  Vec<u64>,
+        epoch: Vec<u64>,
     }
 
     impl Codec for Pill {
@@ -640,7 +640,7 @@ mod test {
         }
 
         fn decode(data: Bytes) -> Result<Self, Box<dyn Error + Send>> {
-            let decode: Pill = deserialize(&data.as_ref()).expect("Deserialize Pill error.");
+            let decode: Pill = deserialize(data.as_ref()).expect("Deserialize Pill error.");
             Ok(decode)
         }
     }
@@ -657,7 +657,7 @@ mod test {
         fn new(content: T, lock: Option<PoLC>) -> Self {
             SignedProposal {
                 signature: gen_signature(),
-                proposal:  Proposal::new(content, lock),
+                proposal: Proposal::new(content, lock),
             }
         }
     }
@@ -692,8 +692,8 @@ mod test {
         fn new(vote_type: u8) -> Self {
             SignedVote {
                 signature: gen_signature(),
-                vote:      Vote::new(vote_type),
-                voter:     gen_address(),
+                vote: Vote::new(vote_type),
+                voter: gen_address(),
             }
         }
     }
@@ -701,12 +701,12 @@ mod test {
     impl AggregatedVote {
         fn new(vote_type: u8) -> Self {
             AggregatedVote {
-                signature:  gen_aggr_signature(),
-                vote_type:  VoteType::try_from(vote_type).unwrap(),
-                height:     random::<u64>(),
-                round:      random::<u64>(),
+                signature: gen_aggr_signature(),
+                vote_type: VoteType::try_from(vote_type).unwrap(),
+                height: random::<u64>(),
+                round: random::<u64>(),
                 block_hash: gen_hash(),
-                leader:     gen_address(),
+                leader: gen_address(),
             }
         }
     }
@@ -714,9 +714,9 @@ mod test {
     impl Vote {
         fn new(vote_type: u8) -> Self {
             Vote {
-                height:     random::<u64>(),
-                round:      random::<u64>(),
-                vote_type:  VoteType::try_from(vote_type).unwrap(),
+                height: random::<u64>(),
+                round: random::<u64>(),
+                vote_type: VoteType::try_from(vote_type).unwrap(),
                 block_hash: gen_hash(),
             }
         }
@@ -737,10 +737,10 @@ mod test {
     impl Proof {
         fn new() -> Self {
             Proof {
-                height:     random::<u64>(),
-                round:      random::<u64>(),
+                height: random::<u64>(),
+                round: random::<u64>(),
                 block_hash: gen_hash(),
-                signature:  gen_aggr_signature(),
+                signature: gen_aggr_signature(),
             }
         }
     }
@@ -748,10 +748,10 @@ mod test {
     impl AggregatedChoke {
         fn new() -> Self {
             AggregatedChoke {
-                height:    random::<u64>(),
-                round:     random::<u64>(),
+                height: random::<u64>(),
+                round: random::<u64>(),
                 signature: gen_signature(),
-                voters:    vec![gen_address(), gen_address()],
+                voters: vec![gen_address(), gen_address()],
             }
         }
     }
@@ -770,8 +770,8 @@ mod test {
         fn new(from: UpdateFrom) -> Self {
             SignedChoke {
                 signature: gen_signature(),
-                address:   gen_address(),
-                choke:     Choke::new(from),
+                address: gen_address(),
+                choke: Choke::new(from),
             }
         }
     }
@@ -780,19 +780,19 @@ mod test {
         fn new(time: Option<u64>, is_update_config: bool) -> Self {
             let config = if is_update_config {
                 Some(DurationConfig {
-                    propose_ratio:   random::<u64>(),
-                    prevote_ratio:   random::<u64>(),
+                    propose_ratio: random::<u64>(),
+                    prevote_ratio: random::<u64>(),
                     precommit_ratio: random::<u64>(),
-                    brake_ratio:     random::<u64>(),
+                    brake_ratio: random::<u64>(),
                 })
             } else {
                 None
             };
 
             Status {
-                height:         random::<u64>(),
-                interval:       time,
-                timer_config:   config,
+                height: random::<u64>(),
+                interval: time,
+                timer_config: config,
                 authority_list: vec![Node::new(gen_address())],
             }
         }
@@ -805,7 +805,7 @@ mod test {
                 Some(WalLock {
                     lock_round: polc.lock_round,
                     lock_votes: polc.lock_votes,
-                    content:    tmp,
+                    content: tmp,
                 })
             } else {
                 None
@@ -839,7 +839,7 @@ mod test {
 
     fn gen_aggr_signature() -> AggregatedSignature {
         AggregatedSignature {
-            signature:      gen_signature(),
+            signature: gen_signature(),
             address_bitmap: Bytes::from((0..8).map(|_| random::<u8>()).collect::<Vec<_>>()),
         }
     }

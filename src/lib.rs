@@ -5,7 +5,6 @@
 
 #![deny(missing_docs)]
 #![recursion_limit = "512"]
-#![feature(test)]
 #![allow(clippy::mutable_key_type)]
 
 /// A module that impl rlp encodable and decodable trait for types that need to save wal.
@@ -165,22 +164,22 @@ pub trait Crypto: Send {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct DurationConfig {
     /// The proportion of propose timeout to the height interval.
-    pub propose_ratio:   u64,
+    pub propose_ratio: u64,
     /// The proportion of prevote timeout to the height interval.
-    pub prevote_ratio:   u64,
+    pub prevote_ratio: u64,
     /// The proportion of precommit timeout to the height interval.
     pub precommit_ratio: u64,
     /// The proportion of retry choke message timeout to the height interval.
-    pub brake_ratio:     u64,
+    pub brake_ratio: u64,
 }
 
 impl Default for DurationConfig {
     fn default() -> Self {
         DurationConfig {
-            propose_ratio:   0u64,
-            prevote_ratio:   0u64,
+            propose_ratio: 0u64,
+            prevote_ratio: 0u64,
             precommit_ratio: 0u64,
-            brake_ratio:     0u64,
+            brake_ratio: 0u64,
         }
     }
 }

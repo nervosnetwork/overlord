@@ -21,10 +21,10 @@ pub const RECORD_TMP_FILE: &str = "./tests/integration_tests/test.json";
 
 #[derive(Clone)]
 pub struct MockWal {
-    test_id:         u64,
+    test_id: u64,
     test_id_updated: Arc<Mutex<u64>>,
-    address:         Bytes,
-    content:         Arc<Mutex<Option<Bytes>>>,
+    address: Bytes,
+    content: Arc<Mutex<Option<Bytes>>>,
 }
 
 impl MockWal {
@@ -34,10 +34,10 @@ impl MockWal {
         content: &Arc<Mutex<Option<Bytes>>>,
     ) -> MockWal {
         MockWal {
-            test_id:         *test_id_updated.lock().unwrap(),
-            address:         addr,
+            test_id: *test_id_updated.lock().unwrap(),
+            address: addr,
             test_id_updated: Arc::<Mutex<u64>>::clone(test_id_updated),
-            content:         Arc::<Mutex<Option<Bytes>>>::clone(content),
+            content: Arc::<Mutex<Option<Bytes>>>::clone(content),
         }
     }
 }
@@ -68,13 +68,13 @@ impl Wal for MockWal {
 }
 
 pub struct Record {
-    pub test_id:       Arc<Mutex<u64>>,
-    pub node_record:   Vec<Node>,
-    pub alive_record:  Mutex<Vec<Node>>,
-    pub wal_record:    HashMap<Bytes, MockWal>,
+    pub test_id: Arc<Mutex<u64>>,
+    pub node_record: Vec<Node>,
+    pub alive_record: Mutex<Vec<Node>>,
+    pub wal_record: HashMap<Bytes, MockWal>,
     pub commit_record: Arc<Mutex<LruCache<u64, Bytes>>>,
     pub height_record: Arc<Mutex<HashMap<Bytes, u64>>>,
-    pub interval:      u64,
+    pub interval: u64,
 }
 
 impl Record {
@@ -129,7 +129,7 @@ impl Record {
                         .lock()
                         .unwrap()
                         .as_ref()
-                        .map(|wal| rlp::decode(&wal).unwrap()),
+                        .map(|wal| rlp::decode(wal).unwrap()),
                 )
             })
             .collect();
@@ -221,14 +221,14 @@ impl Record {
 
 #[derive(Clone)]
 pub struct RecordInternal {
-    pub test_id:         u64,
+    pub test_id: u64,
     pub test_id_updated: Arc<Mutex<u64>>,
-    pub node_record:     Vec<Node>,
-    pub alive_record:    Vec<Node>,
-    pub wal_record:      HashMap<Bytes, MockWal>,
-    pub commit_record:   Arc<Mutex<LruCache<u64, Bytes>>>,
-    pub height_record:   Arc<Mutex<HashMap<Bytes, u64>>>,
-    pub interval:        u64,
+    pub node_record: Vec<Node>,
+    pub alive_record: Vec<Node>,
+    pub wal_record: HashMap<Bytes, MockWal>,
+    pub commit_record: Arc<Mutex<LruCache<u64, Bytes>>>,
+    pub height_record: Arc<Mutex<HashMap<Bytes, u64>>>,
+    pub interval: u64,
 }
 
 impl RecordInternal {
@@ -246,7 +246,7 @@ impl RecordInternal {
                         .lock()
                         .unwrap()
                         .as_ref()
-                        .map(|wal| rlp::decode(&wal).unwrap()),
+                        .map(|wal| rlp::decode(wal).unwrap()),
                 )
             })
             .collect();
@@ -297,13 +297,13 @@ struct TupleHeightRecord(#[serde(with = "overlord::serde_hex")] Bytes, u64);
 
 #[derive(Serialize, Deserialize)]
 struct RecordForWal {
-    test_id:       u64,
-    node_record:   Vec<Node>,
-    alive_record:  Vec<Node>,
-    wal_record:    Vec<TupleWalRecord>,
+    test_id: u64,
+    node_record: Vec<Node>,
+    alive_record: Vec<Node>,
+    wal_record: Vec<TupleWalRecord>,
     commit_record: Vec<TupleCommitRecord>,
     height_record: Vec<TupleHeightRecord>,
-    interval:      u64,
+    interval: u64,
 }
 
 impl RecordForWal {
@@ -315,14 +315,17 @@ impl RecordForWal {
             .wal_record
             .iter()
             .map(|TupleWalRecord(address, wal)| {
-                (address.clone(), MockWal {
-                    test_id:         self.test_id,
-                    test_id_updated: Arc::clone(&test_id),
-                    address:         address.clone(),
-                    content:         Arc::new(Mutex::new(
-                        wal.as_ref().map(|wal| Bytes::from(wal.rlp_bytes())),
-                    )),
-                })
+                (
+                    address.clone(),
+                    MockWal {
+                        test_id: self.test_id,
+                        test_id_updated: Arc::clone(&test_id),
+                        address: address.clone(),
+                        content: Arc::new(Mutex::new(
+                            wal.as_ref().map(|wal| Bytes::from(wal.rlp_bytes())),
+                        )),
+                    },
+                )
             })
             .collect();
         let mut commit_record: LruCache<u64, Bytes> = LruCache::new(10);
