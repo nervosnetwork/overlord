@@ -1,10 +1,11 @@
 # Overlord
 
-[![TravisCI](https://travis-ci.com/nervosnetwork/overlord.svg?branch=master)](https://travis-ci.com/nervosnetwork/overlord)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE.md)
-[![Minimum rustc version](https://img.shields.io/badge/rustc-1.45+-informational.svg)](https://github.com/nervosnetwork/overlord/blob/master/rust-toolchain)
-
 Overlord consensus protocol.
+
+[![Crates.io](https://img.shields.io/crates/v/overlord)](https://crates.io/crates/overlord)
+![example workflow](https://github.com/nervosnetwork/overlord/actions/workflows/ci.yml/badge.svg)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE.md)
+[![Minimum rustc version](https://img.shields.io/badge/rustc-1.56.1+-informational.svg)](https://github.com/nervosnetwork/overlord/blob/master/rust-toolchain)
 
 ## Intruduction
 
@@ -18,7 +19,7 @@ Detaild intruduction: [中文](./docs/architecture_zh.md)|[English](./docs/archi
 
 ```toml
 [dependencies]
-overlord = "0.2"
+overlord = "0.3"
 ```
 
 Overlord takes turns to become the leader by default. If you want to choose a leader randomly, add the `random_leader` feature to the dependency as below.
