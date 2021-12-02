@@ -1,0 +1,29 @@
+name: CI
+on:
+  push:
+    branches: 
+      - master
+  pull_request:
+
+jobs:
+  Build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v1
+      
+      # - name: Init submodules
+      #   uses: srt32/git-actions@v0.0.3
+      #   with:
+      #     args: git submodule update -r --init
+
+      # - name: Install moleculec
+      #   run: cargo install moleculec --locked --version "0.6.0"
+
+      - name: CI
+        run: make test
