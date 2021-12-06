@@ -7,7 +7,7 @@ use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::{Stream, StreamExt};
 use futures::SinkExt;
 use log::{debug, error, info};
-use tokio::time::{Sleep, sleep};
+use tokio::time::{sleep, Sleep};
 
 use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
 use crate::smr::{Event, SMRHandler};

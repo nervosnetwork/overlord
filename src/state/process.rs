@@ -11,6 +11,7 @@ use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::{select, StreamExt};
 use log::{debug, error, info, warn};
 use muta_apm::derive::tracing_span;
+use tokio::time::sleep;
 
 use crate::error::ConsensusError;
 use crate::smr::smr_types::{FromWhere, SMREvent, SMRTrigger, Step, TriggerSource, TriggerType};
@@ -808,7 +809,7 @@ where
         if self.next_proposer(status.height, INIT_ROUND)?
             && cost < Duration::from_millis(self.block_interval)
         {
-            tokio::time::sleep(Duration::from_millis(self.block_interval) - cost).await;
+            sleep(Duration::from_millis(self.block_interval) - cost).await;
         }
 
         self.goto_new_height(ctx, status).await?;
