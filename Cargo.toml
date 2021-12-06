@@ -1,10 +1,10 @@
 [package]
 name = "overlord"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Eason Gao <kaoimin@qq.com>"]
 edition = "2021"
 license = "MIT"
-include = ["Cargo.toml", "src/*", "README.md", "LICENSE", "rust-toolchain"]
+include = ["src/*", "README.md", "LICENSE", "rust-toolchain"]
 readme = "README.md"
 keywords = ["consensus", "bft", "distributed-systems"]
 categories = ["algorithms"]

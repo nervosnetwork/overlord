@@ -26,7 +26,7 @@ Overlord takes turns to become the leader by default. If you want to choose a le
 
 ```toml
 [dependencies]
-overlord = { version = "0.2", features = ["random_leader"] }
+overlord = { version = "0.3", features = ["random_leader"] }
 ```
 
 ### Example
