@@ -5,9 +5,9 @@ use std::{future::Future, pin::Pin};
 use derive_more::Display;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::{Stream, StreamExt};
-use futures::{FutureExt, SinkExt};
-use futures_timer::Delay;
+use futures::SinkExt;
 use log::{debug, error, info};
+use tokio::time::{sleep, Sleep};
 
 use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
 use crate::smr::{Event, SMRHandler};
@@ -216,7 +216,7 @@ impl Timer {
 #[derive(Debug, Display)]
 #[display(fmt = "{:?}", info)]
 struct TimeoutInfo {
-    timeout: Delay,
+    timeout: Sleep,
     info: SMREvent,
     sender: UnboundedSender<SMREvent>,
 }
@@ -224,11 +224,17 @@ struct TimeoutInfo {
 impl Future for TimeoutInfo {
     type Output = ();
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let msg = self.info.clone();
         let mut tx = self.sender.clone();
 
-        match self.timeout.poll_unpin(cx) {
+        // Safety: we just poll it and didn't move it.
+        let fut = unsafe {
+            let this = self.get_unchecked_mut();
+            Pin::new_unchecked(&mut this.timeout)
+        };
+
+        match fut.poll(cx) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(_) => {
                 tokio::spawn(async move {
@@ -243,7 +249,7 @@ impl Future for TimeoutInfo {
 impl TimeoutInfo {
     fn new(interval: Duration, event: SMREvent, tx: UnboundedSender<SMREvent>) -> Self {
         TimeoutInfo {
-            timeout: Delay::new(interval),
+            timeout: sleep(interval),
             info: event,
             sender: tx,
         }
