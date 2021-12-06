@@ -9,7 +9,6 @@ use bytes::Bytes;
 use creep::Context;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::{select, StreamExt};
-use futures_timer::Delay;
 use log::{debug, error, info, warn};
 use muta_apm::derive::tracing_span;
 
@@ -809,7 +808,7 @@ where
         if self.next_proposer(status.height, INIT_ROUND)?
             && cost < Duration::from_millis(self.block_interval)
         {
-            Delay::new(Duration::from_millis(self.block_interval) - cost).await;
+            tokio::time::sleep(Duration::from_millis(self.block_interval) - cost).await;
         }
 
         self.goto_new_height(ctx, status).await?;
