@@ -2,8 +2,7 @@ use std::{fmt, iter::FromIterator};
 
 use bytes::Bytes;
 use derive_more::Constructor;
-use serde::{de, ser::SerializeStruct, Deserializer, Serializer};
-use serde_derive::{Deserialize, Serialize};
+use serde::{de, ser::SerializeStruct, Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct TWrapper {

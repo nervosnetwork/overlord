@@ -5,7 +5,7 @@ Overlord consensus protocol.
 [![Crates.io](https://img.shields.io/crates/v/overlord)](https://crates.io/crates/overlord)
 ![example workflow](https://github.com/nervosnetwork/overlord/actions/workflows/ci.yml/badge.svg)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE.md)
-[![Minimum rustc version](https://img.shields.io/badge/rustc-1.56.1+-informational.svg)](https://github.com/nervosnetwork/overlord/blob/master/rust-toolchain)
+[![Minimum rustc version](https://img.shields.io/badge/rustc-1.58.1+-informational.svg)](https://github.com/nervosnetwork/overlord/blob/master/rust-toolchain)
 
 ## Intruduction
 
