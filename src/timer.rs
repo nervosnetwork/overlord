@@ -35,12 +35,9 @@ impl Stream for Timer {
     type Item = ConsensusError;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-        let mut event_ready = true;
-        let mut timer_ready = true;
-
         loop {
-            match self.event.poll_next_unpin(cx) {
-                Poll::Pending => event_ready = false,
+            let mut is_pending = match self.event.poll_next_unpin(cx) {
+                Poll::Pending => true,
 
                 Poll::Ready(event) => {
                     if event.is_none() {
@@ -56,11 +53,12 @@ impl Stream for Timer {
                     if let Err(e) = self.set_timer(event) {
                         return Poll::Ready(Some(e));
                     }
+                    false
                 }
             };
 
-            match self.notify.poll_next_unpin(cx) {
-                Poll::Pending => timer_ready = false,
+            is_pending &= match self.notify.poll_next_unpin(cx) {
+                Poll::Pending => true,
 
                 Poll::Ready(event) => {
                     if event.is_none() {
@@ -73,9 +71,10 @@ impl Stream for Timer {
                     if let Err(e) = self.trigger(event) {
                         return Poll::Ready(Some(e));
                     }
+                    false
                 }
-            }
-            if !event_ready && !timer_ready {
+            };
+            if is_pending {
                 return Poll::Pending;
             }
         }
