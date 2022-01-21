@@ -5,7 +5,7 @@ Overlord consensus protocol.
 [![Crates.io](https://img.shields.io/crates/v/overlord)](https://crates.io/crates/overlord)
 ![example workflow](https://github.com/nervosnetwork/overlord/actions/workflows/ci.yml/badge.svg)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE.md)
-[![Minimum rustc version](https://img.shields.io/badge/rustc-1.56.1+-informational.svg)](https://github.com/nervosnetwork/overlord/blob/master/rust-toolchain)
+[![Minimum rustc version](https://img.shields.io/badge/rustc-1.58.1+-informational.svg)](https://github.com/nervosnetwork/overlord/blob/master/rust-toolchain)
 
 ## Intruduction
 
@@ -42,4 +42,4 @@ It will check whether different speakers agree on the content of the speech.
 ### Projects using Overlord
 
 * [Muta](https://github.com/nervosnetwork/muta), a high-performance blockchain framework.
-* [Huobi-chain](https://github.com/HuobiGroup/huobi-chain), the next generation high performance public chain for financial infrastructure.
+* [Axon](https://github.com/nervosnetwork/axon), a layer2 of CKB that is compatible with Ethereum.
