@@ -4,6 +4,7 @@ use std::task::{Context, Poll};
 use derive_more::Display;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::Stream;
+use hummer::coding::hex_encode;
 use log::{debug, info};
 
 use crate::smr::smr_types::{
@@ -206,7 +207,7 @@ impl StateMachine {
 
         info!(
             "Overlord: SMR triggered by a proposal hash {:?}, from {:?}, height {}, round {}",
-            hex::encode(proposal_hash.clone()),
+            hex_encode(proposal_hash.clone()),
             source,
             self.height,
             self.round
@@ -286,7 +287,7 @@ impl StateMachine {
 
         info!(
             "Overlord: SMR triggered by prevote QC hash {:?} qc round {} from {:?}, height {}, round {}",
-            hex::encode(prevote_hash.clone()),
+            hex_encode(prevote_hash.clone()),
             prevote_round,
             source,
             self.height,
@@ -379,7 +380,7 @@ impl StateMachine {
 
         info!(
             "Overlord: SMR triggered by precommit QC hash {:?} qc round {} from {:?}, height {}, round {}",
-            hex::encode(precommit_hash.clone()),
+            hex_encode(precommit_hash.clone()),
             precommit_round,
             source,
             self.height,

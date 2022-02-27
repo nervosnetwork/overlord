@@ -11,6 +11,7 @@ use bytes::{Bytes, BytesMut};
 use creep::Context;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use hasher::{Hasher, HasherKeccak};
+use hummer::coding::hex_encode;
 use lazy_static::lazy_static;
 use rand::random;
 use serde::{Deserialize, Serialize};
@@ -191,7 +192,7 @@ impl Consensus<Speech> for Brain {
             println!(
                 "In height: {:?}, commit with : {:?}",
                 commit.height,
-                hex::encode(commit.content.inner.clone())
+                hex_encode(commit.content.inner.clone())
             );
             speeches.insert(commit.height, commit.content.inner);
         }

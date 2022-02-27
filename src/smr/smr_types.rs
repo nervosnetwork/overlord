@@ -1,4 +1,5 @@
 use derive_more::Display;
+use hummer::coding::hex_encode;
 use serde::{Deserialize, Serialize};
 
 use crate::types::{Hash, ViewChangeReason};
@@ -153,7 +154,7 @@ pub enum SMREvent {
         fmt = "Prevote event height {}, round {}, block hash {:?}, lock round {:?}",
         height,
         round,
-        "hex::encode(block_hash)",
+        "hex_encode(block_hash)",
         lock_round
     )]
     PrevoteVote {
@@ -170,7 +171,7 @@ pub enum SMREvent {
         fmt = "Precommit event height {}, round {}, block hash {:?}, lock round {:?}",
         height,
         round,
-        "hex::encode(block_hash)",
+        "hex_encode(block_hash)",
         lock_round
     )]
     PrecommitVote {
@@ -182,7 +183,7 @@ pub enum SMREvent {
     /// Commit event,
     /// for state: do commit,
     /// for timer: do nothing.
-    #[display(fmt = "Commit event hash {:?}", "hex::encode(_0)")]
+    #[display(fmt = "Commit event hash {:?}", "hex_encode(_0)")]
     Commit(Hash),
 
     /// Brake event,

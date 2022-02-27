@@ -1,6 +1,7 @@
 use std::fmt;
 
 use bytes::Bytes;
+use hummer::coding::{hex_decode, hex_encode};
 use serde::{de, Deserializer, Serializer};
 
 /// serialize Bytes with hex
@@ -8,7 +9,7 @@ pub fn serialize<S>(val: &Bytes, s: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
-    s.serialize_str(&hex::encode(val))
+    s.serialize_str(&hex_encode(val))
 }
 
 struct StringVisit;
@@ -33,7 +34,7 @@ impl<'de> de::Visitor<'de> for StringVisit {
     where
         E: de::Error,
     {
-        let value = hex::decode(v).map_err(de::Error::custom)?;
+        let value = hex_decode(v).map_err(de::Error::custom)?;
         Ok(Bytes::from(value))
     }
 }

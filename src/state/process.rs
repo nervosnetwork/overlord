@@ -9,6 +9,7 @@ use bytes::Bytes;
 use creep::Context;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::{select, StreamExt};
+use hummer::coding::hex_encode;
 use log::{debug, error, info, warn};
 use muta_apm::derive::tracing_span;
 use tokio::time::sleep;
@@ -340,7 +341,7 @@ where
             "Overlord: state receive a verify response true, height {}, round {}, hash {:?}",
             resp.height,
             resp.round,
-            hex::encode(block_hash.clone())
+            hex_encode(block_hash.clone())
         );
 
         self.is_full_transcation
@@ -542,7 +543,7 @@ where
             "Overlord: state broadcast a signed proposal height {}, round {}, hash {:?} and trigger SMR",
             self.height,
             self.round,
-            hex::encode(hash.clone())
+            hex_encode(hash.clone())
         );
 
         self.broadcast(
@@ -574,8 +575,8 @@ where
             'round': 'signed_proposal.proposal.round'
         }",
         logs = "{
-            'proposal_hash': 'hex::encode(signed_proposal.proposal.block_hash.clone())',
-            'proposer': 'hex::encode(signed_proposal.proposal.proposer.clone())'
+            'proposal_hash': 'hex_encode(signed_proposal.proposal.block_hash.clone())',
+            'proposer': 'hex_encode(signed_proposal.proposal.proposer.clone())'
         }"
     )]
     async fn handle_signed_proposal(
@@ -590,8 +591,8 @@ where
             "Overlord: state receive a signed proposal height {}, round {}, from {:?}, hash {:?}",
             proposal_height,
             proposal_round,
-            hex::encode(signed_proposal.proposal.proposer.clone()),
-            hex::encode(signed_proposal.proposal.block_hash.clone())
+            hex_encode(signed_proposal.proposal.proposer.clone()),
+            hex_encode(signed_proposal.proposal.block_hash.clone())
         );
 
         // Verify proposer before filter proposal.
@@ -636,7 +637,7 @@ where
             "Overlord: state trigger SMR proposal height {}, round {}, hash {:?}",
             self.height,
             self.round,
-            hex::encode(hash.clone())
+            hex_encode(hash.clone())
         );
 
         self.state_machine.trigger(SMRTrigger {
@@ -665,7 +666,7 @@ where
             vote_type.clone(),
             self.height,
             self.round,
-            hex::encode(hash.clone())
+            hex_encode(hash.clone())
         );
 
         let signed_vote = self.sign_vote(Vote {
@@ -690,7 +691,7 @@ where
                 "Overlord: state transmit a signed vote, height {}, round {}, hash {:?}",
                 self.height,
                 self.round,
-                hex::encode(hash)
+                hex_encode(hash)
             );
 
             self.transmit(Context::new(), OverlordMsg::SignedVote(signed_vote))
@@ -744,7 +745,7 @@ where
             "Overlord: state receive commit event height {}, round {}, hash {:?}",
             self.height,
             self.round,
-            hex::encode(hash.clone())
+            hex_encode(hash.clone())
         );
 
         debug!("Overlord: state get origin block");
@@ -831,8 +832,8 @@ where
             'vote_type': 'signed_vote.vote.vote_type'
         }",
         logs = "{
-            'vote_hash': 'hex::encode(signed_vote.vote.block_hash.clone())',
-            'voter': 'hex::encode(signed_vote.voter.clone())'
+            'vote_hash': 'hex_encode(signed_vote.vote.block_hash.clone())',
+            'voter': 'hex_encode(signed_vote.voter.clone())'
         }"
     )]
     async fn handle_signed_vote(
@@ -853,8 +854,8 @@ where
             vote_type,
             height,
             round,
-            hex::encode(signed_vote.voter.clone()),
-            hex::encode(signed_vote.vote.block_hash.clone())
+            hex_encode(signed_vote.voter.clone()),
+            hex_encode(signed_vote.vote.block_hash.clone())
         );
 
         if self.filter_message(height, round) {
@@ -914,7 +915,7 @@ where
             vote_type,
             qc.height,
             qc.round,
-            hex::encode(block_hash.clone())
+            hex_encode(block_hash.clone())
         );
 
         self.broadcast(ctx, OverlordMsg::AggregatedVote(qc.clone()))
@@ -929,7 +930,7 @@ where
             vote_type,
             self.height,
             self.round,
-            hex::encode(block_hash.clone())
+            hex_encode(block_hash.clone())
         );
 
         self.state_machine.trigger(SMRTrigger {
@@ -966,8 +967,8 @@ where
             'qc_type': 'aggregated_vote.vote_type'
         }",
         logs = "{
-            'qc_hash': 'hex::encode(aggregated_vote.block_hash.clone())',
-            'leader': 'hex::encode(aggregated_vote.leader.clone())'
+            'qc_hash': 'hex_encode(aggregated_vote.block_hash.clone())',
+            'leader': 'hex_encode(aggregated_vote.leader.clone())'
         }"
     )]
     async fn handle_aggregated_vote(
@@ -988,8 +989,8 @@ where
             qc_type,
             vote_height,
             vote_round,
-            hex::encode(aggregated_vote.leader.clone()),
-            hex::encode(aggregated_vote.block_hash.clone())
+            hex_encode(aggregated_vote.leader.clone()),
+            hex_encode(aggregated_vote.block_hash.clone())
         );
 
         // If the vote height is lower than the current height, ignore it directly. If the vote
@@ -1043,7 +1044,7 @@ where
             qc_type,
             self.height,
             self.round,
-            hex::encode(qc_hash.clone())
+            hex_encode(qc_hash.clone())
         );
 
         self.state_machine.trigger(SMRTrigger {
@@ -1080,7 +1081,7 @@ where
                     self.height,
                     self.round,
                     qc.vote_type,
-                    hex::encode(block_hash.clone())
+                    hex_encode(block_hash.clone())
                 );
 
                 self.state_machine.trigger(SMRTrigger {
@@ -1103,7 +1104,7 @@ where
                 vote_type,
                 qc.height,
                 qc.round,
-                hex::encode(block_hash.clone())
+                hex_encode(block_hash.clone())
             );
 
             self.broadcast(Context::new(), OverlordMsg::AggregatedVote(qc))
@@ -1118,7 +1119,7 @@ where
                 vote_type,
                 self.height,
                 self.round,
-                hex::encode(block_hash.clone())
+                hex_encode(block_hash.clone())
             );
 
             self.state_machine.trigger(SMRTrigger {
@@ -1166,7 +1167,7 @@ where
             'height': 'signed_choke.choke.height',
             'round': 'signed_choke.choke.round'
         }",
-        logs = "{'choke_from': 'hex::encode(signed_choke.address.clone())'}"
+        logs = "{'choke_from': 'hex_encode(signed_choke.address.clone())'}"
     )]
     async fn handle_signed_choke(
         &mut self,
@@ -1190,7 +1191,7 @@ where
             "Overlord: state receive a choke of height {}, round {}, from {:?}",
             choke_height,
             choke_round,
-            hex::encode(signed_choke.address.clone())
+            hex_encode(signed_choke.address.clone())
         );
 
         if choke_round > self.round {
@@ -1356,7 +1357,7 @@ where
 
         info!(
             "Overlord: {:?} become leader, height {}, round {}",
-            hex::encode(proposer.clone()),
+            hex_encode(proposer.clone()),
             self.height,
             self.round
         );
@@ -1404,7 +1405,7 @@ where
     ) -> ConsensusResult<Signature> {
         let pretty_voter = voters
             .iter()
-            .map(|addr| hex::encode(addr.clone()))
+            .map(|addr| hex_encode(addr.clone()))
             .collect::<Vec<_>>();
 
         info!(
