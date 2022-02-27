@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use bytes::{Bytes, BytesMut};
 use hasher::{Hasher, HasherKeccak};
+use hummer::coding::hex_encode;
 use lazy_static::lazy_static;
 use rand::{random, seq::SliceRandom, thread_rng};
 
@@ -61,14 +62,11 @@ pub fn get_max_alive_height(
 }
 
 pub fn to_hex_strings(nodes: &[Node]) -> Vec<String> {
-    nodes
-        .iter()
-        .map(|node| hex::encode(&node.address))
-        .collect()
+    nodes.iter().map(|node| hex_encode(&node.address)).collect()
 }
 
 pub fn to_hex(address: &Bytes) -> String {
-    hex::encode(address)
+    hex_encode(address)
 }
 
 pub fn get_index_array(nodes: &[Node], alives: &[Node]) -> Vec<usize> {

@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use creep::Context;
+use hummer::coding::hex_encode;
 
 use crate::types::{
     Address, AggregatedChoke, AggregatedVote, Hash, SignedChoke, SignedProposal, SignedVote,
@@ -528,7 +529,7 @@ impl ChokeCollector {
 
     pub fn print_round_choke_log(&self, round: u64) {
         if let Some(map) = self.chokes.get(&round) {
-            let voters = map.keys().map(hex::encode).collect::<Vec<_>>();
+            let voters = map.keys().map(hex_encode).collect::<Vec<_>>();
             log::info!(
                 "Overlord: {} chokes in round {}, voters {:?}",
                 map.len(),
