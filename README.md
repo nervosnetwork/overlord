@@ -7,11 +7,11 @@ Overlord consensus protocol.
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE.md)
 [![Minimum rustc version](https://img.shields.io/badge/rustc-1.58.1+-informational.svg)](https://github.com/nervosnetwork/overlord/blob/master/rust-toolchain)
 
-## Intruduction
+## Introduction
 
 Overlord is a new consensus protocol that decouple the consensus process from the execution process.
 
-Detaild intruduction: [中文](./docs/architecture_zh.md)|[English](./docs/architecture_en.md)
+Detailed introduction: [中文](./docs/architecture_zh.md)|[English](./docs/architecture_en.md)
 
 ## Usage
 
@@ -26,7 +26,7 @@ Overlord takes turns to become the leader by default. If you want to choose a le
 
 ```toml
 [dependencies]
-overlord = { version = "0.3", features = ["random_leader"] }
+overlord = { version = "0.4", features = ["random_leader"] }
 ```
 
 ### Example
