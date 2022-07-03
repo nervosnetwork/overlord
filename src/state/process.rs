@@ -47,7 +47,7 @@ pub struct State<T: Codec, F: Consensus<T>, C: Crypto, W: Wal> {
     chokes: ChokeCollector,
     authority: AuthorityManage,
     hash_with_block: HashMap<Hash, T>,
-    is_full_transcation: HashMap<Hash, bool>,
+    is_full_transaction: HashMap<Hash, bool>,
     is_leader: bool,
     leader_address: Address,
     update_from_where: UpdateFrom,
@@ -97,7 +97,7 @@ where
             chokes: ChokeCollector::new(),
             authority: auth,
             hash_with_block: HashMap::new(),
-            is_full_transcation: HashMap::new(),
+            is_full_transaction: HashMap::new(),
             is_leader: false,
             leader_address: Address::default(),
             update_from_where: UpdateFrom::PrecommitQC(mock_init_qc()),
@@ -344,7 +344,7 @@ where
             hex_encode(block_hash.clone())
         );
 
-        self.is_full_transcation
+        self.is_full_transaction
             .insert(block_hash.clone(), resp.is_pass);
 
         if let Some(qc) =
@@ -380,7 +380,7 @@ where
     }
 
     /// On receiving a rich status will call this method. This status can be either the return value
-    /// of the `commit()` interface, or lastest status after the synchronization is completed send
+    /// of the `commit()` interface, or latest status after the synchronization is completed send
     /// by the overlord handler.
     ///
     /// If the difference between the status height and current's over one, get the last authority
@@ -490,13 +490,13 @@ where
         //
         // 1. Proposal without a lock
         // If the lock round field of `NewRoundInfo` event from SMR is none, state should get a new
-        // block with its hash. These things consititute a Proposal. Then sign it and broadcast it
+        // block with its hash. These things constitute a Proposal. Then sign it and broadcast it
         // to other nodes.
         //
         // 2. Proposal with a lock
         // The case is much more complex. State should get the whole block and prevote quorum
         // certificate form proposal collector and vote collector. Some necessary checks should be
-        // done by doing this. These things consititute a Proposal. Then sign it and broadcast it to
+        // done by doing this. These things constitute a Proposal. Then sign it and broadcast it to
         // other nodes.
         self.is_leader = true;
         let ctx = Context::new();
@@ -822,7 +822,7 @@ where
     /// to the `current height - 1` and the round is higher than the current round. The reason is
     /// that the effective leader must in the lower height, and the task of handling signed votes
     /// will be done by the leader. For the higher votes, check the signature and save them in
-    /// the vote collector. Whenevet the current vote is received, a statistic is made to check
+    /// the vote collector. Whenever the current vote is received, a statistic is made to check
     /// if the sum of the voting weights corresponding to the hash exceeds the threshold.
     #[tracing_span(
         kind = "overlord",
@@ -1262,7 +1262,7 @@ where
 
         let set = voters.iter().cloned().collect::<HashSet<_>>();
         let mut bit_map = BitVec::from_elem(self.authority.len(), false);
-        for (index, addr) in self.authority.get_addres_ref().iter().enumerate() {
+        for (index, addr) in self.authority.get_address_ref().iter().enumerate() {
             if set.contains(addr) {
                 bit_map.set(index, true);
             }
@@ -1506,7 +1506,7 @@ where
         // Check block failed case.
         let proposal = proposal.unwrap().0;
         if self
-            .is_full_transcation
+            .is_full_transaction
             .get(&proposal.proposal.block_hash)
             .is_none()
         {
@@ -1744,10 +1744,10 @@ where
 
     /// When block hash is empty, return true directly.
     fn try_get_full_txs(&self, hash: &Hash) -> bool {
-        debug!("Overlord: state check if get full transcations");
+        debug!("Overlord: state check if get full transactions");
         if hash.is_empty() {
             return true;
-        } else if let Some(res) = self.is_full_transcation.get(hash) {
+        } else if let Some(res) = self.is_full_transaction.get(hash) {
             return *res;
         }
         false

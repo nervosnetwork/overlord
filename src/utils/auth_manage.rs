@@ -136,7 +136,7 @@ impl AuthorityManage {
         self.address.len()
     }
 
-    pub fn get_addres_ref(&self) -> &Vec<Address> {
+    pub fn get_address_ref(&self) -> &Vec<Address> {
         &self.address
     }
 }

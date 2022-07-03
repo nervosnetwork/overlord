@@ -29,7 +29,7 @@ rand_core = "0.6"
 rand_pcg = "0.3"
 rlp = "0.5"
 serde = { version = "1.0", features = ["derive"] }
-tokio = { version = "1.17", features = ["macros", "rt-multi-thread", "time"] }
+tokio = { version = "1.19", features = ["macros", "rt-multi-thread", "time"] }
 
 [dev-dependencies]
 bincode = "1.3"
