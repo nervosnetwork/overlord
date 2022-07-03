@@ -391,7 +391,8 @@ where
         if status.height <= self.height {
             log::warn!(
                 "Overlord: state receive an outdated status, height {}, self height {}",
-                status.height, self.height
+                status.height,
+                self.height
             );
             return Ok(());
         }
@@ -727,7 +728,8 @@ where
 
         log::debug!(
             "Overlord: state broadcast a signed brake in height {}, round {}",
-            self.height, self.round
+            self.height,
+            self.round
         );
 
         self.chokes.insert(self.round, signed_choke.clone());
@@ -904,7 +906,8 @@ where
 
         log::debug!(
             "Overlord: state set QC height {}, round {}",
-            self.height, self.round
+            self.height,
+            self.round
         );
 
         self.votes.set_qc(qc.clone());
@@ -998,7 +1001,8 @@ where
             Ordering::Less => {
                 log::debug!(
                     "Overlord: state receive an outdated QC, height {}, round {}",
-                    vote_height, vote_round,
+                    vote_height,
+                    vote_round,
                 );
                 return Ok(());
             }
@@ -1007,7 +1011,8 @@ where
                 if self.height + FUTURE_HEIGHT_GAP > vote_height && vote_round < FUTURE_ROUND_GAP {
                     log::debug!(
                         "Overlord: state receive a future QC, height {}, round {}",
-                        vote_height, vote_round,
+                        vote_height,
+                        vote_round,
                     );
                     self.votes.set_qc(aggregated_vote);
                 } else {
@@ -1145,7 +1150,9 @@ where
 
         log::debug!(
             "Overlord: state round {}, {:?} vote pool length {}",
-            self.round, vote_type, len
+            self.round,
+            vote_type,
+            len
         );
 
         for (hash, set) in vote_map.iter() {
@@ -1347,7 +1354,8 @@ where
         if proposer == self.address {
             log::info!(
                 "Overlord: state self become leader, height {}, round {}",
-                self.height, self.round
+                self.height,
+                self.round
             );
             self.is_leader = true;
             self.leader_address = self.address.clone();
@@ -1409,7 +1417,9 @@ where
 
         log::debug!(
             "Overlord: state aggregate signatures height {}, round {}, voters {:?}",
-            self.height, self.round, pretty_voter
+            self.height,
+            self.round,
+            pretty_voter
         );
 
         let signature = self
@@ -1439,7 +1449,8 @@ where
     async fn transmit(&self, ctx: Context, msg: OverlordMsg<T>) {
         log::debug!(
             "Overlord: state transmit a message to leader height {}, round {}",
-            self.height, self.round
+            self.height,
+            self.round
         );
 
         let _ = self
@@ -1457,7 +1468,8 @@ where
     async fn broadcast(&self, ctx: Context, msg: OverlordMsg<T>) {
         log::debug!(
             "Overlord: state broadcast a message to others height {}, round {}",
-            self.height, self.round
+            self.height,
+            self.round
         );
 
         let _ = self
@@ -1806,7 +1818,8 @@ where
         if (height == self.height && round != self.round) || height > self.height {
             log::debug!(
                 "Overlord: state receive a future signed proposal, height {}, round {}",
-                height, round,
+                height,
+                round,
             );
             self.proposals
                 .insert(ctx, height, round, signed_proposal.clone())?;
@@ -1819,13 +1832,15 @@ where
         if height < self.height || (height == self.height && round < self.round) {
             log::debug!(
                 "Overlord: state receive an outdated message height {}, self height {}",
-                height, self.height
+                height,
+                self.height
             );
             return true;
         } else if self.height + FUTURE_HEIGHT_GAP < height {
             log::debug!(
                 "Overlord: state receive a future message height {}, self height {}",
-                height, self.height
+                height,
+                self.height
             );
             return true;
         } else if (height == self.height && self.round + FUTURE_ROUND_GAP < round)

@@ -107,7 +107,8 @@ impl StateMachine {
         } else {
             log::debug!(
                 "Overlord: SMR brake timeout height {}, round {}",
-                self.height, round
+                self.height,
+                round
             );
             self.throw_event(SMREvent::Brake {
                 height,
@@ -398,7 +399,8 @@ impl StateMachine {
 
             log::debug!(
                 "Overlord: SMR goto brake step, height {}, round {}",
-                self.height, self.round
+                self.height,
+                self.round
             );
             self.goto_step(Step::Brake);
 
