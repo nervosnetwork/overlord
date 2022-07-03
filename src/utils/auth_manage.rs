@@ -36,7 +36,7 @@ impl AuthorityManage {
     }
 
     /// Update the height authority manage by a new authority list.
-    pub fn update(&mut self, authority_list: &mut Vec<Node>) {
+    pub fn update(&mut self, authority_list: &mut [Node]) {
         self.flush();
         authority_list.sort();
 
@@ -136,7 +136,7 @@ impl AuthorityManage {
         self.address.len()
     }
 
-    pub fn get_addres_ref(&self) -> &Vec<Address> {
+    pub fn get_address_ref(&self) -> &Vec<Address> {
         &self.address
     }
 }
@@ -144,7 +144,7 @@ impl AuthorityManage {
 /// Give the validators list and bitmap, returns the activated validators, the authority list MUST
 /// be sorted
 pub fn extract_voters(
-    authority_list: &mut Vec<Node>,
+    authority_list: &mut [Node],
     address_bitmap: &bytes::Bytes,
 ) -> ConsensusResult<Vec<Address>> {
     authority_list.sort();
