@@ -6,7 +6,6 @@ use derive_more::Display;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::{Stream, StreamExt};
 use futures::SinkExt;
-use log::{debug, error, info};
 use tokio::time::{sleep, Sleep};
 
 use crate::smr::smr_types::{SMREvent, SMRTrigger, TriggerSource, TriggerType};
@@ -108,7 +107,7 @@ impl Timer {
     pub fn run(mut self) {
         tokio::spawn(async move {
             while let Some(err) = self.next().await {
-                error!("Overlord: timer error {:?}", err);
+                log::error!("Overlord: timer error {:?}", err);
             }
         });
     }
@@ -149,7 +148,7 @@ impl Timer {
             interval *= 2u32.pow(coef);
         }
 
-        info!("Overlord: timer set {} timer", event);
+        log::debug!("Overlord: timer set {} timer", event);
         let smr_timer = TimeoutInfo::new(interval, event, self.sender.clone());
 
         tokio::spawn(async move {
@@ -196,7 +195,7 @@ impl Timer {
             _ => return Err(ConsensusError::TimerErr("No commit timer".to_string())),
         };
 
-        debug!("Overlord: timer {:?} time out", event);
+        log::debug!("Overlord: timer {:?} time out", event);
 
         self.state_machine.trigger(SMRTrigger {
             source: TriggerSource::Timer,

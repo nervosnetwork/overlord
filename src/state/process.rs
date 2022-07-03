@@ -10,7 +10,6 @@ use creep::Context;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::{select, StreamExt};
 use hummer::coding::hex_encode;
-use log::{debug, error, info, warn};
 use muta_apm::derive::tracing_span;
 use tokio::time::sleep;
 
@@ -123,9 +122,9 @@ where
         mut verify_resp: UnboundedReceiver<VerifyResp>,
         mut verify_sig: UnboundedReceiver<(Context, OverlordMsg<T>)>,
     ) {
-        debug!("Overlord: state start running");
+        log::debug!("Overlord: state start running");
         if let Err(e) = self.start_with_wal().await {
-            error!("Overlord: start with wal error {:?}", e);
+            log::error!("Overlord: start with wal error {:?}", e);
         }
 
         loop {
@@ -165,7 +164,7 @@ where
                     }
 
                     if let Err(e) = self.handle_event(evt).await{
-                        error!("Overlord: state {:?} error", e);
+                        log::error!("Overlord: state {:?} error", e);
                     }
                 }
 
@@ -175,7 +174,7 @@ where
                     }
 
                     if let Err(e) = self.handle_resp(res) {
-                        error!("Overlord: state {:?} error", e);
+                        log::error!("Overlord: state {:?} error", e);
                     }
                 }
 
@@ -183,7 +182,7 @@ where
                     let (ctx, msg) = verified_msg.expect("Overlord message handler dropped");
                     if let Err(e) = self.handle_msg(ctx.clone(), msg).await {
                         self.report_error(ctx, e.clone());
-                        error!("Overlord: state {:?} error", e);
+                        log::error!("Overlord: state {:?} error", e);
                     }
                 }
             }
@@ -204,35 +203,35 @@ where
         match raw {
             OverlordMsg::SignedProposal(sp) => {
                 if let Err(e) = self.handle_signed_proposal(ctx.clone(), sp).await {
-                    error!("Overlord: state handle signed proposal error {:?}", e);
+                    log::error!("Overlord: state handle signed proposal error {:?}", e);
                 }
                 Ok(())
             }
 
             OverlordMsg::AggregatedVote(av) => {
                 if let Err(e) = self.handle_aggregated_vote(ctx.clone(), av).await {
-                    error!("Overlord: state handle aggregated vote error {:?}", e);
+                    log::error!("Overlord: state handle aggregated vote error {:?}", e);
                 }
                 Ok(())
             }
 
             OverlordMsg::SignedVote(sv) => {
                 if let Err(e) = self.handle_signed_vote(ctx.clone(), sv).await {
-                    error!("Overlord: state handle signed vote error {:?}", e);
+                    log::error!("Overlord: state handle signed vote error {:?}", e);
                 }
                 Ok(())
             }
 
             OverlordMsg::SignedChoke(sc) => {
                 if let Err(e) = self.handle_signed_choke(ctx.clone(), sc).await {
-                    error!("Overlord: state handle signed choke error {:?}", e);
+                    log::error!("Overlord: state handle signed choke error {:?}", e);
                 }
                 Ok(())
             }
 
             OverlordMsg::RichStatus(rs) => {
                 if let Err(e) = self.goto_new_height(ctx.clone(), rs).await {
-                    error!("Overlord: state handle rich status error {:?}", e);
+                    log::error!("Overlord: state handle rich status error {:?}", e);
                 }
                 Ok(())
             }
@@ -271,7 +270,7 @@ where
                     .handle_new_round(round, lock_round, lock_proposal, from_where)
                     .await
                 {
-                    error!("Overlord: state handle new round error {:?}", e);
+                    log::error!("Overlord: state handle new round error {:?}", e);
                 }
                 Ok(())
             }
@@ -285,7 +284,7 @@ where
                     .handle_vote_event(block_hash, VoteType::Prevote, lock_round)
                     .await
                 {
-                    error!("Overlord: state handle prevote vote error {:?}", e);
+                    log::error!("Overlord: state handle prevote vote error {:?}", e);
                 }
                 Ok(())
             }
@@ -299,14 +298,14 @@ where
                     .handle_vote_event(block_hash, VoteType::Precommit, lock_round)
                     .await
                 {
-                    error!("Overlord: state handle precommit vote error {:?}", e);
+                    log::error!("Overlord: state handle precommit vote error {:?}", e);
                 }
                 Ok(())
             }
 
             SMREvent::Commit(hash) => {
                 if let Err(e) = self.handle_commit(hash).await {
-                    error!("Overlord: state handle commit error {:?}", e);
+                    log::error!("Overlord: state handle commit error {:?}", e);
                 }
                 Ok(())
             }
@@ -321,7 +320,7 @@ where
                 }
 
                 if let Err(e) = self.handle_brake(round, lock_round).await {
-                    error!("Overlord: state handle brake error {:?}", e);
+                    log::error!("Overlord: state handle brake error {:?}", e);
                 }
                 Ok(())
             }
@@ -337,7 +336,7 @@ where
         }
 
         let block_hash = resp.block_hash.clone();
-        info!(
+        log::debug!(
             "Overlord: state receive a verify response true, height {}, round {}, hash {:?}",
             resp.height,
             resp.round,
@@ -390,7 +389,7 @@ where
     /// Finally, trigger SMR to goto new height.
     async fn goto_new_height(&mut self, _ctx: Context, status: Status) -> ConsensusResult<()> {
         if status.height <= self.height {
-            warn!(
+            log::warn!(
                 "Overlord: state receive an outdated status, height {}, self height {}",
                 status.height, self.height
             );
@@ -404,14 +403,14 @@ where
         // Check the consensus power.
         self.consensus_power = status.is_consensus_node(&self.address);
         if !self.consensus_power {
-            info!(
+            log::info!(
                 "Overlord: self does not have consensus power height {}",
                 new_height
             );
             return Ok(());
         }
 
-        info!("Overlord: state goto new height {}", self.height);
+        log::info!("Overlord: state goto new height {}", self.height);
 
         self.save_wal(Step::Propose, None).await?;
 
@@ -456,7 +455,7 @@ where
         lock_proposal: Option<Hash>,
         from_where: FromWhere,
     ) -> ConsensusResult<()> {
-        info!("Overlord: state goto new round {}", new_round);
+        log::info!("Overlord: state goto new round {}", new_round);
 
         if new_round != INIT_ROUND {
             let last_round = self.round;
@@ -539,7 +538,7 @@ where
             proposer: self.address.clone(),
         };
 
-        info!(
+        log::debug!(
             "Overlord: state broadcast a signed proposal height {}, round {}, hash {:?} and trigger SMR",
             self.height,
             self.round,
@@ -587,7 +586,7 @@ where
         let proposal_height = signed_proposal.proposal.height;
         let proposal_round = signed_proposal.proposal.round;
 
-        info!(
+        log::debug!(
             "Overlord: state receive a signed proposal height {}, round {}, from {:?}, hash {:?}",
             proposal_height,
             proposal_round,
@@ -617,7 +616,7 @@ where
         // If the signed proposal is with a lock, check the lock round and the QC then trigger it to
         // SMR. Otherwise, touch off SMR directly.
         let lock_round = if let Some(polc) = proposal.lock.clone() {
-            debug!("Overlord: state receive a signed proposal with a lock");
+            log::debug!("Overlord: state receive a signed proposal with a lock");
             Some(polc.lock_round)
         } else {
             None
@@ -633,7 +632,7 @@ where
             signed_proposal.clone(),
         )?;
 
-        info!(
+        log::debug!(
             "Overlord: state trigger SMR proposal height {}, round {}, hash {:?}",
             self.height,
             self.round,
@@ -650,7 +649,7 @@ where
             wal_info: None,
         })?;
 
-        debug!("Overlord: state check the whole block");
+        log::debug!("Overlord: state check the whole block");
         self.check_block(ctx, hash, block).await;
         Ok(())
     }
@@ -661,7 +660,7 @@ where
         vote_type: VoteType,
         lock_round: Option<u64>,
     ) -> ConsensusResult<()> {
-        info!(
+        log::debug!(
             "Overlord: state receive {:?} vote event height {}, round {}, hash {:?}",
             vote_type.clone(),
             self.height,
@@ -687,7 +686,7 @@ where
                 self.address.clone(),
             );
         } else {
-            info!(
+            log::debug!(
                 "Overlord: state transmit a signed vote, height {}, round {}, hash {:?}",
                 self.height,
                 self.round,
@@ -726,7 +725,7 @@ where
             address: self.address.clone(),
         };
 
-        info!(
+        log::debug!(
             "Overlord: state broadcast a signed brake in height {}, round {}",
             self.height, self.round
         );
@@ -741,14 +740,14 @@ where
     }
 
     async fn handle_commit(&mut self, hash: Hash) -> ConsensusResult<()> {
-        info!(
+        log::debug!(
             "Overlord: state receive commit event height {}, round {}, hash {:?}",
             self.height,
             self.round,
             hex_encode(hash.clone())
         );
 
-        debug!("Overlord: state get origin block");
+        log::debug!("Overlord: state get origin block");
         let height = self.height;
         let content = if let Some(tmp) = self.hash_with_block.get(&hash) {
             tmp.to_owned()
@@ -775,7 +774,7 @@ where
         });
         self.save_wal(Step::Commit, polc).await?;
 
-        debug!("Overlord: state generate proof");
+        log::debug!("Overlord: state generate proof");
 
         let proof = Proof {
             height,
@@ -800,7 +799,7 @@ where
         self.authority.update(&mut auth_list);
         let cost = Instant::now() - self.height_start;
 
-        info!(
+        log::info!(
             "Overlord: achieve consensus in height {}, costs {} round {:?} time",
             self.height,
             self.round + 1,
@@ -849,7 +848,7 @@ where
             VoteType::Precommit
         };
 
-        info!(
+        log::debug!(
             "Overlord: state receive a signed {:?} vote height {}, round {}, from {:?}, hash {:?}",
             vote_type,
             height,
@@ -894,7 +893,7 @@ where
 
         let block_hash = self.counting_vote(vote_type.clone())?;
         if block_hash.is_none() {
-            debug!("Overlord: state counting of vote and no one above threshold");
+            log::debug!("Overlord: state counting of vote and no one above threshold");
             return Ok(());
         }
 
@@ -903,14 +902,14 @@ where
         let block_hash = block_hash.unwrap();
         let qc = self.generate_qc(block_hash.clone(), vote_type.clone())?;
 
-        debug!(
+        log::debug!(
             "Overlord: state set QC height {}, round {}",
             self.height, self.round
         );
 
         self.votes.set_qc(qc.clone());
 
-        info!(
+        log::debug!(
             "Overlord: state broadcast a {:?} QC, height {}, round {}, hash {:?}",
             vote_type,
             qc.height,
@@ -925,7 +924,7 @@ where
             return Ok(());
         }
 
-        info!(
+        log::debug!(
             "Overlord: state trigger SMR {:?} QC height {}, round {}, hash {:?}",
             vote_type,
             self.height,
@@ -984,7 +983,7 @@ where
             VoteType::Precommit
         };
 
-        info!(
+        log::debug!(
             "Overlord: state receive an {:?} QC height {}, round {}, from {:?}, hash {:?}",
             qc_type,
             vote_height,
@@ -997,7 +996,7 @@ where
         // height is higher than current height, save it and return Ok;
         match vote_height.cmp(&self.height) {
             Ordering::Less => {
-                debug!(
+                log::debug!(
                     "Overlord: state receive an outdated QC, height {}, round {}",
                     vote_height, vote_round,
                 );
@@ -1006,13 +1005,13 @@ where
 
             Ordering::Greater => {
                 if self.height + FUTURE_HEIGHT_GAP > vote_height && vote_round < FUTURE_ROUND_GAP {
-                    debug!(
+                    log::debug!(
                         "Overlord: state receive a future QC, height {}, round {}",
                         vote_height, vote_round,
                     );
                     self.votes.set_qc(aggregated_vote);
                 } else {
-                    warn!("Overlord: state receive a much higher aggregated vote");
+                    log::warn!("Overlord: state receive a much higher aggregated vote");
                 }
                 return Ok(());
             }
@@ -1022,7 +1021,7 @@ where
 
         // State do not handle outdated prevote QC.
         if qc_type == VoteType::Prevote && vote_round < self.round {
-            debug!("Overlord: state receive a outdated prevote qc.");
+            log::debug!("Overlord: state receive a outdated prevote qc.");
             return Ok(());
         } else if qc_type == VoteType::Precommit
             && aggregated_vote.block_hash.is_empty()
@@ -1039,7 +1038,7 @@ where
             return Ok(());
         }
 
-        info!(
+        log::debug!(
             "Overlord: state trigger SMR {:?} QC height {}, round {}, hash {:?}",
             qc_type,
             self.height,
@@ -1076,7 +1075,7 @@ where
                     return Ok(());
                 }
 
-                info!(
+                log::debug!(
                     "Overlord: state trigger SMR height {}, round {}, type {:?}, hash {:?}",
                     self.height,
                     self.round,
@@ -1099,7 +1098,7 @@ where
             let qc = self.generate_qc(block_hash.clone(), vote_type.clone())?;
             self.votes.set_qc(qc.clone());
 
-            info!(
+            log::debug!(
                 "Overlord: state broadcast a {:?} QC, height {}, round {}, hash {:?}",
                 vote_type,
                 qc.height,
@@ -1114,7 +1113,7 @@ where
                 return Ok(());
             }
 
-            info!(
+            log::debug!(
                 "Overlord: state trigger SMR {:?} QC height {}, round {}, hash {:?}",
                 vote_type,
                 self.height,
@@ -1144,7 +1143,7 @@ where
             .get_vote_map(self.height, self.round, vote_type.clone())?;
         let threshold = self.authority.get_vote_weight_sum() * 2;
 
-        info!(
+        log::debug!(
             "Overlord: state round {}, {:?} vote pool length {}",
             self.round, vote_type, len
         );
@@ -1187,7 +1186,7 @@ where
             return Ok(());
         }
 
-        info!(
+        log::debug!(
             "Overlord: state receive a choke of height {}, round {}, from {:?}",
             choke_height,
             choke_round,
@@ -1250,7 +1249,7 @@ where
             .collect::<Vec<_>>();
         votes.sort();
 
-        debug!("Overlord: state build aggregated signature");
+        log::debug!("Overlord: state build aggregated signature");
 
         let len = votes.len();
         let mut signatures = Vec::with_capacity(len);
@@ -1287,7 +1286,7 @@ where
         &mut self,
         proposals_and_ctxs: Vec<(SignedProposal<T>, Context)>,
     ) -> ConsensusResult<()> {
-        debug!("Overlord: state re-check future signed proposals");
+        log::debug!("Overlord: state re-check future signed proposals");
 
         for item in proposals_and_ctxs.into_iter() {
             parallel_verify(
@@ -1307,7 +1306,7 @@ where
         &mut self,
         votes_and_ctxs: Vec<(SignedVote, Context)>,
     ) -> ConsensusResult<()> {
-        debug!("Overlord: state re-check future signed votes");
+        log::debug!("Overlord: state re-check future signed votes");
 
         for item in votes_and_ctxs.into_iter() {
             parallel_verify(
@@ -1324,7 +1323,7 @@ where
     }
 
     async fn re_check_qcs(&mut self, qcs: Vec<AggregatedVote>) -> ConsensusResult<()> {
-        debug!("Overlord: state re-check future QCs");
+        log::debug!("Overlord: state re-check future QCs");
 
         for item in qcs.into_iter() {
             parallel_verify(
@@ -1346,7 +1345,7 @@ where
         let proposer = self.authority.get_proposer(self.height, self.round)?;
 
         if proposer == self.address {
-            info!(
+            log::info!(
                 "Overlord: state self become leader, height {}, round {}",
                 self.height, self.round
             );
@@ -1355,7 +1354,7 @@ where
             return Ok(true);
         }
 
-        info!(
+        log::info!(
             "Overlord: {:?} become leader, height {}, round {}",
             hex_encode(proposer.clone()),
             self.height,
@@ -1372,7 +1371,7 @@ where
     }
 
     fn sign_proposal(&self, proposal: Proposal<T>) -> ConsensusResult<SignedProposal<T>> {
-        debug!("Overlord: state sign a proposal");
+        log::debug!("Overlord: state sign a proposal");
         let signature = self
             .util
             .sign(self.util.hash(Bytes::from(rlp::encode(&proposal))))
@@ -1385,7 +1384,7 @@ where
     }
 
     fn sign_vote(&self, vote: Vote) -> ConsensusResult<SignedVote> {
-        debug!("Overlord: state sign a vote");
+        log::debug!("Overlord: state sign a vote");
         let signature = self
             .util
             .sign(self.util.hash(Bytes::from(rlp::encode(&vote))))
@@ -1408,7 +1407,7 @@ where
             .map(|addr| hex_encode(addr.clone()))
             .collect::<Vec<_>>();
 
-        info!(
+        log::debug!(
             "Overlord: state aggregate signatures height {}, round {}, voters {:?}",
             self.height, self.round, pretty_voter
         );
@@ -1421,7 +1420,7 @@ where
     }
 
     fn verify_proposer(&self, height: u64, round: u64, address: &Address) -> ConsensusResult<()> {
-        debug!("Overlord: state verify a proposer");
+        log::debug!("Overlord: state verify a proposer");
         self.verify_address(address)?;
         if address != &self.authority.get_proposer(height, round)? {
             return Err(ConsensusError::ProposalErr("Invalid proposer".to_string()));
@@ -1438,7 +1437,7 @@ where
     }
 
     async fn transmit(&self, ctx: Context, msg: OverlordMsg<T>) {
-        debug!(
+        log::debug!(
             "Overlord: state transmit a message to leader height {}, round {}",
             self.height, self.round
         );
@@ -1448,7 +1447,7 @@ where
             .transmit_to_relayer(ctx, self.leader_address.clone(), msg.clone())
             .await
             .map_err(|err| {
-                error!(
+                log::error!(
                     "Overlord: state transmit message to leader failed {:?}",
                     err
                 );
@@ -1456,7 +1455,7 @@ where
     }
 
     async fn broadcast(&self, ctx: Context, msg: OverlordMsg<T>) {
-        debug!(
+        log::debug!(
             "Overlord: state broadcast a message to others height {}, round {}",
             self.height, self.round
         );
@@ -1466,7 +1465,7 @@ where
             .broadcast_to_other(ctx, msg.clone())
             .await
             .map_err(|err| {
-                error!("Overlord: state broadcast message failed {:?}", err);
+                log::error!("Overlord: state broadcast message failed {:?}", err);
             });
     }
 
@@ -1537,7 +1536,7 @@ where
                 return Ok(());
             }
 
-            info!("Overlord: round {} chokes above threshold", round);
+            log::debug!("Overlord: round {} chokes above threshold", round);
 
             // aggregate chokes.
             let signed_chokes = self.chokes.get_chokes(round).unwrap();
@@ -1558,7 +1557,7 @@ where
                 },
             );
 
-            info!(
+            log::debug!(
                 "Overlord: state trigger SMR go on {} round of height {}",
                 round + 1,
                 self.height
@@ -1592,7 +1591,7 @@ where
                 check_current_block(ctx, function, height, round, hash.clone(), block, resp_tx)
                     .await
             {
-                error!("Overlord: state check block failed: {:?}", e);
+                log::error!("Overlord: state check block failed: {:?}", e);
             }
         });
     }
@@ -1610,7 +1609,7 @@ where
             .save(Bytes::from(rlp::encode(&wal_info)))
             .await
             .map_err(|e| {
-                error!("Overlord: state save wal error {:?}", e);
+                log::error!("Overlord: state save wal error {:?}", e);
                 ConsensusError::SaveWalErr {
                     height: self.height,
                     round: self.round,
@@ -1685,7 +1684,7 @@ where
         }
 
         let wal_info = wal_info.unwrap();
-        info!("overlord: start from wal {}", wal_info);
+        log::info!("overlord: start from wal {}", wal_info);
 
         // recover basic state
         self.height = wal_info.height;
@@ -1744,7 +1743,7 @@ where
 
     /// When block hash is empty, return true directly.
     fn try_get_full_txs(&self, hash: &Hash) -> bool {
-        debug!("Overlord: state check if get full transactions");
+        log::debug!("Overlord: state check if get full transactions");
         if hash.is_empty() {
             return true;
         } else if let Some(res) = self.is_full_transaction.get(hash) {
@@ -1805,7 +1804,7 @@ where
         // equal to the current height and the proposal round is ne the current round, cache it
         // until that height.
         if (height == self.height && round != self.round) || height > self.height {
-            debug!(
+            log::debug!(
                 "Overlord: state receive a future signed proposal, height {}, round {}",
                 height, round,
             );
@@ -1818,13 +1817,13 @@ where
 
     fn filter_message(&self, height: u64, round: u64) -> bool {
         if height < self.height || (height == self.height && round < self.round) {
-            debug!(
+            log::debug!(
                 "Overlord: state receive an outdated message height {}, self height {}",
                 height, self.height
             );
             return true;
         } else if self.height + FUTURE_HEIGHT_GAP < height {
-            debug!(
+            log::debug!(
                 "Overlord: state receive a future message height {}, self height {}",
                 height, self.height
             );
@@ -1832,7 +1831,7 @@ where
         } else if (height == self.height && self.round + FUTURE_ROUND_GAP < round)
             || (height > self.height && round > FUTURE_ROUND_GAP)
         {
-            debug!("Overlord: state receive a much higher round message");
+            log::debug!("Overlord: state receive a much higher round message");
             return true;
         }
 
@@ -1855,7 +1854,7 @@ async fn check_current_block<U: Consensus<T>, T: Codec>(
         .await
         .map_err(|err| ConsensusError::Other(format!("check {} block error {:?}", height, err)))?;
 
-    debug!("Overlord: state check block {}", true);
+    log::debug!("Overlord: state check block {}", true);
     tx.unbounded_send(VerifyResp {
         height,
         round,

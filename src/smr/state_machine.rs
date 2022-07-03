@@ -5,7 +5,6 @@ use derive_more::Display;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::stream::Stream;
 use hummer::coding::hex_encode;
-use log::{debug, info};
 
 use crate::smr::smr_types::{
     FromWhere, Lock, SMREvent, SMRStatus, SMRTrigger, Step, TriggerSource, TriggerType,
@@ -106,7 +105,7 @@ impl StateMachine {
         if height != self.height || round != self.round {
             Ok(())
         } else {
-            info!(
+            log::debug!(
                 "Overlord: SMR brake timeout height {}, round {}",
                 self.height, round
             );
@@ -123,7 +122,7 @@ impl StateMachine {
             return Ok(());
         }
 
-        info!("Overlord: SMR continue round {}", round);
+        log::debug!("Overlord: SMR continue round {}", round);
 
         self.round = round - 1;
         let (lock_round, lock_proposal) = self
@@ -161,7 +160,7 @@ impl StateMachine {
         status: SMRStatus,
         source: TriggerSource,
     ) -> ConsensusResult<()> {
-        info!("Overlord: SMR triggered by new height {}", status.height);
+        log::debug!("Overlord: SMR triggered by new height {}", status.height);
 
         let height = status.height;
         if source != TriggerSource::State {
@@ -187,7 +186,7 @@ impl StateMachine {
 
     /// Handle a proposal trigger. Only if self step is propose, the proposal is valid.
     /// If proposal hash is empty, prevote to an empty hash. If the lock round is some, and the lock
-    /// round is higher than self lock round, remove PoLC. Fianlly throw prevote vote event. It is
+    /// round is higher than self lock round, remove PoLC. Finally throw prevote vote event. It is
     /// impossible that the proposal hash is empty with the lock round is some.
     fn handle_proposal(
         &mut self,
@@ -205,7 +204,7 @@ impl StateMachine {
             return Ok(());
         }
 
-        info!(
+        log::debug!(
             "Overlord: SMR triggered by a proposal hash {:?}, from {:?}, height {}, round {}",
             hex_encode(proposal_hash.clone()),
             source,
@@ -238,7 +237,7 @@ impl StateMachine {
         self.check()?;
         if let Some(lock_round) = lock_round {
             if let Some(lock) = self.lock.clone() {
-                debug!("Overlord: SMR handle proposal with a lock");
+                log::debug!("Overlord: SMR handle proposal with a lock");
 
                 if lock_round > lock.round {
                     self.remove_polc();
@@ -269,7 +268,7 @@ impl StateMachine {
     /// Handle a prevote quorum certificate trigger. Only if self step is prevote, the prevote QC is
     /// valid.  
     /// The prevote round must be some. If the vote round is higher than self lock round, update
-    /// PoLC. Fianlly throw precommit vote event.
+    /// PoLC. Finally throw precommit vote event.
     fn handle_prevote(
         &mut self,
         prevote_hash: Hash,
@@ -285,7 +284,7 @@ impl StateMachine {
             return Ok(());
         }
 
-        info!(
+        log::debug!(
             "Overlord: SMR triggered by prevote QC hash {:?} qc round {} from {:?}, height {}, round {}",
             hex_encode(prevote_hash.clone()),
             prevote_round,
@@ -378,7 +377,7 @@ impl StateMachine {
             return Ok(());
         }
 
-        info!(
+        log::debug!(
             "Overlord: SMR triggered by precommit QC hash {:?} qc round {} from {:?}, height {}, round {}",
             hex_encode(precommit_hash.clone()),
             precommit_round,
@@ -397,7 +396,7 @@ impl StateMachine {
                 return Ok(());
             }
 
-            info!(
+            log::debug!(
                 "Overlord: SMR goto brake step, height {}, round {}",
                 self.height, self.round
             );
@@ -435,7 +434,7 @@ impl StateMachine {
     }
 
     fn throw_event(&mut self, event: SMREvent) -> ConsensusResult<()> {
-        info!("Overlord: SMR throw {} event", event);
+        log::debug!("Overlord: SMR throw {} event", event);
         self.event.0.unbounded_send(event.clone()).map_err(|err| {
             ConsensusError::ThrowEventErr(format!("event: {}, error: {:?}", event.clone(), err))
         })?;
@@ -454,7 +453,7 @@ impl StateMachine {
 
     /// Goto new height and clear everything.
     fn goto_new_height(&mut self, height: u64) {
-        info!("Overlord: SMR goto new height: {}", height);
+        log::debug!("Overlord: SMR goto new height: {}", height);
         self.height = height;
         self.round = INIT_ROUND;
         self.goto_step(Step::Propose);
@@ -464,7 +463,7 @@ impl StateMachine {
 
     /// Keep the lock, if any, when go to the next round.
     fn goto_next_round(&mut self) {
-        info!("Overlord: SMR goto next round {}", self.round + 1);
+        log::debug!("Overlord: SMR goto next round {}", self.round + 1);
         self.round += 1;
         self.goto_step(Step::Propose);
     }
@@ -511,7 +510,7 @@ impl StateMachine {
     /// Goto the given step.
     #[inline]
     fn goto_step(&mut self, step: Step) {
-        debug!("Overlord: SMR goto step {:?}", step);
+        log::debug!("Overlord: SMR goto step {:?}", step);
         self.step = step;
     }
 
@@ -519,7 +518,7 @@ impl StateMachine {
     /// the hash is empty, remove it. Otherwise, set lock round and hash as the given round and
     /// hash.
     fn update_polc(&mut self, hash: Hash, round: u64) {
-        debug!("Overlord: SMR update PoLC at round {}", round);
+        log::debug!("Overlord: SMR update PoLC at round {}", round);
         self.set_proposal(hash.clone());
 
         if hash.is_empty() {
@@ -547,7 +546,7 @@ impl StateMachine {
     /// 4. If the step is propose, proposal hash must be empty unless lock is some.
     #[inline(always)]
     fn check(&mut self) -> ConsensusResult<()> {
-        debug!("Overlord: SMR do self check");
+        log::debug!("Overlord: SMR do self check");
 
         // // Lock hash must be same as proposal hash, if has.
         // if self.round == 0
