@@ -1,6 +1,6 @@
 [package]
 name = "overlord"
-version = "0.4.0"
+version = "0.4.1"
 authors = ["Eason Gao <kaoimin@qq.com>"]
 edition = "2021"
 license = "MIT"
@@ -20,7 +20,7 @@ bytes = { version = "1.1", features = ["serde"] }
 creep = "0.2"
 derive_more = "0.99"
 futures = { version = "0.3", features = [ "async-await" ] }
-hummer = "0.1"
+hummer = "0.2"
 log = "0.4"
 muta-apm = "0.1"
 parking_lot = "0.12"
