@@ -5,7 +5,7 @@ Overlord consensus protocol.
 [![Crates.io](https://img.shields.io/crates/v/overlord)](https://crates.io/crates/overlord)
 ![example workflow](https://github.com/nervosnetwork/overlord/actions/workflows/ci.yml/badge.svg)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE.md)
-[![Minimum rustc version](https://img.shields.io/badge/rustc-1.58.1+-informational.svg)](https://github.com/nervosnetwork/overlord/blob/master/rust-toolchain)
+[![Minimum rustc version](https://img.shields.io/badge/rustc-1.59+-informational.svg)](https://github.com/nervosnetwork/overlord/blob/master/rust-toolchain)
 
 ## Introduction
 
@@ -19,7 +19,7 @@ Detailed introduction: [中文](./docs/architecture_zh.md)|[English](./docs/arch
 
 ```toml
 [dependencies]
-overlord = "0.3"
+overlord = "0.4"
 ```
 
 Overlord takes turns to become the leader by default. If you want to choose a leader randomly, add the `random_leader` feature to the dependency as below.
