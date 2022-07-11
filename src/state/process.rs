@@ -602,6 +602,8 @@ where
             &signed_proposal.proposal.proposer,
         )?;
 
+        self.height_start = Instant::now();
+
         if self.filter_signed_proposal(
             ctx.clone(),
             proposal_height,
