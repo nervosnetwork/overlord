@@ -15,7 +15,7 @@ jobs:
           profile: minimal
           components: rustfmt, clippy
 
-      - uses: Swatinem/rust-cache@v1
+      - uses: Swatinem/rust-cache@v2
       
       # - name: Init submodules
       #   uses: srt32/git-actions@v0.0.3
